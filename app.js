@@ -989,6 +989,7 @@ const BG = (() => {
     el.style.height = height + 'px';
   }
   function update(nextTone, nextHeight) {
+    return; // Noise-Hintergrund aus
     el = el || $('#bg');
     tone = TONES[nextTone] ? nextTone : '';
     height = Math.ceil(nextHeight);
