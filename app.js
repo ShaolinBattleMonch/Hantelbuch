@@ -4,7 +4,7 @@
    zuerst auf dem Handy, beim Sync in der Google-Tabelle. Der aktuelle Stand wird immer aus dem Log berechnet.
    Ausnahme: der Vault. Seine Bilder bleiben verschlüsselt nur auf diesem Handy und werden nie synchronisiert. */
 
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.3.1';
 const SCRIPT_MIN = 2;            // benötigte Version des Google-Skripts
 const PEOPLE = ['Manu', 'Rob'];
 const DAYS = ['A', 'B', 'C'];    // interne Kennung der Trainingstage, angezeigt werden die Kürzel
@@ -1751,8 +1751,11 @@ function viewSettings() {
       <div class="row">App-Version<span class="v">${APP_VERSION}</span></div>
     </div>
     <div class="secl">Gerät</div>
-    <section class="card"><b>Person wechseln</b><span class="small muted">Nur nötig, wenn diese App auf dem falschen Handy eingerichtet wurde. Ein laufendes Training wird dabei verworfen.</span>
-      <div class="pick">${PEOPLE.map(p => `<button data-act="s-me" data-v="${p}" aria-pressed="${cfg.me === p}">${p}</button>`).join('')}</div></section>
+    <section class="card form" style="gap:12px">
+      <label class="tgl"><span>Entwickleroptionen</span><input type="checkbox" role="switch" id="dev-tgl" ${LS.get('dev', false) ? 'checked' : ''}><i aria-hidden="true"></i></label>
+      ${LS.get('dev', false) ? `<b>Person wechseln</b><span class="small muted">Nur nötig, wenn diese App auf dem falschen Handy eingerichtet wurde. Ein laufendes Training wird dabei verworfen, der Vault gesperrt.</span>
+      <div class="pick">${PEOPLE.map(p => `<button data-act="s-me" data-v="${p}" aria-pressed="${cfg.me === p}">${p}</button>`).join('')}</div>` : ''}
+    </section>
     <section class="card"><b>Daten auf diesem Handy zurücksetzen</b>
       <span class="small muted">Löscht nur die Kopie des Trainingslogs auf diesem Handy. Beim nächsten Sync wird alles aus der Tabelle neu geladen. Der Vault bleibt erhalten.${waiting ? ` <b>${waiting} noch nicht gesendete Einträge gehen dabei verloren.</b>` : ''}</span>
       ${resetAsk ? `<div class="btnrow"><button class="btn small danger" data-act="reset-yes">Ja, zurücksetzen</button><button class="btn small ghost" data-act="reset-no">Abbrechen</button></div>` : `<button class="btn danger" data-act="reset-ask">Zurücksetzen</button>`}
@@ -1903,6 +1906,7 @@ document.addEventListener('change', e => {
   if (t.id === 'f-type') t.dispatchEvent(new Event('input', { bubbles: true }));
   if ((t.id === 'av-file' || t.id === 'av-file2') && t.files[0]) setAvatar(t.files[0]);
   if (t.id === 'v-import' && t.files[0]) readBackupFile(t.files[0]);
+  if (t.id === 'dev-tgl') { LS.set('dev', t.checked); render(); }
   if (t.id === 'vn-file' && t.files[0]) {
     if (VAULT.photoUrl) URL.revokeObjectURL(VAULT.photoUrl);
     VAULT.picking = 0; VAULT.photo = t.files[0]; VAULT.photoUrl = URL.createObjectURL(t.files[0]);

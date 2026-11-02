@@ -387,3 +387,11 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); opaci
 /* Wiederherstellungsschlüssel */
 .rkey { display: grid; grid-template-columns: repeat(4, auto); gap: 10px 14px; justify-content: center; padding: 18px 16px; border-radius: 18px; border: 1px dashed rgba(255,255,255,.4); background: rgba(0,0,0,.4); font-size: 19px; font-weight: 700; letter-spacing: .08em; user-select: all; -webkit-user-select: all; }
 textarea.inp.mono { font-size: 16px; letter-spacing: .06em; text-transform: uppercase; resize: none; height: auto; min-height: 76px; padding-top: 12px; }
+/* Schieberegler */
+.form label.tgl { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; color: var(--fg); font: 600 16px var(--body); text-transform: none; letter-spacing: 0; cursor: pointer; }
+.tgl input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.tgl i { flex: none; position: relative; width: 52px; height: 32px; border-radius: 16px; background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.25); transition: background .2s; }
+.tgl i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: transform .2s; }
+.tgl input:checked + i { background: var(--m); border-color: var(--m); }
+.tgl input:checked + i::after { transform: translateX(20px); }
+.tgl input:focus-visible + i { outline: 2px solid #fff; outline-offset: 2px; }
