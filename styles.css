@@ -395,3 +395,9 @@ textarea.inp.mono { font-size: 16px; letter-spacing: .06em; text-transform: uppe
 .tgl input:checked + i { background: var(--m); border-color: var(--m); }
 .tgl input:checked + i::after { transform: translateX(20px); }
 .tgl input:focus-visible + i { outline: 2px solid #fff; outline-offset: 2px; }
+/* Training bearbeiten */
+.wed { gap: 10px; }
+.wrow { display: grid; grid-template-columns: 22px minmax(0,1fr) minmax(0,1fr); gap: 8px; align-items: center; }
+.wrow .n { font-size: 12px; color: var(--dim); text-align: center; }
+.wrow input:only-of-type { grid-column: span 2; }
+.btn.danger-t { color: var(--danger); border-color: rgba(255,90,168,.5); }

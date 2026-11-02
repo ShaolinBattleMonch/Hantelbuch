@@ -4,7 +4,7 @@
    zuerst auf dem Handy, beim Sync in der Google-Tabelle. Der aktuelle Stand wird immer aus dem Log berechnet.
    Ausnahme: der Vault. Seine Bilder bleiben verschlüsselt nur auf diesem Handy und werden nie synchronisiert. */
 
-const APP_VERSION = '1.3.1';
+const APP_VERSION = '1.3.2';
 const SCRIPT_MIN = 2;            // benötigte Version des Google-Skripts
 const PEOPLE = ['Manu', 'Rob'];
 const DAYS = ['A', 'B', 'C'];    // interne Kennung der Trainingstage, angezeigt werden die Kürzel
@@ -177,10 +177,18 @@ function buildState() {
     .concat(pending.filter(p => !seenIds.has(p.id)).sort((a, b) => a.ts.localeCompare(b.ts)));
   const s = { plans: {}, last: {}, workouts: [], skips: [], swaps: [], feed: [], changes: {}, lastChange: {}, lastShared: {}, decisions: {}, lastAction: {}, hist: {}, exInfo: {}, bw: {}, avatars: {}, first: {} };
   _st = s; // für dl() während des Aufbaus
+  // Nachträgliche Änderungen an abgeschlossenen Trainings: es gilt die jeweils letzte, nur von derselben Person
+  const edits = {};
+  all.forEach(e => { if (e.type === 'workout_edit' && e.data && typeof e.data.ref === 'string') edits[e.data.ref] = e; });
   PEOPLE.forEach(p => { s.plans[p] = clone(DEFAULT_PLAN); s.hist[p] = {}; s.last[p] = null; s.bw[p] = []; });
   DAYS.forEach(d => DEFAULT_PLAN[d].exercises.forEach(x => { s.exInfo[x.id] = { name: x.name, type: x.type }; }));
   all.forEach((e, k) => {
     if (!PEOPLE.includes(e.person) || !e.id || !e.ts) return;
+    const ed = e.type === 'workout' ? edits[e.id] : null;
+    if (ed && ed.person === e.person) {
+      if (ed.data.deleted) return;
+      e = { ...e, data: { ...(e.data || {}), entries: ed.data.entries, edited: ed.ts } };
+    }
     const d = e.data || {}; e.k = k;
     if (!s.first[e.person]) s.first[e.person] = e.ts;
     if (e.type === 'workout') {
@@ -493,14 +501,36 @@ function sync({ overlay = false, quiet = false } = {}) {
         rejected += r.rejected || 0;
         ui.set(4 + 92 * pushShare * ((i + 1) / batches.length), null, `${Math.min((i + 1) * 10, toPush.length)} von ${toPush.length} gesendet`);
       }
-      const start = lastSeq; let guard = 0;
+      // Selbstprüfung: die letzte bekannte Zeile wird mit abgefragt. Passt sie nicht mehr (Zeilen in der Tabelle
+      // gelöscht oder verschoben), lädt die App den ganzen Log neu. So bleibt nichts hängen und Löschungen kommen an.
+      const lastEv = lastSeq ? events.find(e => e.seq === lastSeq) : null;
+      let check = lastEv ? lastEv.id : null;
+      let start = lastSeq, guard = 0;
+      for (let pass = 0; pass < 2; pass++) {
       while (guard++ < 400) {
-        const r = await call({ action: 'pull', since: lastSeq, limit: 200 });
+        const since = check ? lastSeq - 1 : lastSeq;
+        const r = await call({ action: 'pull', since, limit: 200 });
+        if (check) {
+          const first = (r.events || [])[0];
+          if ((r.total || 0) < lastSeq || !first || first.id !== check) {
+            events = []; seenIds = new Set(); lastSeq = 0; start = 0; check = null; invalidate();
+            ui.set(10, 'Tabelle wurde geändert, lade alles neu …', '');
+            continue;
+          }
+          check = null;
+        }
         (r.events || []).forEach(addSynced);
         const total = r.total || lastSeq;
         const frac = total > start ? (lastSeq - start) / (total - start) : 1;
         ui.set(4 + 92 * pushShare + 92 * (1 - pushShare) * frac, 'Lade Verlauf …', total > start ? `${lastSeq - start} von ${total - start} neuen Einträgen` : 'Alles aktuell');
         if (!r.more || !(r.events || []).length) break;
+      }
+      // Gesendet, aber beim Abholen nicht zurückbekommen: Zählung verrutscht, einmal alles neu laden
+      if (pass === 0 && start > 0 && !rejected && toPush.some(p => !seenIds.has(p.id))) {
+        events = []; seenIds = new Set(); lastSeq = 0; start = 0; guard = 0; invalidate();
+        continue;
+      }
+      break;
       }
       pending = pending.filter(p => !seenIds.has(p.id));
       saveLog();
@@ -1456,8 +1486,55 @@ function viewWorkout(id) {
       <h1 class="kurz" style="font-size:64px">${esc(dl(d.day, e.person))}</h1><div style="font-size:18px;font-weight:600">${esc(d.title)}</div>
       <div class="mono muted small">${fmtDate(e.ts)}, ${fmtTime(d.start)}–${fmtTime(d.end)} · ${duration(d.start, d.end)}${d.deload ? ' · Deload' : ''}</div>
       ${imp.length ? `<div class="chips">${imp.map(i => `<span class="chip ${i.pr ? 'pr' : ''}">${esc(i.name)} ${esc(i.label)}${i.pr ? ' · Rekord' : ''}</span>`).join('')}</div>` : ''}</div>
+    ${d.edited ? `<span class="small muted">Nachträglich bearbeitet am ${fmtDate(d.edited)}, ${fmtTime(d.edited)}</span>` : ''}
     <section class="card">${d.entries.map(en => `<a class="sess" href="#uebung:${encodeURIComponent(en.exId)}"><div class="top"><b style="color:var(--fg)">${esc(en.name)}</b><span class="mono">${en.sets.length} ${en.sets.length === 1 ? 'Satz' : 'Sätze'}${en.feel ? ' · ' + FEEL[en.feel] : ''}</span></div>
-      <div class="v">${fmtSets(en.type, en.sets)}</div>${en.note ? `<p class="quote muted">${esc(en.note)}</p>` : ''}</a>`).join('')}</section>`;
+      <div class="v">${fmtSets(en.type, en.sets)}</div>${en.note ? `<p class="quote muted">${esc(en.note)}</p>` : ''}</a>`).join('')}</section>
+    ${e.person === cfg.me ? (wDelAsk === e.id
+      ? `<section class="card"><b>Training endgültig löschen?</b><span class="small muted">Es verschwindet bei dir und bei ${esc(partner())} aus Verlauf, Statistik und Rotation.</span><div class="btnrow"><button class="btn small danger" data-act="w-del-yes" data-id="${esc(e.id)}">Löschen</button><button class="btn small ghost" data-act="w-del-no">Abbrechen</button></div></section>`
+      : `<div class="btnrow"><button class="btn glass" data-act="w-edit" data-id="${esc(e.id)}">Bearbeiten</button><button class="btn ghost danger-t" data-act="w-del" data-id="${esc(e.id)}">Löschen</button></div>`) : ''}`;
+}
+/* ---------- Abgeschlossenes Training bearbeiten ---------- */
+let wedit = null, wDelAsk = null;
+function workoutForm() {
+  const w = st().workouts.find(x => x.id === wedit.id); if (!w) return;
+  const wfmt = (type, v) => typeof v === 'string' ? esc(v) : type === 'kg' ? fmtIn(v) : v ? (v < 0 ? '-' : '') + fmtIn(v) : '';
+  $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet full form" id="wform" novalidate>
+    ${sheetHead(`${esc(dl(w.data.day))} · ${fmtDate(w.ts)}`, 'Training bearbeiten')}
+    <h2>Training bearbeiten</h2>
+    <p class="help" style="margin:0">Änderungen gelten auch für Steigerung und Statistik. ${esc(partner())} sieht das korrigierte Training.</p>
+    ${wedit.entries.map((en, i) => `<section class="card wed">
+      <div class="rowbetween"><b>${esc(en.name)}</b><span class="mono muted small">${en.type === 'time' ? 'Sekunden' : en.type === 'bw' ? '± kg · Wdh.' : 'kg · Wdh.'}</span></div>
+      ${en.sets.map((st2, j) => `<div class="wrow"><span class="n mono">${j + 1}</span>
+        ${en.type === 'time' ? '' : `<input class="inp mono" data-we="w" data-i="${i}" data-j="${j}" inputmode="${en.type === 'bw' ? 'text' : 'decimal'}" value="${wfmt(en.type, st2.w)}" placeholder="${en.type === 'bw' ? '0' : 'kg'}" aria-label="${esc(en.name)} Satz ${j + 1} Gewicht">`}
+        <input class="inp mono" data-we="r" data-i="${i}" data-j="${j}" inputmode="numeric" value="${st2.r || ''}" placeholder="${en.type === 'time' ? 'Sek.' : 'Wdh.'}" aria-label="${esc(en.name)} Satz ${j + 1} ${en.type === 'time' ? 'Sekunden' : 'Wiederholungen'}"></div>`).join('')}
+      <div class="btnrow" style="gap:18px"><button type="button" class="addset" data-act="we-add" data-i="${i}">+ Satz</button><button type="button" class="addset" data-act="we-del" data-i="${i}">− Satz</button></div>
+      <label>Notiz<textarea data-we="note" data-i="${i}" rows="2" maxlength="500">${esc(en.note || '')}</textarea></label>
+    </section>`).join('')}
+    <div class="err" id="we-err" hidden></div>
+    <div class="sbar"><button class="btn primary" type="submit">Änderungen speichern</button></div>
+  </form></div>`;
+}
+function readWorkoutForm() {
+  document.querySelectorAll('#wform [data-we]').forEach(el => {
+    const en = wedit.entries[+el.dataset.i];
+    if (el.dataset.we === 'note') { en.note = el.value; return; }
+    const set = en.sets[+el.dataset.j];
+    if (el.dataset.we === 'r') set.r = el.value;
+    else set.w = el.value;
+  });
+}
+function saveWorkoutEdit() {
+  readWorkoutForm();
+  const w = st().workouts.find(x => x.id === wedit.id); if (!w) return;
+  const entries = wedit.entries.map(en => ({
+    exId: en.exId, name: en.name, type: en.type, feel: en.feel || '', note: String(en.note || '').trim().slice(0, 500),
+    sets: en.sets.map(x => en.type === 'time' ? { r: int(x.r) } : { w: en.type === 'kg' ? Math.abs(num(x.w)) : num(x.w), r: int(x.r) }).filter(x => x.r > 0)
+  })).filter(en => en.sets.length || en.note);
+  if (!entries.some(en => en.sets.length)) { const e = $('#we-err'); e.textContent = 'Mindestens ein Satz muss bleiben. Zum Entfernen des ganzen Trainings nutze „Löschen“.'; e.hidden = false; return; }
+  const before = JSON.stringify(w.data.entries.map(en => [en.exId, en.sets, en.note || ''])), after = JSON.stringify(entries.map(en => [en.exId, en.sets, en.note]));
+  if (before === after) { $('#modal').innerHTML = ''; wedit = null; return; }
+  addEvent('workout_edit', { ref: w.id, entries }, `${dl(w.data.day)} vom ${fmtDate(w.ts)} bearbeitet · ` + entries.map(en => `${en.name}: ${fmtSets(en.type, en.sets)}${en.note ? ` (Notiz: ${en.note})` : ''}`).join(' | '));
+  $('#modal').innerHTML = ''; wedit = null; toast('Training geändert'); render();
 }
 
 /* ---------- Profil ---------- */
@@ -1856,6 +1933,16 @@ const actions = {
   bremove: t => { const a = builder.work[builder.day].exercises; const x = a.splice(+t.dataset.i, 1)[0]; markDirty(); render(); toast(`${x.name} entfernt. Speichern nicht vergessen.`); },
   bdiscard: () => { builder.work[builder.day] = clone(st().plans[cfg.me][builder.day]); builder.dirty[builder.day] = false; render(); },
   bsave: () => savePlan(),
+  'w-edit': t => { const w = st().workouts.find(x => x.id === t.dataset.id); if (!w || w.person !== cfg.me) return; wedit = { id: w.id, entries: clone(w.data.entries) }; workoutForm(); },
+  'we-add': t => { readWorkoutForm(); const en = wedit.entries[+t.dataset.i], l = en.sets[en.sets.length - 1]; en.sets.push({ w: l ? l.w : '', r: '' }); workoutForm(); },
+  'we-del': t => { readWorkoutForm(); const en = wedit.entries[+t.dataset.i]; if (en.sets.length) en.sets.pop(); workoutForm(); },
+  'w-del': t => { wDelAsk = t.dataset.id; render(); },
+  'w-del-no': () => { wDelAsk = null; render(); },
+  'w-del-yes': t => {
+    const w = st().workouts.find(x => x.id === t.dataset.id); if (!w || w.person !== cfg.me) return;
+    addEvent('workout_edit', { ref: w.id, deleted: true }, `${dl(w.data.day)} vom ${fmtDate(w.ts)} gelöscht`);
+    wDelAsk = null; toast('Training gelöscht'); location.hash = '#verlauf';
+  },
   mclose: () => { $('#modal').innerHTML = ''; },
   'mclose-bg': (t, e) => { if (e.target === t) $('#modal').innerHTML = ''; },
   pin: t => { if (VAULT.pin.length >= 4) return; VAULT.pin += t.dataset.v; VAULT.msg = ''; if (VAULT.pin.length === 4) { render(); pinComplete(); } else render(); },
@@ -1899,6 +1986,7 @@ document.addEventListener('click', e => {
 document.addEventListener('submit', e => {
   if (e.target.id === 'exform') { e.preventDefault(); submitExercise(e.target); }
   if (e.target.id === 'swapform') { e.preventDefault(); submitSwap(e.target); }
+  if (e.target.id === 'wform') { e.preventDefault(); saveWorkoutEdit(); }
   if (e.target.id === 'vaultform') { e.preventDefault(); saveVaultEntry(e.target); }
 });
 document.addEventListener('change', e => {
@@ -1945,8 +2033,16 @@ window.addEventListener('hashchange', () => { $('#modal').innerHTML = ''; render
 
 /* ---------- Start der App ---------- */
 let hiddenAt = Date.now();
+// Fragt bei GitHub nach einer neuen Version. Nicht während eines Trainings, damit nichts mitten im Satz neu lädt.
+function checkUpdate() {
+  if (!('serviceWorker' in navigator) || location.protocol !== 'https:' || (view === 'training' && draft)) return;
+  if (Date.now() - (checkUpdate.last || 0) < 60000) return;
+  checkUpdate.last = Date.now();
+  navigator.serviceWorker.getRegistration().then(r => r && r.update()).catch(() => {});
+}
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); if (draft) saveDraft(); if ((VAULT.key || VAULT.photo) && Date.now() - VAULT.picking > 180000) { lockVault(); if (view.startsWith('vault')) location.hash = '#profil'; } return; }
+  checkUpdate();
   const away = Date.now() - hiddenAt;
   if (cfg.me && cfg.url && away > 60000) sync({ overlay: away > 5 * 60000 && view !== 'training' });
 });
@@ -1959,6 +2055,7 @@ setInterval(() => {
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   const hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').catch(() => {});
+  setTimeout(checkUpdate, 3000);
   let reloaded = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded) { reloaded = true; if (draft) saveDraft(); location.reload(); } });
 }
