@@ -4,7 +4,7 @@
    zuerst auf dem Handy, beim Sync in der Google-Tabelle. Der aktuelle Stand wird immer aus dem Log berechnet.
    Ausnahme: der Vault. Seine Bilder bleiben verschlüsselt nur auf diesem Handy und werden nie synchronisiert. */
 
-const APP_VERSION = '1.3.4';
+const APP_VERSION = '1.4.0';
 const SCRIPT_MIN = 2;            // benötigte Version des Google-Skripts
 const PEOPLE = ['Manu', 'Rob'];
 const DAYS = ['A', 'B', 'C'];    // interne Kennung der Trainingstage, angezeigt werden die Kürzel
@@ -112,6 +112,11 @@ const ICON = {
   cam: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
   plus: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   key: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.8-9.8M17 6l3 3M14.5 8.5l2.5 2.5"/></svg>',
+  eye: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+  img: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>',
+  flip: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/></svg>',
+  barT: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="2.5" y="7" width="19" height="10" rx="1.5"/><path d="M8 12h8"/></svg>',
+  dl: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>',
   del: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 5H9l-6 7 6 7h12z"/><path d="m16 9-5 6M11 9l5 6"/></svg>'
 };
 
@@ -176,7 +181,7 @@ function st() { return _st || (_st = buildState()); }
 function buildState() {
   const all = events.slice().sort((a, b) => a.seq - b.seq)
     .concat(pending.filter(p => !seenIds.has(p.id)).sort((a, b) => a.ts.localeCompare(b.ts)));
-  const s = { plans: {}, last: {}, workouts: [], skips: [], swaps: [], feed: [], changes: {}, lastChange: {}, lastShared: {}, decisions: {}, lastAction: {}, hist: {}, exInfo: {}, bw: {}, avatars: {}, first: {} };
+  const s = { spotSeen: {}, spotMyReact: {}, plans: {}, last: {}, workouts: [], skips: [], swaps: [], feed: [], changes: {}, lastChange: {}, lastShared: {}, decisions: {}, lastAction: {}, hist: {}, exInfo: {}, bw: {}, avatars: {}, first: {} };
   _st = s; // für dl() während des Aufbaus
   // Nachträgliche Änderungen an abgeschlossenen Trainings: es gilt die jeweils letzte, nur von derselben Person
   const edits = {};
@@ -217,7 +222,7 @@ function buildState() {
     } else if (e.type === 'plan_decision') {
       const ch = s.changes[d.changeId];
       const decision = d.decision === 'accepted' ? 'accepted' : 'dismissed';
-      s.decisions[e.person + '|' + d.changeId] = { decision, k };
+      s.decisions[e.person + '|' + d.changeId] = { decision, k, ts: e.ts };
       if (ch && decision === 'accepted') {
         s.plans[e.person][ch.data.day] = d.result && Array.isArray(d.result.exercises) ? cleanPlan(d.result, ch.data.day) : cleanPlan(ch.data, ch.data.day);
         s.lastAction[e.person + '|' + ch.data.day] = k;
@@ -229,6 +234,13 @@ function buildState() {
       s.swaps.push(e); s.feed.push(e);
     } else if (e.type === 'bodyweight') {
       const kg = num(d.kg); if (kg >= 30 && kg <= 300) s.bw[e.person].push({ ts: e.ts, kg });
+    } else if (e.type === 'spot_seen') {
+      if (typeof d.spot === 'string') (s.spotSeen[d.spot] = s.spotSeen[d.spot] || new Set()).add(e.person);
+    } else if (e.type === 'spot_react') {
+      if (typeof d.spot === 'string' && SPOT_EMOJI.includes(d.emoji)) {
+        if (e.person === cfg.me) s.spotMyReact[d.spot] = d.emoji;
+        if (d.owner === cfg.me && e.person !== cfg.me) s.feed.push(e);
+      }
     } else if (e.type === 'avatar') {
       if (d.img === '') delete s.avatars[e.person];
       else if (typeof d.img === 'string' && d.img.length < 60000 && AVATAR_RE.test(d.img)) s.avatars[e.person] = d.img;
@@ -539,7 +551,7 @@ function sync({ overlay = false, quiet = false } = {}) {
       ui.set(100, 'Fertig', '');
       if (overlay) await sleep(400);
       if (rejected && !quiet) toast('Einige Einträge wurden abgelehnt. Bitte das Google-Skript aktualisieren.');
-      setTimeout(() => vaultSync(), 0);
+      setTimeout(() => { vaultSync().then(() => gallerySync()); spotSync(); }, 0);
       return { ok: true };
     } catch (err) {
       const code = (err && err.code) || 'server';
@@ -626,7 +638,8 @@ async function rawKeys(raw) {
   const salt = new TextEncoder().encode('hantelbuch-vault-v2');
   const dk = await crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt, info: new TextEncoder().encode('daten') }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
   const tb = new Uint8Array(await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt, info: new TextEncoder().encode('zugang') }, base, 256));
-  return { dk, token: [...tb].map(b => b.toString(16).padStart(2, '0')).join('') };
+  const gk = new Uint8Array(await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt, info: new TextEncoder().encode('galerie') }, base, 256));
+  return { dk, token: [...tb].map(b => b.toString(16).padStart(2, '0')).join(''), gk: b64e(gk) };
 }
 async function wrapMeta(pin, raw, saved) {
   const salt = b64e(crypto.getRandomValues(new Uint8Array(16)));
@@ -638,7 +651,7 @@ async function wrapMeta(pin, raw, saved) {
 async function openMeta(pin, meta) {
   try {
     const pk = await deriveKey(pin, meta.salt);
-    if (meta.v === 2) { const raw = await decBytes(pk, meta.wiv, b64d(meta.wrap)); const k = await rawKeys(raw); return { dk: k.dk, raw, token: k.token }; }
+    if (meta.v === 2) { const raw = await decBytes(pk, meta.wiv, b64d(meta.wrap)); const k = await rawKeys(raw); return { dk: k.dk, raw, token: k.token, gk: k.gk }; }
     const o = await decJSON(pk, meta.civ, b64d(meta.check));
     return o && o.v === 'hantelbuch-vault' ? { dk: pk, raw: null } : null;
   } catch (e) { return null; }
@@ -646,6 +659,7 @@ async function openMeta(pin, meta) {
 async function unlocked(res) {
   VAULT.key = res.dk; VAULT.raw = res.raw;
   if (res.token) LS.set('vault.tok.' + cfg.me, res.token);
+  if (res.gk) LS.set('gal.key.' + cfg.me, res.gk);
 }
 /* Umstellung eines alten Vaults (nur mit Code verschlüsselt) auf den Wiederherstellungsschlüssel */
 async function migrateVault(pin) {
@@ -653,7 +667,7 @@ async function migrateVault(pin) {
   const k = await rawKeys(raw);
   await reencryptAll(VAULT.key, k.dk);
   LS.set('vault.' + cfg.me, await wrapMeta(pin, raw, false));
-  await unlocked({ dk: k.dk, raw, token: k.token });
+  await unlocked({ dk: k.dk, raw, token: k.token, gk: k.gk });
   VAULT.showKey = rkEncode(raw);
 }
 async function reencryptAll(oldKey, newKey) {
@@ -704,7 +718,7 @@ async function pinComplete() {
     const raw = restoring ? VAULT.restore.raw : crypto.getRandomValues(new Uint8Array(20));
     const k = await rawKeys(raw);
     LS.set('vault.' + cfg.me, await wrapMeta(pin, raw, restoring));
-    await unlocked({ dk: k.dk, raw, token: k.token });
+    await unlocked({ dk: k.dk, raw, token: k.token, gk: k.gk });
     VAULT.entries = []; VAULT.mode = 'unlock'; VAULT.restore = null;
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* optional */ }
     if (restoring) {
@@ -827,7 +841,7 @@ function vaultSync({ progress } = {}) {
     let changed = false;
     try {
       let cloud = [], fresh = false;
-      try { cloud = (await req('vault_list', {}, 30000)).entries || []; }
+      try { cloud = ((await req('vault_list', {}, 30000)).entries || []).filter(c => !c.id.startsWith('g-')); }
       catch (e) { if (e.code !== 'vault_none') throw e; fresh = true; }
       const inCloud = new Set(cloud.map(c => c.id));
       // gelöschte Bilder auch in der Tabelle entfernen
@@ -888,7 +902,482 @@ async function startRestore() {
   }
 }
 
+/* ======================= Spot =======================
+   Ein Bild für den anderen, 5 Sekunden sichtbar. Geteilt über das Blatt „Spots“ (verschlüsselt mit einem
+   Schlüssel aus dem Sync-Schlüssel). Dort liegt ein Spot 3 Tage bzw. bis er gesehen wurde, höchstens 30 Tage.
+   Die eigenen Spots bleiben in der Galerie auf dem Handy und werden über die Vault-Sicherung gesichert. */
+const SPOT_LIFE = 3 * 864e5, SPOT_MAX = 30 * 864e5, SPOT_SHOW = 5000;
+const SPOT_WORDS = ['DURCHGEPUMPT', 'ERLEDIGT', 'AUSGEPOWERT', 'ABGEHAKT', 'DURCHGEZOGEN', 'GESCHAFFT', 'PLATT', 'ABGERISSEN'];
+const SPOT_EMOJI = ['💪', '🔥', '😂', '👏', '🫡', '😮‍💨'];
+const TONE_HEX = { y: '#fff200', m: '#ec008c', c: '#00aeef' };
+const SPOT = { inbox: [], gallery: [], urls: {}, facing: 'environment', stream: null, ed: null, view: null, galDel: null, ready: false };
+
+const SDB = {
+  db: null,
+  open() {
+    if (this.db) return Promise.resolve(this.db);
+    return new Promise((res, rej) => {
+      const r = indexedDB.open('hb-spots', 1);
+      r.onupgradeneeded = () => { r.result.createObjectStore('gallery', { keyPath: 'id' }); r.result.createObjectStore('inbox', { keyPath: 'id' }); };
+      r.onsuccess = () => { this.db = r.result; res(this.db); };
+      r.onerror = () => rej(r.error);
+    });
+  },
+  async tx(store, mode, fn) { const db = await this.open(); return new Promise((res, rej) => { const t = db.transaction(store, mode); const out = fn(t.objectStore(store)); t.oncomplete = () => res(out instanceof IDBRequest ? out.result : out); t.onerror = () => rej(t.error); }); },
+  all(store) { return this.tx(store, 'readonly', s => s.getAll()); },
+  get(store, id) { return this.tx(store, 'readonly', s => s.get(id)); },
+  put(store, rec) { return this.tx(store, 'readwrite', s => s.put(rec)); },
+  del(store, id) { return this.tx(store, 'readwrite', s => s.delete(id)); }
+};
+const spotUrl = rec => SPOT.urls[rec.id] || (SPOT.urls[rec.id] = URL.createObjectURL(new Blob([rec.img], { type: 'image/jpeg' })));
+const spotSeenBy = (id, p) => { const s = st().spotSeen[id]; return !!(s && s.has(p)); };
+async function loadSpots() {
+  try {
+    const me = cfg.me;
+    SPOT.gallery = (await SDB.all('gallery')).filter(g => g.person === me).sort((a, b) => a.created.localeCompare(b.created));
+    SPOT.inbox = (await SDB.all('inbox')).filter(x => x.person === partner()).sort((a, b) => a.created.localeCompare(b.created));
+  } catch (e) { SPOT.gallery = []; SPOT.inbox = []; }
+  SPOT.ready = true;
+}
+const unseenSpots = () => SPOT.inbox.filter(x => !spotSeenBy(x.id, cfg.me) && Date.now() - new Date(x.created) < SPOT_MAX);
+
+/* Schlüssel für geteilte Spots: aus dem Sync-Schlüssel abgeleitet, beide Handys kommen auf denselben */
+let _spotKey = null, _spotKeyFor = null;
+async function spotKey() {
+  if (_spotKey && _spotKeyFor === cfg.key) return _spotKey;
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(cfg.key), 'HKDF', false, ['deriveKey']);
+  _spotKey = await crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: new TextEncoder().encode('hantelbuch-spots'), info: new TextEncoder().encode('spots') }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  _spotKeyFor = cfg.key; return _spotKey;
+}
+const chunk = str => { const out = []; for (let i = 0; i < str.length; i += VCHUNK) out.push(str.slice(i, i + VCHUNK)); return out; };
+
+let spotSyncing = null;
+function spotSync() {
+  if (spotSyncing) return spotSyncing;
+  if (!cfg.me || !cfg.url || !cfg.key || navigator.onLine === false || (scriptVersion != null && scriptVersion < 4)) return Promise.resolve();
+  const me = cfg.me, other = partner();
+  spotSyncing = (async () => {
+    let changed = false;
+    try {
+      const list = (await call({ action: 'spot_list' }, 30000)).spots || [];
+      const inSheet = new Set(list.map(x => x.id)), now = Date.now();
+      // gelöschte eigene Spots auch aus der Tabelle nehmen
+      const tombs = LS.get('spot.tomb.' + me, []);
+      for (const id of [...tombs]) { if (inSheet.has(id)) { await call({ action: 'spot_del', person: me, id }, 30000); inSheet.delete(id); } tombs.splice(tombs.indexOf(id), 1); LS.set('spot.tomb.' + me, tombs); }
+      // eigene, noch nicht geteilte Spots hochladen
+      for (const g of await SDB.all('gallery')) {
+        if (g.person !== me || g.shared || now - new Date(g.created) > SPOT_LIFE) continue;
+        const enc = await encBytes(await spotKey(), new Uint8Array(g.img));
+        const body = JSON.stringify({ id: g.id, person: me, created: g.created, meta: g.meta, iv: enc.iv, ct: b64e(enc.ct) });
+        await call({ action: 'spot_put', person: me, id: g.id, created: g.created, chunks: chunk(body) }, 120000);
+        await SDB.put('gallery', { ...g, shared: true }); inSheet.add(g.id); changed = true;
+      }
+      // eigene aufräumen: nach 3 Tagen, wenn gesehen; sonst spätestens nach 30 Tagen
+      for (const x of list) {
+        if (x.person !== me) continue;
+        const age = now - new Date(x.created);
+        if ((age > SPOT_LIFE && spotSeenBy(x.id, other)) || age > SPOT_MAX) { await call({ action: 'spot_del', person: me, id: x.id }, 30000); inSheet.delete(x.id); }
+      }
+      // neue Spots des anderen laden
+      const have = new Set((await SDB.all('inbox')).map(x => x.id));
+      for (const x of list) {
+        if (x.person !== other || have.has(x.id) || spotSeenBy(x.id, me) || now - new Date(x.created) > SPOT_MAX) continue;
+        const g = await call({ action: 'spot_get', id: x.id }, 120000);
+        const p = JSON.parse(g.chunks.join(''));
+        const bytes = await decBytes(await spotKey(), p.iv, b64d(p.ct));
+        await SDB.put('inbox', { id: x.id, person: x.person, created: x.created, meta: p.meta || {}, img: bytes.buffer });
+        changed = true;
+      }
+      // gesehene oder verschwundene aus dem Zwischenspeicher entfernen
+      for (const x of await SDB.all('inbox')) if (!inSheet.has(x.id) || spotSeenBy(x.id, me)) { await SDB.del('inbox', x.id); changed = true; }
+    } catch (e) { /* nächster Versuch beim nächsten Sync */ }
+    finally {
+      spotSyncing = null;
+      if (changed) { await loadSpots(); if (!SPOT.view && !SPOT.ed && ['start', 'kamera', 'profil', ''].includes(view)) safeRender(); }
+    }
+  })();
+  return spotSyncing;
+}
+
+/* Galerie-Sicherung: über die Vault-Sicherung (eigener Zugang), verschlüsselt mit einem Schlüssel aus dem
+   Wiederherstellungsschlüssel. IDs mit „g-“ gehören zur Galerie. */
+let gallerySyncing = null;
+async function galKey() {
+  const raw = LS.get('gal.key.' + cfg.me, null); if (!raw) return null;
+  return crypto.subtle.importKey('raw', b64d(raw), 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+function gallerySync() {
+  if (gallerySyncing) return gallerySyncing;
+  const tok = vtoken(), meta = vmeta();
+  if (!cfg.url || !cfg.key || !tok || !meta || meta.v !== 2 || !LS.get('gal.key.' + cfg.me, null) || navigator.onLine === false || (scriptVersion != null && scriptVersion < 3)) return Promise.resolve();
+  const me = cfg.me;
+  const req = (action, extra = {}, t = 120000) => call({ action, person: me, vtoken: tok, ...extra }, t);
+  gallerySyncing = (async () => {
+    let changed = false;
+    try {
+      const key = await galKey();
+      let cloud = [], fresh = false;
+      try { cloud = ((await req('vault_list', {}, 30000)).entries || []).filter(c => c.id.startsWith('g-')); } catch (e) { if (e.code !== 'vault_none') throw e; fresh = true; }
+      const inCloud = new Set(cloud.map(c => c.id));
+      const tombs = LS.get('gal.tomb.' + me, []);
+      for (const id of [...tombs]) { if (inCloud.has('g-' + id)) { await req('vault_del', { id: 'g-' + id }, 30000); inCloud.delete('g-' + id); } tombs.splice(tombs.indexOf(id), 1); LS.set('gal.tomb.' + me, tombs); }
+      const local = (await SDB.all('gallery')).filter(g => g.person === me), have = new Set(local.map(g => 'g-' + g.id));
+      for (const g of local) {
+        if (g.up && !inCloud.has('g-' + g.id) && !fresh) { await SDB.del('gallery', g.id); changed = true; continue; }
+        if (g.up && !fresh) continue;
+        const enc = await encBytes(key, new Uint8Array(g.img));
+        const body = JSON.stringify({ id: g.id, created: g.created, meta: g.meta, iv: enc.iv, ct: b64e(enc.ct) });
+        await req('vault_put', { id: 'g-' + g.id, created: g.created, chunks: chunk(body) });
+        await SDB.put('gallery', { ...g, up: true }); inCloud.add('g-' + g.id);
+      }
+      for (const c of cloud) {
+        if (have.has(c.id) || !inCloud.has(c.id) || tombs.includes(c.id.slice(2))) continue;
+        const g = await req('vault_get', { id: c.id });
+        const p = JSON.parse(g.chunks.join(''));
+        const bytes = await decBytes(key, p.iv, b64d(p.ct));
+        await SDB.put('gallery', { id: p.id, person: me, created: p.created, meta: p.meta || {}, img: bytes.buffer, shared: true, up: true });
+        changed = true;
+      }
+    } catch (e) { /* später erneut */ }
+    finally { gallerySyncing = null; if (changed) { await loadSpots(); if (!SPOT.view && !SPOT.ed && ['profil', 'kamera'].includes(view)) safeRender(); } }
+  })();
+  return gallerySyncing;
+}
+
+/* ---------- Siegel: Regel „erste Zeile bestimmt die Breite“, danach festes Bild ---------- */
+let _measure = null;
+function inkBox(font, text) {
+  _measure = _measure || document.createElement('canvas').getContext('2d');
+  _measure.font = font; const m = _measure.measureText(text);
+  return { w: m.actualBoundingBoxLeft + m.actualBoundingBoxRight, l: m.actualBoundingBoxLeft };
+}
+function sealLayout(ctx, dark) {
+  const K = 100, day = !!ctx.tone;
+  const hf = day ? '800 100px Unbounded' : '700 100px "Geist Mono"';
+  const head = inkBox(hf, ctx.head), W = head.w;
+  const main = dark ? '#000' : '#fff', soft = dark ? 'rgba(0,0,0,.66)' : 'rgba(255,255,255,.72)';
+  let y = (day ? 0.77 : 0.73) * K;
+  const items = [{ text: ctx.head, family: day ? 'Unbounded' : 'Geist Mono', weight: day ? 800 : 700, size: K, x: head.l, y, fill: day ? TONE_HEX[ctx.tone] : main }];
+  ctx.lines.forEach(([text, role], i) => {
+    const wt = role === 'sub' ? 700 : 500, b = inkBox(`${wt} 100px "Geist Mono"`, text), s = 100 * W / b.w;
+    y += (i ? 0.075 : 0.10) * K + 0.73 * s;
+    items.push({ text, family: 'Geist Mono', weight: wt, size: s, x: b.l * s / 100, y, fill: role === 'time' ? soft : main });
+  });
+  return { W, H: y + 2, items, shadow: dark ? 'rgba(255,255,255,.45)' : 'rgba(0,0,0,.55)' };
+}
+function sealSVG(L) {
+  const t = L.items.map(i => `<text x="${i.x.toFixed(2)}" y="${i.y.toFixed(2)}" font-family="${i.family === 'Unbounded' ? 'Unbounded' : 'Geist Mono'}" font-weight="${i.weight}" font-size="${i.size.toFixed(2)}" fill="${i.fill}">${esc(i.text)}</text>`).join('');
+  return `<svg viewBox="0 0 ${L.W.toFixed(2)} ${L.H.toFixed(2)}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;overflow:visible;filter:drop-shadow(0 1px 3px ${L.shadow})">${t}</svg>`;
+}
+function drawSeal(c, L, x, y, scale) {
+  c.save(); c.translate(x, y); c.scale(scale, scale);
+  c.shadowColor = L.shadow; c.shadowBlur = 9; c.shadowOffsetY = 3;
+  L.items.forEach(i => { c.font = `${i.weight} ${i.size}px ${i.family === 'Unbounded' ? 'Unbounded' : '"Geist Mono"'}`; c.fillStyle = i.fill; c.fillText(i.text, i.x, i.y); });
+  c.restore();
+}
+const hashStr = s => { let h = 0; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) | 0; return Math.abs(h); };
+function spotContext(at) {
+  const date = `${pad2(at.getDate())}.${pad2(at.getMonth() + 1)}.${String(at.getFullYear()).slice(2)}`, time = `${pad2(at.getHours())}:${pad2(at.getMinutes())}`;
+  if (draft) {
+    const { done, tot } = workCount();
+    const sub = done === 0 ? 'LOS GEHT’S' : done >= tot ? 'ALLE SÄTZE' : `SATZ ${done} VON ${tot}`;
+    return { kind: 'live', day: draft.day, tone: DAY_TONE[draft.day], head: dl(draft.day), lines: [[sub, 'sub'], [`${date} · ${time}`, 'time']] };
+  }
+  const w = st().workouts.filter(x => x.person === cfg.me && dateKey(x.ts) === dateKey(at)).pop();
+  if (w) return { kind: 'done', day: w.data.day, tone: DAY_TONE[w.data.day], head: dl(w.data.day), lines: [[SPOT_WORDS[hashStr(dateKey(at)) % SPOT_WORDS.length], 'sub'], [`${date} · ${time}`, 'time']] };
+  return { kind: 'date', head: date, lines: [[`${time} UHR`, 'sub']] };
+}
+async function spotFonts() {
+  try { await Promise.all(['800 100px Unbounded', '700 100px "Geist Mono"', '500 100px "Geist Mono"', '500 20px "Geist Mono"'].map(f => document.fonts.load(f))); } catch (e) { /* Ersatzschrift */ }
+}
+
+/* ---------- Kamera ---------- */
+async function startCamera() {
+  stopCamera();
+  const v = $('#cam-v'); if (!v) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { camFallback(); return; }
+  try {
+    SPOT.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: SPOT.facing, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    if (view !== 'kamera') { stopCamera(); return; }
+    const el = $('#cam-v'); if (!el) { stopCamera(); return; }
+    el.srcObject = SPOT.stream; el.classList.toggle('mirror', SPOT.facing === 'user');
+    await el.play().catch(() => {});
+  } catch (e) { camFallback(); }
+}
+function stopCamera() { if (SPOT.stream) { SPOT.stream.getTracks().forEach(t => t.stop()); SPOT.stream = null; } }
+function camFallback() { const f = $('#cam-fb'); if (f) f.hidden = false; }
+function shoot() {
+  const v = $('#cam-v'); if (!v || !v.videoWidth) { camFallback(); return; }
+  const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
+  const x = c.getContext('2d');
+  if (SPOT.facing === 'user') { x.translate(c.width, 0); x.scale(-1, 1); }
+  x.drawImage(v, 0, 0);
+  c.toBlob(b => openEditor(b), 'image/jpeg', 0.92);
+}
+async function openEditor(blob) {
+  stopCamera();
+  const url = URL.createObjectURL(blob);
+  const img = new Image(); img.src = url;
+  try { await img.decode(); } catch (e) { toast('Das Bild konnte nicht gelesen werden.'); return; }
+  await spotFonts();
+  const at = new Date(), ctx = spotContext(at);
+  SPOT.ed = { img, url, at, ctx, filter: 1, text: '', textY: 0.36, textSize: 0.052, dark: false, bar: true, seal: { x: 0.06, y: 0.70, w: ctx.tone ? 0.42 : 0.34 }, editing: false };
+  location.hash = '#spot';
+}
+function viewCamera() {
+  const sv = scriptVersion != null && scriptVersion < 4;
+  const last = SPOT.gallery.slice(-3), op = [0.35, 0.65, 1].slice(3 - last.length);
+  const thumbs = last.map((g, i) => `<a class="cam-th" href="#spot-bild:${encodeURIComponent(g.id)}" style="opacity:${op[i]}"><img src="${spotUrl(g)}" alt="Spot vom ${fmtDate(g.created)}">${spotSeenBy(g.id, partner()) ? `<span class="seen" aria-label="gesehen">${ICON.eye}</span>` : ''}</a>`).join('');
+  return `<div class="cam">
+    <video id="cam-v" playsinline autoplay muted></video>
+    ${last.length ? `<div class="cam-last"><span class="eyebrow">Letzte Spots</span><div class="cam-ths">${thumbs}</div></div>` : ''}
+    <div class="cam-fb" id="cam-fb" hidden><span class="muted">Kein Live-Bild verfügbar.</span><label class="btn primary">Kamera öffnen<input type="file" id="sp-file2" accept="image/*" capture="environment" hidden></label></div>
+    ${sv ? `<div class="cam-warn glass">Für Spots muss das Google-Skript auf Version 4 aktualisiert werden.</div>` : ''}
+    <div class="cam-ctl">
+      <label class="tool big" aria-label="Aus Mediathek wählen">${ICON.img}<input type="file" id="sp-file" accept="image/*" hidden></label>
+      <button class="shutter" data-act="sp-shoot" aria-label="Foto aufnehmen"><i></i></button>
+      <button class="tool big" data-act="sp-flip" aria-label="Kamera drehen">${ICON.flip}</button>
+    </div>
+  </div>`;
+}
+
+/* ---------- Editor ---------- */
+function viewEditor() {
+  const e = SPOT.ed;
+  return `<div class="sp-stage" id="sp-stage">
+    <img class="sp-photo" src="${e.url}" alt="">
+    <div class="sp-text ${e.dark ? 'dark' : ''} ${e.bar ? '' : 'nobar'}" id="sp-text" ${e.text || e.editing ? '' : 'hidden'} contenteditable="${e.editing ? 'plaintext-only' : 'false'}" spellcheck="false"></div>
+    <div class="sp-fl" id="sp-fl"><div class="sp-seal" id="sp-seal"></div></div>
+    <div class="sp-top">
+      <button class="tool" data-act="sp-cancel" aria-label="Verwerfen">${ICON.x}</button>
+      <div class="sp-tools">
+        <button class="tool" data-act="sp-text" aria-label="Text">Aa</button>
+        <button class="tool" data-act="sp-dark" aria-label="Schrift ${e.dark ? 'schwarz' : 'weiß'}"><span class="half ${e.dark ? 'inv' : ''}"></span></button>
+        <button class="tool ${e.bar ? '' : 'off'}" data-act="sp-bar" aria-label="Balken hinter dem Text ${e.bar ? 'an' : 'aus'}">${ICON.barT}</button>
+      </div>
+    </div>
+    <input type="range" class="sp-size" id="sp-size" min="0.03" max="0.11" step="0.002" value="${e.textSize}" aria-label="Textgröße" ${e.text || e.editing ? '' : 'hidden'}>
+    <div class="sp-dots"><i class="${e.filter === 0 ? 'on' : ''}"></i><i class="${e.filter === 1 ? 'on' : ''}"></i></div>
+    <div class="sp-send"><button class="btn primary" data-act="sp-send" id="sp-send-b" ${scriptVersion != null && scriptVersion < 4 ? 'disabled' : ''}>Senden an ${esc(partner())} ${ICON.right}</button></div>
+  </div>`;
+}
+function layoutEditor() {
+  const e = SPOT.ed, stage = $('#sp-stage'); if (!e || !stage) return;
+  const W = stage.clientWidth, H = stage.clientHeight;
+  const t = $('#sp-text');
+  t.style.top = (e.textY * H) + 'px'; t.style.fontSize = (e.textSize * W) + 'px';
+  if (!e.editing && t.textContent !== e.text) t.textContent = e.text;
+  const s = $('#sp-seal');
+  if (!s.firstChild || s.dataset.dark !== String(e.dark)) { s.innerHTML = sealSVG(sealLayout(e.ctx, e.dark)); s.dataset.dark = String(e.dark); }
+  s.style.left = (e.seal.x * W) + 'px'; s.style.top = (e.seal.y * H) + 'px'; s.style.width = (e.seal.w * W) + 'px';
+  $('#sp-fl').style.transform = e.filter === 1 ? 'translateX(0)' : 'translateX(100%)';
+}
+function editText() {
+  const e = SPOT.ed; e.editing = true;
+  const t = $('#sp-text'); t.hidden = false; t.setAttribute('contenteditable', 'plaintext-only');
+  if (t.contentEditable !== 'plaintext-only') t.setAttribute('contenteditable', 'true');
+  $('#sp-size').hidden = false;
+  t.focus();
+  const r = document.createRange(); r.selectNodeContents(t); r.collapse(false); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+}
+function endText() {
+  const e = SPOT.ed; if (!e || !e.editing) return;
+  const t = $('#sp-text'); e.text = t.innerText.replace(/\n{3,}/g, '\n\n').trim().slice(0, 240); e.editing = false;
+  t.setAttribute('contenteditable', 'false'); t.textContent = e.text; t.hidden = !e.text; $('#sp-size').hidden = !e.text;
+}
+/* Gesten: Siegel ziehen/skalieren, Text senkrecht ziehen/skalieren, sonst waagerecht wischen = Filter */
+const gest = { pts: new Map(), mode: null, start: null };
+function edPointerDown(ev) {
+  const e = SPOT.ed; if (!e) return;
+  if (ev.target.closest('.sp-top, .sp-send, .sp-size') || (e.editing && ev.target.closest('#sp-text'))) return;
+  gest.pts.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+  const stage = $('#sp-stage'), W = stage.clientWidth, H = stage.clientHeight;
+  if (gest.pts.size === 1) {
+    const onSeal = e.filter === 1 && ev.target.closest('#sp-seal'), onText = ev.target.closest('#sp-text');
+    gest.mode = onSeal ? 'seal' : onText ? 'text' : 'swipe';
+    gest.start = { x: ev.clientX, y: ev.clientY, seal: { ...e.seal }, textY: e.textY, textSize: e.textSize, W, H, t: Date.now() };
+  } else if (gest.pts.size === 2) {
+    const [a, b] = [...gest.pts.values()];
+    gest.mode = gest.mode === 'text' ? 'textpinch' : 'pinch';
+    gest.start = { ...gest.start, d: Math.hypot(a.x - b.x, a.y - b.y), seal: { ...e.seal }, textSize: e.textSize };
+  }
+  try { ev.target.setPointerCapture && $('#sp-stage').setPointerCapture(ev.pointerId); } catch (x) { /* egal */ }
+}
+function edPointerMove(ev) {
+  const e = SPOT.ed; if (!e || !gest.pts.has(ev.pointerId)) return;
+  gest.pts.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+  const g = gest.start; if (!g) return;
+  if (gest.mode === 'seal') {
+    e.seal.x = Math.min(0.95, Math.max(-0.3, g.seal.x + (ev.clientX - g.x) / g.W));
+    e.seal.y = Math.min(0.95, Math.max(0, g.seal.y + (ev.clientY - g.y) / g.H));
+    layoutEditor();
+  } else if (gest.mode === 'text') {
+    e.textY = Math.min(0.9, Math.max(0.04, g.textY + (ev.clientY - g.y) / g.H)); layoutEditor();
+  } else if ((gest.mode === 'pinch' || gest.mode === 'textpinch') && gest.pts.size >= 2) {
+    const [a, b] = [...gest.pts.values()], f = Math.hypot(a.x - b.x, a.y - b.y) / (g.d || 1);
+    if (gest.mode === 'textpinch') { e.textSize = Math.min(0.11, Math.max(0.03, g.textSize * f)); $('#sp-size').value = e.textSize; }
+    else if (e.filter === 1) { const w = Math.min(0.95, Math.max(0.15, g.seal.w * f)); e.seal.x = g.seal.x - (w - g.seal.w) / 2; e.seal.w = w; }
+    layoutEditor();
+  } else if (gest.mode === 'swipe') {
+    const dx = ev.clientX - g.x;
+    if (Math.abs(dx) > 8) { const base = e.filter === 1 ? 0 : g.W; $('#sp-fl').style.transition = 'none'; $('#sp-fl').style.transform = `translateX(${Math.min(g.W, Math.max(0, base + dx))}px)`; }
+  }
+}
+function edPointerUp(ev) {
+  const e = SPOT.ed; if (!e || !gest.pts.has(ev.pointerId)) return;
+  gest.pts.delete(ev.pointerId);
+  const g = gest.start;
+  if (gest.mode === 'swipe' && g && gest.pts.size === 0) {
+    const dx = ev.clientX - g.x, dy = ev.clientY - g.y;
+    $('#sp-fl').style.transition = '';
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) e.filter = dx < 0 ? 1 : 0;
+    else if (Math.abs(dx) < 8 && Math.abs(dy) < 8 && Date.now() - g.t < 400) { if (e.editing) endText(); else editText(); }
+    layoutEditor();
+    document.querySelectorAll('.sp-dots i').forEach((d, i) => d.classList.toggle('on', i === e.filter));
+  } else if (gest.mode === 'text' && g && gest.pts.size === 0 && Math.abs(ev.clientY - g.y) < 8 && Date.now() - g.t < 400) editText();
+  if (gest.pts.size === 0) { gest.mode = null; gest.start = null; }
+}
+async function renderSpot() {
+  const e = SPOT.ed, stage = $('#sp-stage'), sw = stage.clientWidth, sh = stage.clientHeight;
+  const W = 1080, H = Math.min(2400, Math.round(W * sh / sw)), f = W / sw;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  const iw = e.img.naturalWidth, ih = e.img.naturalHeight, sc = Math.max(W / iw, H / ih);
+  x.drawImage(e.img, (W - iw * sc) / 2, (H - ih * sc) / 2, iw * sc, ih * sc);
+  if (e.text) {
+    const fs = e.textSize * sw * f, padX = 18 * f, padY = 8 * f, lh = fs * 1.35, maxW = W - 2 * padX;
+    x.font = `500 ${fs}px "Geist Mono"`;
+    const lines = [];
+    e.text.split('\n').forEach(par => {
+      let cur = '';
+      par.split(/\s+/).forEach(word => {
+        const t = cur ? cur + ' ' + word : word;
+        if (x.measureText(t).width <= maxW || !cur) cur = t; else { lines.push(cur); cur = word; }
+      });
+      lines.push(cur);
+    });
+    const y0 = e.textY * sh * f, boxH = lines.length * lh + 2 * padY;
+    if (e.bar) { x.fillStyle = e.dark ? 'rgba(255,255,255,.62)' : 'rgba(0,0,0,.5)'; x.fillRect(0, y0, W, boxH); }
+    x.save();
+    if (!e.bar) { x.shadowColor = e.dark ? 'rgba(255,255,255,.75)' : 'rgba(0,0,0,.75)'; x.shadowBlur = 6 * f; x.shadowOffsetY = f; }
+    x.fillStyle = e.dark ? '#000' : '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    lines.forEach((l, i) => x.fillText(l, W / 2, y0 + padY + lh * (i + 0.5)));
+    x.restore();
+  }
+  if (e.filter === 1) { const L = sealLayout(e.ctx, e.dark); drawSeal(x, L, e.seal.x * W, e.seal.y * sh * f, e.seal.w * W / L.W); }
+  return new Promise(r => c.toBlob(r, 'image/jpeg', 0.82));
+}
+async function sendSpot() {
+  const e = SPOT.ed; if (!e) return;
+  endText();
+  const b = $('#sp-send-b'); if (b) { b.disabled = true; b.textContent = 'Sende …'; }
+  try {
+    const blob = await renderSpot();
+    const rec = { id: uid(), person: cfg.me, created: e.at.toISOString(), meta: { kind: e.filter === 1 ? e.ctx.kind : 'none', day: e.ctx.day || null }, img: await blob.arrayBuffer(), shared: false, up: false };
+    await SDB.put('gallery', rec);
+    closeEditor(); await loadSpots();
+    toast(cfg.url ? `Spot an ${partner()} gesendet` : 'Spot gespeichert. Ohne Sync sieht ihn nur du.');
+    location.hash = '#kamera';
+    spotSync().then(() => gallerySync());
+  } catch (err) { if (b) { b.disabled = false; b.textContent = 'Senden'; } toast('Spot konnte nicht erstellt werden.'); }
+}
+function closeEditor() { if (SPOT.ed) URL.revokeObjectURL(SPOT.ed.url); SPOT.ed = null; }
+
+/* ---------- Ansehen ---------- */
+function openViewer() {
+  const list = unseenSpots(); if (!list.length) { location.hash = '#start'; return; }
+  SPOT.view = { list, i: 0, t0: 0, el: 0, paused: false, raf: 0, down: null };
+  location.hash = '#spots';
+}
+function viewViewer() {
+  const v = SPOT.view, s = v.list[v.i];
+  return `<div class="sv" id="sv">
+    <img class="sv-img" src="${spotUrl(s)}" alt="Spot von ${esc(s.person)}">
+    <div class="sv-bars">${v.list.map((x, i) => `<i><b style="width:${i < v.i ? 100 : 0}%" ${i === v.i ? 'id="sv-cur"' : ''}></b></i>`).join('')}</div>
+    <div class="sv-head"><a href="#profil:${esc(s.person)}" data-act="sv-prof">${avatar(s.person, 34)}</a><span style="flex:1;display:flex;flex-direction:column;line-height:1.2"><b>${esc(s.person)}</b><span class="mono small" style="opacity:.8">${relDay(s.created)}, ${fmtTime(s.created)}</span></span><button class="tool" data-act="sv-close" aria-label="Schließen">${ICON.x}</button></div>
+    <div class="sv-emo glass">${SPOT_EMOJI.map(m => `<button data-act="sv-react" data-v="${m}" aria-label="Reagieren mit ${m}" ${st().spotMyReact[s.id] === m ? 'class="on"' : ''}>${m}</button>`).join('')}</div>
+  </div>`;
+}
+function viewerShow() {
+  const v = SPOT.view; if (!v) return;
+  const s = v.list[v.i];
+  if (!spotSeenBy(s.id, cfg.me) && !v.list[v.i]._seen) { v.list[v.i]._seen = true; addEvent('spot_seen', { spot: s.id, owner: s.person }, `Spot von ${s.person} gesehen`); }
+  v.el = 0; v.t0 = performance.now();
+  cancelAnimationFrame(v.raf);
+  const tick = now => {
+    if (!SPOT.view || view !== 'spots') return;
+    if (!v.paused) { v.el += now - v.t0; }
+    v.t0 = now;
+    const b = $('#sv-cur'); if (b) b.style.width = Math.min(100, v.el / SPOT_SHOW * 100) + '%';
+    if (v.el >= SPOT_SHOW) { viewerNext(); return; }
+    v.raf = requestAnimationFrame(tick);
+  };
+  v.raf = requestAnimationFrame(tick);
+}
+function viewerNext() {
+  const v = SPOT.view; if (!v) return;
+  if (v.i >= v.list.length - 1) { closeViewer(); return; }
+  v.i++; render();
+}
+function closeViewer() {
+  const v = SPOT.view; if (v) cancelAnimationFrame(v.raf);
+  SPOT.view = null; location.hash = '#start';
+  // gesehene sofort aus dem Zwischenspeicher nehmen
+  (async () => { for (const x of await SDB.all('inbox')) if (spotSeenBy(x.id, cfg.me)) await SDB.del('inbox', x.id); await loadSpots(); if (view === 'start') safeRender(); })();
+}
+function svDown(ev) {
+  const v = SPOT.view; if (!v || ev.target.closest('.sv-emo, .sv-head')) return;
+  v.down = { x: ev.clientX, y: ev.clientY, t: Date.now() };
+  v.holdT = setTimeout(() => { if (v.down) v.paused = true; }, 220);
+}
+function svUp(ev) {
+  const v = SPOT.view; if (!v || !v.down) return;
+  clearTimeout(v.holdT);
+  const d = v.down; v.down = null;
+  const dy = ev.clientY - d.y, dx = ev.clientX - d.x;
+  if (dy > 80 && Math.abs(dy) > Math.abs(dx)) { closeViewer(); return; }
+  if (v.paused) { v.paused = false; return; }
+  if (Date.now() - d.t < 300 && Math.abs(dx) < 12 && Math.abs(dy) < 12) viewerNext();
+}
+
+/* ---------- Galerie ---------- */
+function galleryHTML() {
+  const g = SPOT.gallery.slice().reverse();
+  const saved = LS.get('gal.key.' + cfg.me, null);
+  return `<div class="sec-title"><h2>Meine Spots</h2><span class="mono muted small">${g.length} ${g.length === 1 ? 'Spot' : 'Spots'}</span></div>
+    ${g.length ? `<div class="sgrid">${g.map(x => `<a href="#spot-bild:${encodeURIComponent(x.id)}"><img src="${spotUrl(x)}" alt="Spot vom ${fmtDate(x.created)}" loading="lazy"></a>`).join('')}</div>` : `<section class="card"><div class="empty">Noch keine Spots. Über die Kamera ganz links in der Leiste machst du deinen ersten.</div></section>`}
+    <span class="small muted">${saved ? 'Nur deine eigenen Spots. Gesichert mit deinem Vault-Schlüssel, nach einem Handywechsel kommen sie mit zurück.' : 'Nur deine eigenen Spots. Öffne einmal den Vault, dann werden sie mitgesichert.'}</span>`;
+}
+function viewSpotImage(id) {
+  const g = SPOT.gallery.find(x => x.id === id);
+  if (!g) return `<div class="sv"><div class="sv-head"><a class="tool" href="#profil">${ICON.left}</a></div><div class="empty" style="margin-top:120px">Spot nicht gefunden.</div></div>`;
+  return `<div class="sv">
+    <img class="sv-img" src="${spotUrl(g)}" alt="Spot vom ${fmtDate(g.created)}">
+    <div class="sv-head" style="top:calc(var(--sat) + 14px)"><a class="tool" href="#profil" aria-label="Zurück">${ICON.left}</a><span style="flex:1;text-align:center"><span class="mono small sv-chip">${fmtDate(g.created)} · ${fmtTime(g.created)}</span></span><span style="width:44px"></span></div>
+    <div class="sv-act">${SPOT.galDel === id
+      ? `<div class="confirm glass" style="width:100%"><b>Spot löschen?</b><span class="small muted">Er verschwindet aus deiner Galerie${Date.now() - new Date(g.created) < SPOT_MAX ? ` und, falls noch sichtbar, bei ${esc(partner())}` : ''}.</span><div class="btnrow"><button class="btn small danger" data-act="sg-del-yes" data-id="${esc(id)}">Löschen</button><button class="btn small ghost" data-act="sg-del-no">Abbrechen</button></div></div>`
+      : `<button class="btn primary" data-act="sg-save" data-id="${esc(id)}" style="flex:1">${ICON.dl} In Fotos sichern</button><button class="btn danger" data-act="sg-del" data-id="${esc(id)}" style="width:50px;padding:0" aria-label="Löschen">${ICON.x}</button>`}</div>
+  </div>`;
+}
+async function saveSpotToPhotos(id) {
+  const g = SPOT.gallery.find(x => x.id === id); if (!g) return;
+  const name = `spot-${dateKey(g.created)}-${fmtTime(g.created).replace(':', '')}.jpg`;
+  const file = new File([g.img], name, { type: 'image/jpeg' });
+  try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file] }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+  const a = document.createElement('a'); a.href = spotUrl(g); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+}
+async function deleteSpot(id) {
+  const g = SPOT.gallery.find(x => x.id === id); if (!g) return;
+  await SDB.del('gallery', id);
+  if (g.shared) { const t = LS.get('spot.tomb.' + cfg.me, []); t.push(id); LS.set('spot.tomb.' + cfg.me, t); }
+  if (g.up) { const t = LS.get('gal.tomb.' + cfg.me, []); t.push(id); LS.set('gal.tomb.' + cfg.me, t); }
+  if (SPOT.urls[id]) { URL.revokeObjectURL(SPOT.urls[id]); delete SPOT.urls[id]; }
+  await loadSpots(); SPOT.galDel = null; toast('Spot gelöscht'); location.hash = '#profil';
+  spotSync(); gallerySync();
+}
+
 /* ---------- Oberfläche ---------- */
+let otherDayAsk = false;
 let view = '', verlaufTab = 'aktiv', notesFilter = 'Alle', skipAsk = false, builder = null, resetAsk = false, pendingRender = false;
 const cal = { y: new Date().getFullYear(), m: new Date().getMonth(), sel: todayStr() };
 
@@ -906,7 +1395,7 @@ function head(title, big = true) { return `<header class="head" id="head"><div c
 const subhead = (backTo = 'start', right = '') => `<header class="head" id="head">${backBtn(backTo)}<div class="brand"></div>${right}</header>`;
 function tabbar(active) {
   const t = (id, label, icon) => `<a href="#${id}" ${active === id ? 'aria-current="page"' : ''}>${icon}<span>${label}</span></a>`;
-  return `<nav class="tabbar glass" aria-label="Navigation">${t('start', 'Start', ICON.home)}${t('verlauf', 'Verlauf', ICON.chart)}${t('plan', 'Plan', ICON.list)}${t('notizen', 'Notizen', ICON.note)}${t('profil', 'Profil', avatar(cfg.me, 24))}</nav>`;
+  return `<nav class="tabbar glass" aria-label="Navigation">${t('kamera', 'Kamera', ICON.cam)}${t('start', 'Start', ICON.home)}${t('verlauf', 'Verlauf', ICON.chart)}${t('plan', 'Plan', ICON.list)}${t('notizen', 'Notizen', ICON.note)}${t('profil', 'Profil', avatar(cfg.me, 24))}</nav>`;
 }
 
 function safeRender() {
@@ -914,6 +1403,7 @@ function safeRender() {
   if (a && $('#app').contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) { pendingRender = true; if (view === 'training') refreshTraining(); return; }
   if (view === 'training' && draft) { refreshTraining(); return; }
   if (view.startsWith('vault')) return; // Vault nicht durch Sync neu zeichnen
+  if (['spot', 'spots', 'kamera', 'spot-bild'].includes(view)) return; // Kamera, Editor und Ansehen nicht unterbrechen
   render();
 }
 document.addEventListener('focusout', () => setTimeout(() => {
@@ -1018,7 +1508,13 @@ function render() {
   if (!cfg.me) { document.body.dataset.tone = ''; setPage(viewSetup(), ''); return; }
   const h = decodeURIComponent(location.hash.slice(1)) || 'start';
   const [name, arg] = h.includes(':') ? [h.slice(0, h.indexOf(':')), h.slice(h.indexOf(':') + 1)] : [h, ''];
-  if (name !== view) { skipAsk = resetAsk = false; if (view.startsWith('vault') && !name.startsWith('vault')) lockVault(); }
+  if (name !== view) {
+    skipAsk = resetAsk = otherDayAsk = false; if (view.startsWith('vault') && !name.startsWith('vault')) lockVault();
+    if (view === 'kamera') stopCamera();
+    if (view === 'spot' && name !== 'spot') closeEditor();
+    if (view === 'spots' && name !== 'spots' && SPOT.view) { cancelAnimationFrame(SPOT.view.raf); SPOT.view = null; }
+    if (view === 'spot-bild') SPOT.galDel = null;
+  }
   let html, tone = '';
   switch (name) {
     case 'training': if (!draft) { location.hash = '#start'; return; } html = viewTraining(); tone = DAY_TONE[draft.day]; break;
@@ -1034,7 +1530,11 @@ function render() {
     case 'vault-neu': if (!VAULT.key) { location.hash = '#vault'; return; } html = subhead('vault') + `<main class="view nobar">${viewVaultNew()}</main>`; break;
     case 'uebung': html = subhead('verlauf') + `<main class="view">${viewExercise(arg)}</main>` + tabbar('verlauf'); tone = DAY_TONE[exerciseDay(arg)] || ''; break;
     case 'training-log': { html = subhead('verlauf') + `<main class="view">${viewWorkout(arg)}</main>` + tabbar('verlauf'); const w = st().workouts.find(x => x.id === arg); tone = w ? DAY_TONE[w.data.day] : ''; break; }
-    default: html = `<header class="head" id="head"><div class="brand">Hantelbuch</div>${bellBtn()}${gearBtn()}</header><main class="view">${viewStart()}</main>` + tabbar('start');
+    case 'kamera': html = `<main class="view cam-view">${viewCamera()}</main>` + tabbar('kamera'); break;
+    case 'spot': if (!SPOT.ed) { location.hash = '#kamera'; return; } html = viewEditor(); break;
+    case 'spots': if (!SPOT.view) { openViewer(); return; } html = viewViewer(); break;
+    case 'spot-bild': html = viewSpotImage(arg); break;
+    default: html = `<header class="head" id="head"><div class="brand">Hantelbuch</div>${spotRing()}${bellBtn()}${gearBtn()}</header><main class="view">${viewStart()}</main>` + tabbar('start');
   }
   document.body.dataset.tone = tone;
   setPage(html, tone);
@@ -1042,6 +1542,15 @@ function render() {
   pendingRender = false;
   onScroll();
   if (name === 'vault') fillVaultImages();
+  if (name === 'kamera') { const v = $('#cam-v'); if (SPOT.stream && v) { v.srcObject = SPOT.stream; v.classList.toggle('mirror', SPOT.facing === 'user'); v.play().catch(() => {}); } else startCamera(); }
+  if (name === 'spot') layoutEditor();
+  if (name === 'spots') viewerShow();
+  document.body.classList.toggle('fullbleed', ['kamera', 'spot', 'spots', 'spot-bild'].includes(name));
+}
+function spotRing() {
+  const u = unseenSpots(); if (!u.length) return '';
+  const last = u[u.length - 1], col = last.meta && last.meta.day ? TONE_HEX[DAY_TONE[last.meta.day]] : TONE_HEX.m;
+  return `<button class="spotring" data-act="spot-open" style="--ring:${col}" aria-label="${u.length} ${u.length === 1 ? 'neuer Spot' : 'neue Spots'} von ${esc(partner())}"><span class="ring-in">${avatar(partner(), 34)}</span></button>`;
 }
 function onScroll() { const h = $('#head'); if (h) h.classList.toggle('scrolled', $('#app').scrollTop > 4); const sh = $('.sheet.full'); if (sh) sh.classList.toggle('scrolled', sh.scrollTop > 40); }
 document.addEventListener('scroll', onScroll, { passive: true, capture: true });
@@ -1099,6 +1608,9 @@ function viewStart() {
         ${skipAsk ? '' : '<button class="btn" data-act="skip-ask" style="flex:1 1 120px">Überspringen</button>'}
       </div>
       ${dl_.active ? '<button class="btn ghost" data-act="start-normal">Heute normal trainieren</button>' : ''}
+      ${otherDayAsk ? `<div class="confirm"><div><b>Welchen Tag trainierst du heute?</b><br><span class="small muted">Deine Rotation geht danach ab diesem Tag weiter. Es wird nichts übersprungen.</span></div>
+        <div class="pick">${DAYS.filter(d => d !== nd).map(d => `<button data-act="start-day" data-v="${d}">${esc(dl(d))}</button>`).join('')}</div>
+        <button class="btn small ghost" data-act="other-no">Abbrechen</button></div>` : `<button class="lnk" data-act="other-day" style="align-self:flex-start">Anderen Tag trainieren</button>`}
       ${skipAsk ? `<div class="confirm"><div><b>${esc(dl(nd))} überspringen?</b><br><span class="small muted">Danach ist bei dir ${esc(dl(nextAfter))} dran. ${esc(gen(other))} Rotation bleibt unverändert.</span></div>
         <div class="btnrow"><button class="btn small primary" data-act="skip-yes">Überspringen</button><button class="btn small ghost" data-act="skip-no">Abbrechen</button></div></div>` : ''}`;
   }
@@ -1107,7 +1619,7 @@ function viewStart() {
   const ol = s.last[other], ml = s.last[me];
   const install = !(navigator.standalone || matchMedia('(display-mode: standalone)').matches) && /iPhone|iPad/.test(navigator.userAgent)
     ? `<div class="install glass">Tipp: Tippe in Safari auf <b>Teilen</b> und dann <b>Zum Home-Bildschirm</b>. Dann läuft die App wie eine normale App und auch offline.</div>` : '';
-  const feed = s.feed.slice(0, 5);
+  const feed = s.feed.filter(e => Date.now() - new Date(e.ts) < 7 * 864e5).slice(0, 5);
   return `${install}
     <section class="hero">${main}</section>
     <div class="rotation" aria-label="Deine Rotation">${rot}</div>
@@ -1116,8 +1628,8 @@ function viewStart() {
       <a class="card" href="#profil"><span class="who">${avatar(me, 28)}Du</span><span class="big">${weekCount(me)}<small> / 3</small></span><span class="small muted">diese Woche${ml ? ` · zuletzt ${relDay(ml.ts)}` : ''}</span></a>
       <a class="card" href="#profil:${esc(other)}"><span class="who">${avatar(other, 28)}${esc(other)}</span><span class="big">${weekCount(other)}<small> / 3</small></span><span class="small muted">${ol ? `als Nächstes ${esc(dl(nextDay(other), other))}` : 'noch kein Eintrag'}</span></a>
     </div>
-    <div class="sec-title"><h2>Neuigkeiten</h2>${s.feed.length > 5 ? '<a href="#verlauf">Alle</a>' : ''}</div>
-    <section class="card" style="padding:4px 16px">${feed.length ? `<div class="feed">${feed.map(feedItem).join('')}</div>` : '<div class="empty">Hier erscheinen eure Trainings, Steigerungen und Skips.</div>'}</section>`;
+    <div class="sec-title"><h2>Neuigkeiten</h2>${s.feed.length ? '<a href="#verlauf">Alle</a>' : ''}</div>
+    <section class="card" style="padding:4px 16px">${feed.length ? `<div class="feed">${feed.map(feedItem).join('')}</div>` : (s.feed.length ? '<div class="empty">Diese Woche noch nichts Neues. Alles Ältere findest du im Verlauf.</div>' : '<div class="empty">Hier erscheinen eure Trainings, Steigerungen und Skips.</div>')}</section>`;
 }
 function feedItem(e) {
   const d = e.data || {}, p = e.person, me = p === cfg.me;
@@ -1140,7 +1652,8 @@ function feedItem(e) {
     t = `${dayChip(d.day, p)}<span>${who} ${me ? 'hast' : 'hat'} heute ${esc(d.fromName)} durch ${esc(d.to.name)} getauscht</span>`;
     extra = '<span class="chip">für beide</span>';
   }
-  const inner = `${avatar(p, 34)}<div><div class="t">${t}</div><div class="m">${m}</div>${extra || wait ? `<div class="chips">${extra}${wait}</div>` : ''}</div>`;
+  if (e.type === 'spot_react') t = `<span>${who} ${me ? 'hast' : 'hat'} auf deinen Spot reagiert <span class="emo">${esc(d.emoji)}</span></span>`;
+  const inner = `<span class="avlink" data-act="goprof" data-p="${esc(p)}">${avatar(p, 34)}</span><div><div class="t">${t}</div><div class="m">${m}</div>${extra || wait ? `<div class="chips">${extra}${wait}</div>` : ''}</div>`;
   return href ? `<a class="fi" href="${href}">${inner}</a>` : `<div class="fi">${inner}</div>`;
 }
 
@@ -1167,8 +1680,8 @@ function partnerSwapsToday(day) {
   st().swaps.filter(e => e.person === other && e.data.day === day && e.data.date === todayStr()).forEach(e => { latest[e.data.fromId] = e; });
   return Object.values(latest);
 }
-function startTraining(skipDeload) {
-  const me = cfg.me, day = nextDay(me), plan = st().plans[me][day];
+function startTraining(skipDeload, pick) {
+  const me = cfg.me, day = DAYS.includes(pick) ? pick : nextDay(me), plan = st().plans[me][day];
   const dlS = deloadState(me), deload = dlS.active && !skipDeload;
   draft = { day, title: plan.title, start: new Date().toISOString(), deload, deloadSkipped: dlS.active && !!skipDeload, swapIgnored: [], items: plan.exercises.map(x => newItem(clone(x), deload)) };
   partnerSwapsToday(day).forEach(sw => {
@@ -1560,7 +2073,8 @@ function viewProfile(p) {
         <a class="card" href="#gewicht"><span class="val">${lb ? fmtN(lb.kg) + '<small> kg</small>' : '–'}</span><span class="eyebrow">Körpergewicht${pb ? ` · ${lb.kg - pb.kg >= 0 ? '+' : '−'}${fmtN(Math.abs(lb.kg - pb.kg))}` : ''}</span></a>
       </div>
       ${bar}
-      <a class="vaultcard glass" href="#vault"><span class="ic">${ICON.lock}</span><span style="flex:1;display:flex;flex-direction:column;gap:2px"><b>Vault</b><span class="small muted">${vmeta() ? 'Private Bilder · nur für dich' : 'Private Fortschrittsbilder · Code festlegen'}</span></span>${ICON.right}</a>`;
+      <a class="vaultcard glass" href="#vault"><span class="ic">${ICON.lock}</span><span style="flex:1;display:flex;flex-direction:column;gap:2px"><b>Vault</b><span class="small muted">${vmeta() ? 'Private Bilder · nur für dich' : 'Private Fortschrittsbilder · Code festlegen'}</span></span>${ICON.right}</a>
+      ${galleryHTML()}`;
   }
   const recent = ws.slice().reverse().slice(0, 3);
   return `<div class="pf">${ring}<h1 class="display">${esc(p)}</h1><span class="mono muted small">${meta}</span></div>
@@ -1674,6 +2188,7 @@ function viewNotes() {
 function viewBell() {
   const list = bellItems(), other = partner(), s = st();
   const label = { open: 'Neu', dismissed: 'Ausgeblendet', diverged: 'Weicht ab' };
+  const oldOf = x => { const dec = s.decisions[cfg.me + '|' + x.pc.id]; return x.status !== 'open' && Date.now() - new Date((dec && dec.ts) || x.pc.ts) > 14 * 864e5; };
   const items = list.map(x => {
     const c = x.pc, inDraft = draft && draft.day === x.day;
     return `<section class="card" style="gap:14px">
@@ -1686,6 +2201,7 @@ function viewBell() {
       ${inDraft ? `<button class="btn ghost" data-act="accept-draft" data-id="${esc(c.id)}">Übernehmen und ins laufende Training</button><span class="small muted">Eingaben bleiben erhalten. Übungen mit Einträgen, die wegfallen, bleiben im Training als „Nicht mehr im Plan“.</span>` : ''}
     </section>`;
   });
+  const recent = items.filter((h, i) => !oldOf(list[i])), older = items.filter((h, i) => oldOf(list[i]));
   const mine = DAYS.map(d => s.lastChange[cfg.me + '|' + d]).filter(Boolean);
   const mineHtml = mine.map(c => {
     const same = !sharedDiff(s.plans[other][c.data.day], s.plans[cfg.me][c.data.day]).length;
@@ -1693,7 +2209,8 @@ function viewBell() {
   }).join('');
   return `<h1 class="display" style="font-size:30px">Plan&shy;änderungen</h1>
     <p class="muted small" style="margin:0">Wenn ${esc(other)} gemeinsame Übungen ändert, siehst du es hier. Abweichende Übungen und persönliche Werte lösen keine Meldung aus.</p>
-    ${items.join('') || `<section class="card"><div class="empty">Keine Unterschiede. Eure gemeinsamen Übungen sind gleich.</div></section>`}
+    ${recent.join('') || `<section class="card"><div class="empty">${older.length ? 'Nichts Neues.' : 'Keine Unterschiede. Eure gemeinsamen Übungen sind gleich.'}</div></section>`}
+    ${older.length ? `<details class="older"><summary>Ältere (${older.length})</summary><div style="display:flex;flex-direction:column;gap:12px;padding-top:12px">${older.join('')}</div></details>` : ''}
     ${mine.length ? `<div class="sec-title"><h2>Deine Änderungen</h2></div><section class="card">${mineHtml}</section>` : ''}`;
 }
 function acceptChange(changeId, intoDraft) {
@@ -1883,7 +2400,10 @@ const readSetInputs = (i, j) => {
 const actions = {
   start: () => startTraining(false),
   'start-normal': () => startTraining(true),
-  'skip-ask': () => { skipAsk = true; render(); },
+  'skip-ask': () => { skipAsk = true; otherDayAsk = false; render(); },
+  'other-day': () => { otherDayAsk = true; skipAsk = false; render(); },
+  'other-no': () => { otherDayAsk = false; render(); },
+  'start-day': t => { otherDayAsk = false; startTraining(false, t.dataset.v); },
   'skip-no': () => { skipAsk = false; render(); },
   'skip-yes': () => { const d = nextDay(cfg.me); addEvent('skip', { day: d }, `${dl(d)} übersprungen`); skipAsk = false; toast(`${dl(d)} übersprungen`); render(); },
   sync: () => sync({ overlay: true }),
@@ -1945,6 +2465,27 @@ const actions = {
     addEvent('workout_edit', { ref: w.id, deleted: true }, `${dl(w.data.day)} vom ${fmtDate(w.ts)} gelöscht`);
     wDelAsk = null; toast('Training gelöscht'); location.hash = '#verlauf';
   },
+  goprof: (t, e) => { e.preventDefault(); e.stopPropagation(); location.hash = '#profil' + (t.dataset.p === cfg.me ? '' : ':' + t.dataset.p); },
+  'spot-open': () => openViewer(),
+  'sp-shoot': () => shoot(),
+  'sp-flip': () => { SPOT.facing = SPOT.facing === 'user' ? 'environment' : 'user'; startCamera(); },
+  'sp-cancel': () => { closeEditor(); location.hash = '#kamera'; },
+  'sp-text': () => { if (SPOT.ed.editing) endText(); else editText(); },
+  'sp-dark': () => { endText(); SPOT.ed.dark = !SPOT.ed.dark; render(); },
+  'sp-bar': () => { endText(); SPOT.ed.bar = !SPOT.ed.bar; render(); },
+  'sp-send': () => sendSpot(),
+  'sv-close': () => closeViewer(),
+  'sv-prof': (t, e) => { e.preventDefault(); const p = SPOT.view && SPOT.view.list[SPOT.view.i].person; closeViewer(); if (p) location.hash = '#profil:' + p; },
+  'sv-react': t => {
+    const v = SPOT.view; if (!v) return; const s = v.list[v.i];
+    addEvent('spot_react', { spot: s.id, owner: s.person, emoji: t.dataset.v }, `Reaktion ${t.dataset.v} auf Spot von ${s.person}`);
+    document.querySelectorAll('.sv-emo button').forEach(b => b.classList.toggle('on', b === t));
+    toast(`${t.dataset.v} an ${s.person} geschickt`);
+  },
+  'sg-save': t => saveSpotToPhotos(t.dataset.id),
+  'sg-del': t => { SPOT.galDel = t.dataset.id; render(); },
+  'sg-del-no': () => { SPOT.galDel = null; render(); },
+  'sg-del-yes': t => deleteSpot(t.dataset.id),
   mclose: () => { $('#modal').innerHTML = ''; },
   'mclose-bg': (t, e) => { if (e.target === t) $('#modal').innerHTML = ''; },
   pin: t => { if (VAULT.pin.length >= 4) return; VAULT.pin += t.dataset.v; VAULT.msg = ''; if (VAULT.pin.length === 4) { render(); pinComplete(); } else render(); },
@@ -1996,6 +2537,7 @@ document.addEventListener('change', e => {
   if (t.id === 'f-type') t.dispatchEvent(new Event('input', { bubbles: true }));
   if ((t.id === 'av-file' || t.id === 'av-file2') && t.files[0]) setAvatar(t.files[0]);
   if (t.id === 'v-import' && t.files[0]) readBackupFile(t.files[0]);
+  if ((t.id === 'sp-file' || t.id === 'sp-file2') && t.files[0]) openEditor(t.files[0]);
   if (t.id === 'dev-tgl') { LS.set('dev', t.checked); render(); }
   if (t.id === 'vn-file' && t.files[0]) {
     if (VAULT.photoUrl) URL.revokeObjectURL(VAULT.photoUrl);
@@ -2009,6 +2551,7 @@ document.addEventListener('change', e => {
 let draftTimer;
 document.addEventListener('input', e => {
   const t = e.target;
+  if (t.id === 'sp-size' && SPOT.ed) { SPOT.ed.textSize = +t.value; layoutEditor(); return; }
   if (t.dataset.f && draft) {
     const i = +t.dataset.i, j = +t.dataset.j;
     draft.items[i].sets[j][t.dataset.f] = t.value;
@@ -2031,18 +2574,24 @@ document.addEventListener('input', e => {
     if (k) { const sel = $('#sw-type'); if (sel) sel.value = k.type; }
   }
 });
+document.addEventListener('pointerdown', ev => { if (view === 'spot' && ev.target.closest('#sp-stage')) edPointerDown(ev); else if (view === 'spots' && ev.target.closest('#sv')) svDown(ev); });
+document.addEventListener('pointermove', ev => { if (view === 'spot') edPointerMove(ev); });
+document.addEventListener('pointerup', ev => { if (view === 'spot') edPointerUp(ev); else if (view === 'spots') svUp(ev); });
+document.addEventListener('pointercancel', ev => { if (view === 'spot') edPointerUp(ev); else if (view === 'spots' && SPOT.view) { SPOT.view.down = null; SPOT.view.paused = false; } });
+window.addEventListener('resize', () => { if (view === 'spot') layoutEditor(); });
 window.addEventListener('hashchange', () => { $('#modal').innerHTML = ''; render(); });
 
 /* ---------- Start der App ---------- */
 let hiddenAt = Date.now();
 // Fragt bei GitHub nach einer neuen Version. Nicht während eines Trainings, damit nichts mitten im Satz neu lädt.
 function checkUpdate() {
-  if (!('serviceWorker' in navigator) || location.protocol !== 'https:' || (view === 'training' && draft)) return;
+  if (!('serviceWorker' in navigator) || location.protocol !== 'https:' || (view === 'training' && draft) || SPOT.ed || SPOT.view) return;
   if (Date.now() - (checkUpdate.last || 0) < 60000) return;
   checkUpdate.last = Date.now();
   navigator.serviceWorker.getRegistration().then(r => r && r.update()).catch(() => {});
 }
 document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') stopCamera(); else if (view === 'kamera') startCamera();
   if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); if (draft) saveDraft(); if ((VAULT.key || VAULT.photo) && Date.now() - VAULT.picking > 180000) { lockVault(); if (view.startsWith('vault')) location.hash = '#profil'; } return; }
   checkUpdate();
   const away = Date.now() - hiddenAt;
@@ -2063,5 +2612,7 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 }
 
 try { draft = normalizeDraft(draft); } catch (e) { draft = null; }
+if (location.hash === '#spot' || location.hash === '#spots') location.hash = '#start';
 render();
+loadSpots().then(() => { if (cfg.me && ['start', 'kamera', 'profil', 'spot-bild'].includes(view)) render(); if (cfg.me && cfg.url && !syncing) spotSync(); });
 if (cfg.me && cfg.url) sync({ overlay: true });
