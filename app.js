@@ -4,7 +4,7 @@
    zuerst auf dem Handy, beim Sync in der Google-Tabelle. Der aktuelle Stand wird immer aus dem Log berechnet.
    Ausnahme: der Vault. Seine Bilder bleiben verschlüsselt nur auf diesem Handy und werden nie synchronisiert. */
 
-const APP_VERSION = '1.3.3';
+const APP_VERSION = '1.3.4';
 const SCRIPT_MIN = 2;            // benötigte Version des Google-Skripts
 const PEOPLE = ['Manu', 'Rob'];
 const DAYS = ['A', 'B', 'C'];    // interne Kennung der Trainingstage, angezeigt werden die Kürzel
@@ -68,7 +68,8 @@ const sum = a => a.reduce((x, y) => x + y, 0);
 const avg = a => (a.length ? sum(a) / a.length : 0);
 const roundTo = (v, step) => { const s = step > 0 ? step : 2.5; return Math.round(Math.round(v / s) * s * 100) / 100; };
 const stepOf = x => (x.step > 0 ? x.step : 2.5);
-const videoUrl = x => x.video || 'https://www.youtube.com/results?search_query=' + encodeURIComponent(x.name + ' richtige Ausführung');
+// Ohne eigenen Link: YouTube-Suche nach Shorts zur Ausführung (Klammerzusätze wie „(Langhantel)“ bleiben für die Suche weg)
+const videoUrl = x => x.video || 'https://www.youtube.com/results?search_query=' + encodeURIComponent(x.name.replace(/\s*\(.*?\)/g, '').trim() + ' Ausführung #shorts');
 const pad2 = n => String(n).padStart(2, '0');
 const dateKey = v => { const d = new Date(v); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
 const todayStr = () => dateKey(new Date());
@@ -1237,7 +1238,7 @@ function exCard(it, i) {
     <details class="how"><summary>Ausführung & Video</summary><div class="body">
       ${x.cue ? `<p>${esc(x.cue)}</p>` : ''}
       ${x.image ? `<img src="${esc(x.image)}" alt="${esc(x.name)}" loading="lazy">` : ''}
-      <a class="vlink" href="${esc(videoUrl(x))}" target="_blank" rel="noopener">▶ ${x.video ? 'Video ansehen' : 'Videos auf YouTube suchen'}</a>
+      <a class="vlink" href="${esc(videoUrl(x))}" target="_blank" rel="noopener">▶ ${x.video ? 'Video ansehen' : 'Shorts auf YouTube'}</a>
     </div></details>
     <div class="sets ${x.type}">${cols}${warm}${rows}</div>
     <div class="cardacts"><button class="addset" data-act="addset" data-i="${i}">+ Satz</button><button class="addset" data-act="delset" data-i="${i}" ${it.sets.length <= 1 ? 'disabled' : ''}>− Satz</button><span class="sp"></span>${it.removed ? '' : `<button class="addset" data-act="swap-open" data-i="${i}">${ICON.swap} Heute tauschen</button>`}</div>
@@ -1467,7 +1468,7 @@ function viewExercise(id) {
       <h1 style="margin:0;font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.1">${esc((def && def.name) || info.name)}</h1>
       ${def && def.cue ? `<span class="muted" style="font-size:14px">${esc(def.cue)}</span>` : ''}
       ${def && def.image ? `<img src="${esc(def.image)}" alt="${esc(def.name)}" loading="lazy" style="border-radius:14px">` : ''}
-      <a class="vlink" href="${esc(videoUrl(def || { name: info.name }))}" target="_blank" rel="noopener">▶ ${def && def.video ? 'Video ansehen' : 'Videos auf YouTube suchen'}</a>
+      <a class="vlink" href="${esc(videoUrl(def || { name: info.name }))}" target="_blank" rel="noopener">▶ ${def && def.video ? 'Video ansehen' : 'Shorts auf YouTube'}</a>
     </div>
     <div class="stat2">
       <div class="card"><span class="who">${avatar(me, 24)}Du</span><span class="val">${best(me)}</span><span class="eyebrow">Bestwert</span></div>
@@ -1761,7 +1762,7 @@ function exerciseForm(mode, i) {
     <div class="persbox"><div class="eyebrow">Persönlich · wird nicht abgeglichen</div>
       <label id="f-step-l" ${x.type === 'time' ? 'hidden' : ''}><span id="f-step-t">${x.type === 'bw' ? 'Steigerung Zusatzgewicht in kg (0 = keine)' : 'Steigerung in kg'}</span><input class="inp" id="f-step" name="step" inputmode="decimal" value="${fmtIn(x.step || 0)}"><span class="help">Wird vorgeschlagen, wenn alle Sätze die obere Wdh.-Zahl erreichen.</span></label>
       <label>Ausführung<textarea id="f-cue" name="cue" rows="3" maxlength="500">${esc(x.cue)}</textarea></label>
-      <label>Video-Link (optional)<input class="inp" id="f-video" name="video" type="url" inputmode="url" value="${esc(x.video)}" placeholder="https://www.youtube.com/watch?v=…"><span class="help">Leer lassen: Die App sucht passende Videos auf YouTube.</span></label>
+      <label>Video-Link (optional)<input class="inp" id="f-video" name="video" type="url" inputmode="url" value="${esc(x.video)}" placeholder="https://youtube.com/shorts/…"><span class="help">Leer lassen: Die App sucht passende YouTube Shorts zur Ausführung.</span></label>
       <label>Bild-Link (optional)<input class="inp" id="f-image" name="image" type="url" inputmode="url" value="${esc(x.image)}" placeholder="https://…/bild.jpg"></label>
     </div>
     <div class="err" id="f-err" hidden></div>
