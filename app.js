@@ -4,7 +4,7 @@
    zuerst auf dem Handy, beim Sync in der Google-Tabelle. Der aktuelle Stand wird immer aus dem Log berechnet.
    Ausnahme: der Vault. Seine Bilder bleiben verschlüsselt nur auf diesem Handy und werden nie synchronisiert. */
 
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.5.0';
 const SCRIPT_MIN = 2;            // benötigte Version des Google-Skripts
 const PEOPLE = ['Manu', 'Rob'];
 const DAYS = ['A', 'B', 'C'];    // interne Kennung der Trainingstage, angezeigt werden die Kürzel
@@ -81,6 +81,70 @@ function relDay(iso) {
   return n <= 0 ? 'heute' : n === 1 ? 'gestern' : n < 7 ? `vor ${n} Tagen` : fmtDate(iso);
 }
 function duration(a, b) { const m = Math.max(1, Math.round((new Date(b) - new Date(a)) / 60000)); return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`; }
+/* ---------- Flammen & Wochenstreak ----------
+   Jedes abgeschlossene Training ist eine Flamme seines Tages. Drei Trainings in einer Kalenderwoche (Mo–So) ergeben eine Wochenflamme.
+   Die Wochenstreak zählt die Wochen in Folge mit mindestens drei Trainings; die laufende Woche bricht sie erst, wenn sie ohne drei Trainings endet. */
+const FLAME = { A: 'flamme-a.webp', B: 'flamme-b.webp', C: 'flamme-c.webp', W: 'flamme-woche.webp' };
+const FLAME_HERO = { A: 'flamme-hero-a.webp', B: 'flamme-hero-b.webp', C: 'flamme-hero-c.webp', W: 'flamme-hero-woche.webp' };
+function weekOf(ts) { const d = new Date(ts); return new Date(d.getFullYear(), d.getMonth(), d.getDate() - (d.getDay() + 6) % 7).getTime(); }
+function prevWeek(k) { const d = new Date(k); d.setDate(d.getDate() - 7); return d.getTime(); }
+function isoWeek(ts) {
+  const d = new Date(ts); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
+  const w1 = new Date(d.getFullYear(), 0, 4);
+  return 1 + Math.round(((d - w1) / 864e5 - 3 + (w1.getDay() + 6) % 7) / 7);
+}
+function flameStats(p) {
+  const ws = st().workouts.filter(w => w.person === p).sort((a, b) => new Date(a.ts) - new Date(b.ts));
+  const counts = { A: 0, B: 0, C: 0 }, perWeek = new Map();
+  ws.forEach(w => { counts[w.data.day]++; const k = weekOf(w.ts); if (!perWeek.has(k)) perWeek.set(k, []); perWeek.get(k).push(w); });
+  const cur = weekOf(Date.now());
+  let k = (perWeek.get(cur) || []).length >= 3 ? cur : prevWeek(cur), streak = 0;
+  while ((perWeek.get(k) || []).length >= 3) { streak++; k = prevWeek(k); }
+  return { counts, streak, week: perWeek.get(cur) || [] };
+}
+function weekSlots(list, right) {
+  const xs = list.slice(0, 3).map(w => `<img src="${FLAME[w.data.day]}" alt="${esc(dl(w.data.day, w.person))}">`);
+  while (xs.length < 3) xs.push('<i aria-hidden="true"></i>');
+  const more = list.length > 3 ? `<span class="mono small">+${list.length - 3}</span>` : '';
+  return `<div class="fb-wk${right ? ' r' : ''}" aria-label="${list.length} von 3 diese Woche">${right ? more + xs.join('') : xs.join('') + more}</div>`;
+}
+function flameBoard() {
+  const me = cfg.me, other = partner(), a = flameStats(me), b = flameStats(other);
+  const side = (p, x, right) => `<a class="fb-side${right ? ' r' : ''}" href="#profil${p === me ? '' : ':' + esc(p)}">
+      <span class="fb-who">${right ? `<b>${esc(p)}</b>${avatar(p, 22)}` : `${avatar(p, 22)}<b>Du</b>`}</span>
+      <span class="fb-n"><span class="display">${x.streak}</span><small class="mono muted">${x.streak === 1 ? 'Woche' : 'Wo.'}</small></span></a>`;
+  return `<div class="sec-title"><h2>Flammen</h2></div>
+    <section class="card fboard" aria-label="Wochenstreak und Flammen, du und ${esc(other)}">
+      <div class="fb-top">${side(me, a)}<div class="fb-mid"><img src="${FLAME.W}" alt="Wochenflamme"><span class="eyebrow">Streak</span></div>${side(other, b, true)}</div>
+      <div class="fb-week">${weekSlots(a.week)}<span class="eyebrow">Woche</span>${weekSlots(b.week, true)}</div>
+      <div class="fb-duel">${DAYS.map(d => `<div><b class="mono">${a.counts[d]}</b><img src="${FLAME[d]}" alt="${esc(dl(d))}"><span class="mono muted">${b.counts[d]}</span></div>`).join('')}</div>
+    </section>`;
+}
+function viewDone(id) {
+  const s = st(), w = s.workouts.find(x => x.id === id);
+  if (!w) return null;
+  const p = w.person, d = w.data.day, wk = weekOf(w.ts);
+  const week = s.workouts.filter(x => x.person === p && weekOf(x.ts) === wk).sort((a, b) => new Date(a.ts) - new Date(b.ts));
+  const n = week.findIndex(x => x.id === id) + 1, full = n === 3;
+  const streak = flameStats(p).streak;
+  const wd = new Date(w.ts).toLocaleDateString('de-DE', { weekday: 'long' });
+  const head = full
+    ? `<h1 class="display done-t">Woche<br>geschafft</h1>
+       <div class="mono done-s"><b>Wochenstreak ${streak}</b></div>
+       <div class="mono muted small done-l">${streak > 1 ? `${streak} Wochen in Folge mit drei Trainings` : 'Deine erste Woche mit drei Trainings in Folge'}</div>`
+    : `<h1 class="display done-k t-${DAY_TONE[d]}">${esc(dl(d, p))}</h1>
+       <div class="done-s">${esc(w.data.title)}</div>
+       <div class="mono muted small done-l">${n < 3 ? `${n} von 3 diese Woche · noch ${n === 1 ? 'zwei' : 'eins'} bis zur Wochenflamme` : `${n}. Training diese Woche · Wochenflamme schon sicher`}</div>`;
+  const slots = week.slice(0, 3).map(x => `<div class="done-slot"><div class="glass${x.id === id ? ' new' : ''}"><img src="${FLAME[x.data.day]}" alt="${esc(dl(x.data.day, p))}"></div><span class="eyebrow">${new Date(x.ts).toLocaleDateString('de-DE', { weekday: 'short' }).replace('.', '')}</span></div>`);
+  while (slots.length < 3) slots.push('<div class="done-slot"><div class="empty-slot"></div><span class="eyebrow">·</span></div>');
+  return `<div class="done">
+    <div class="done-top"><span class="eyebrow">${esc(wd)} · KW ${isoWeek(w.ts)}</span><a class="iconbtn glass" href="#start" aria-label="Schließen">${ICON.x}</a></div>
+    <img class="done-hero" src="${full ? FLAME_HERO.W : FLAME_HERO[d]}" alt="${full ? 'Wochenflamme' : 'Flamme für ' + esc(dl(d, p))}">
+    ${head}
+    <div class="done-bar">${slots.join('')}</div>
+    <a class="btn primary done-go" href="#start">Weiter</a>
+  </div>`;
+}
 function weekStart() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate() - (d.getDay() + 6) % 7); }
 
 // Tageskürzel (z. B. B&T) und Tagesfarbe
@@ -1534,6 +1598,7 @@ function render() {
     case 'spot': if (!SPOT.ed) { location.hash = '#kamera'; return; } html = viewEditor(); break;
     case 'spots': if (!SPOT.view) { openViewer(); return; } html = viewViewer(); break;
     case 'spot-bild': html = viewSpotImage(arg); break;
+    case 'geschafft': html = viewDone(arg); if (!html) { location.hash = '#start'; return; } break;
     default: html = `<header class="head" id="head"><div class="brand">Hantelbuch</div>${spotRing()}${bellBtn()}${gearBtn()}</header><main class="view">${viewStart()}</main>` + tabbar('start');
   }
   document.body.dataset.tone = tone;
@@ -1545,7 +1610,7 @@ function render() {
   if (name === 'kamera') { const v = $('#cam-v'); if (SPOT.stream && v) { v.srcObject = SPOT.stream; v.classList.toggle('mirror', SPOT.facing === 'user'); v.play().catch(() => {}); } else startCamera(); }
   if (name === 'spot') layoutEditor();
   if (name === 'spots') viewerShow();
-  document.body.classList.toggle('fullbleed', ['kamera', 'spot', 'spots', 'spot-bild'].includes(name));
+  document.body.classList.toggle('fullbleed', ['kamera', 'spot', 'spots', 'spot-bild', 'geschafft'].includes(name));
 }
 function spotRing() {
   const u = unseenSpots(); if (!u.length) return '';
@@ -1614,9 +1679,6 @@ function viewStart() {
       ${skipAsk ? `<div class="confirm"><div><b>${esc(dl(nd))} überspringen?</b><br><span class="small muted">Danach ist bei dir ${esc(dl(nextAfter))} dran. ${esc(gen(other))} Rotation bleibt unverändert.</span></div>
         <div class="btnrow"><button class="btn small primary" data-act="skip-yes">Überspringen</button><button class="btn small ghost" data-act="skip-no">Abbrechen</button></div></div>` : ''}`;
   }
-  const wk = weekStart();
-  const weekCount = p => s.workouts.filter(w => w.person === p && new Date(w.ts) >= wk).length;
-  const ol = s.last[other], ml = s.last[me];
   const install = !(navigator.standalone || matchMedia('(display-mode: standalone)').matches) && /iPhone|iPad/.test(navigator.userAgent)
     ? `<div class="install glass">Tipp: Tippe in Safari auf <b>Teilen</b> und dann <b>Zum Home-Bildschirm</b>. Dann läuft die App wie eine normale App und auch offline.</div>` : '';
   const feed = s.feed.filter(e => Date.now() - new Date(e.ts) < 7 * 864e5).slice(0, 5);
@@ -1624,10 +1686,7 @@ function viewStart() {
     <section class="hero">${main}</section>
     <div class="rotation" aria-label="Deine Rotation">${rot}</div>
     ${syncLine()}
-    <div class="duo">
-      <a class="card" href="#profil"><span class="who">${avatar(me, 28)}Du</span><span class="big">${weekCount(me)}<small> / 3</small></span><span class="small muted">diese Woche${ml ? ` · zuletzt ${relDay(ml.ts)}` : ''}</span></a>
-      <a class="card" href="#profil:${esc(other)}"><span class="who">${avatar(other, 28)}${esc(other)}</span><span class="big">${weekCount(other)}<small> / 3</small></span><span class="small muted">${ol ? `als Nächstes ${esc(dl(nextDay(other), other))}` : 'noch kein Eintrag'}</span></a>
-    </div>
+    ${flameBoard()}
     <div class="sec-title"><h2>Neuigkeiten</h2>${s.feed.length ? '<a href="#verlauf">Alle</a>' : ''}</div>
     <section class="card" style="padding:4px 16px">${feed.length ? `<div class="feed">${feed.map(feedItem).join('')}</div>` : (s.feed.length ? '<div class="empty">Diese Woche noch nichts Neues. Alles Ältere findest du im Verlauf.</div>' : '<div class="empty">Hier erscheinen eure Trainings, Steigerungen und Skips.</div>')}</section>`;
 }
@@ -1817,8 +1876,8 @@ function finishTraining() {
   const e = addEvent('workout', { day: draft.day, title: draft.title, start: draft.start, end, deload: !!draft.deload, deloadSkipped: !!draft.deloadSkipped, swaps, entries }, summary);
   draft = null; saveDraft(); $('#modal').innerHTML = '';
   const imp = improvements(e);
-  toast(imp.length ? `Training gespeichert · ${imp.length} ${imp.length === 1 ? 'Steigerung' : 'Steigerungen'}` : 'Training gespeichert');
-  location.hash = '#start';
+  if (imp.length) toast(`${imp.length} ${imp.length === 1 ? 'Steigerung' : 'Steigerungen'} gespeichert`);
+  location.hash = '#geschafft:' + e.id;
 }
 function applyToDraft(plan) {
   const old = draft.items, used = new Set(), res = [];

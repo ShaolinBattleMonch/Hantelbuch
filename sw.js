@@ -1,10 +1,12 @@
 /* Hantelbuch – Service Worker: macht die App offline nutzbar.
    Bei einem Update der App-Dateien VERSION hochzählen, dann laden alle Geräte die neue Version. */
-const VERSION = 'hantelbuch-v12';
+const VERSION = 'hantelbuch-v13';
 const FONTS = 'hantelbuch-fonts';
 const SHELL = [
   './', './index.html', './styles.css', './app.js', './manifest.webmanifest',
-  './icon-180.png', './icon-192.png', './icon-512.png'
+  './icon-180.png', './icon-192.png', './icon-512.png',
+  './flamme-a.webp', './flamme-b.webp', './flamme-c.webp', './flamme-woche.webp',
+  './flamme-hero-a.webp', './flamme-hero-b.webp', './flamme-hero-c.webp', './flamme-hero-woche.webp'
 ];
 
 self.addEventListener('install', event => {
