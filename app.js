@@ -4,7 +4,7 @@
    zuerst auf dem Handy, beim Sync in der Google-Tabelle. Der aktuelle Stand wird immer aus dem Log berechnet.
    Ausnahme: der Vault. Seine Bilder bleiben verschlüsselt nur auf diesem Handy und werden nie synchronisiert. */
 
-const APP_VERSION = '1.6.1';
+const APP_VERSION = '1.7.0';
 const SCRIPT_MIN = 2;            // benötigte Version des Google-Skripts
 const PEOPLE = ['Manu', 'Rob'];
 const DAYS = ['A', 'B', 'C'];    // interne Kennung der Trainingstage, angezeigt werden die Kürzel
@@ -52,6 +52,195 @@ const DEFAULT_PLAN = {
     ex('plank', 'Plank', 'time', 3, 30, 60, 0, 'Körper in einer Linie, Bauch und Po anspannen.')
   ] }
 };
+
+/* ---------- Muskeln: Körper-Illustration (eigene Zeichnung) und Bibliothek ---------- */
+const BODY = {"sil":"M91.0,50.0C87.8,53.0 92.2,63.8 90.0,68.0C87.8,72.2 82.7,73.3 78.0,75.0C73.3,76.7 66.5,76.5 62.0,78.0C57.5,79.5 53.8,80.7 51.0,84.0C48.2,87.3 46.2,92.0 45.0,98.0C43.8,104.0 44.7,111.7 44.0,120.0C43.3,128.3 41.7,140.3 41.0,148.0C40.3,155.7 40.8,159.0 40.0,166.0C39.2,173.0 37.3,182.0 36.0,190.0C34.7,198.0 33.1,206.7 32.0,214.0C30.9,221.3 30.8,228.7 29.5,234.0C28.2,239.3 25.4,241.3 24.0,246.0C22.6,250.7 20.7,257.7 21.0,262.0C21.3,266.3 23.8,271.7 25.7,272.0C27.6,272.3 30.9,268.0 32.7,264.0C34.5,260.0 34.8,254.0 36.7,248.0C38.6,242.0 41.8,236.3 44.0,228.0C46.2,219.7 48.3,207.0 50.0,198.0C51.7,189.0 52.8,181.7 54.0,174.0C55.2,166.3 56.0,159.0 57.0,152.0C58.0,145.0 58.8,136.0 60.0,132.0C61.2,128.0 62.8,125.0 64.0,128.0C65.2,131.0 66.2,141.7 67.0,150.0C67.8,158.3 69.0,169.0 69.0,178.0C69.0,187.0 67.7,196.7 67.0,204.0C66.3,211.3 66.2,214.3 65.0,222.0C63.8,229.7 61.0,239.3 59.5,250.0C58.0,260.7 56.5,274.7 55.9,286.0C55.3,297.3 56.0,309.0 55.9,318.0C55.8,327.0 55.9,331.0 55.1,340.0C54.3,349.0 51.9,361.7 51.1,372.0C50.3,382.3 50.4,394.3 50.3,402.0C50.2,409.7 51.0,413.7 50.3,418.0C49.6,422.3 46.2,425.0 46.0,428.0C45.8,431.0 46.0,434.7 49.0,436.0C52.0,437.3 61.3,438.0 64.0,436.0C66.7,434.0 65.0,428.3 65.0,424.0C65.0,419.7 63.6,417.3 64.3,410.0C65.0,402.7 67.3,390.0 69.1,380.0C70.8,370.0 73.2,358.3 74.8,350.0C76.3,341.7 76.7,338.3 78.4,330.0C80.1,321.7 82.9,310.7 85.2,300.0C87.5,289.3 90.0,274.0 92.5,266.0C95.0,258.0 98.8,254.3 100.0,252.0C101.2,249.7 98.8,249.7 100.0,252.0C101.2,254.3 105.0,258.0 107.5,266.0C110.0,274.0 112.5,289.3 114.8,300.0C117.1,310.7 119.9,321.7 121.6,330.0C123.3,338.3 123.7,341.7 125.2,350.0C126.8,358.3 129.2,370.0 130.9,380.0C132.7,390.0 135.0,402.7 135.7,410.0C136.4,417.3 134.9,419.7 135.0,424.0C135.1,428.3 133.3,434.0 136.0,436.0C138.7,438.0 148.0,437.3 151.0,436.0C154.0,434.7 154.2,431.0 154.0,428.0C153.8,425.0 150.4,422.3 149.7,418.0C149.0,413.7 149.8,409.7 149.7,402.0C149.6,394.3 149.7,382.3 148.9,372.0C148.1,361.7 145.7,349.0 144.9,340.0C144.1,331.0 144.2,327.0 144.1,318.0C144.0,309.0 144.7,297.3 144.1,286.0C143.5,274.7 142.0,260.7 140.5,250.0C139.0,239.3 136.2,229.7 135.0,222.0C133.8,214.3 133.7,211.3 133.0,204.0C132.3,196.7 131.0,187.0 131.0,178.0C131.0,169.0 132.2,158.3 133.0,150.0C133.8,141.7 134.8,131.0 136.0,128.0C137.2,125.0 138.8,128.0 140.0,132.0C141.2,136.0 142.0,145.0 143.0,152.0C144.0,159.0 144.8,166.3 146.0,174.0C147.2,181.7 148.3,189.0 150.0,198.0C151.7,207.0 153.8,219.7 156.0,228.0C158.2,236.3 161.4,242.0 163.3,248.0C165.2,254.0 165.5,260.0 167.3,264.0C169.1,268.0 172.4,272.3 174.3,272.0C176.2,271.7 178.7,266.3 179.0,262.0C179.3,257.7 177.4,250.7 176.0,246.0C174.6,241.3 171.8,239.3 170.5,234.0C169.2,228.7 169.1,221.3 168.0,214.0C166.9,206.7 165.3,198.0 164.0,190.0C162.7,182.0 160.8,173.0 160.0,166.0C159.2,159.0 159.7,155.7 159.0,148.0C158.3,140.3 156.7,128.3 156.0,120.0C155.3,111.7 156.2,104.0 155.0,98.0C153.8,92.0 151.8,87.3 149.0,84.0C146.2,80.7 142.5,79.5 138.0,78.0C133.5,76.5 126.7,76.7 122.0,75.0C117.3,73.3 112.2,72.2 110.0,68.0C107.8,63.8 112.2,53.0 109.0,50.0C105.8,47.0 94.2,47.0 91.0,50.0Z","names":{"brust_o":["Obere Brust","Pectoralis major, Pars clavicularis"],"brust_u":["Untere Brust","Pectoralis major, Pars sternocostalis"],"serratus":["Sägemuskel","Serratus anterior"],"schulter_v":["Vordere Schulter","Deltoideus, Pars clavicularis"],"schulter_s":["Seitliche Schulter","Deltoideus, Pars acromialis"],"schulter_h":["Hintere Schulter","Deltoideus, Pars spinalis"],"nacken":["Nacken","Trapezius, Pars descendens"],"trapez_mu":["Mittlerer/unterer Trapez","Trapezius, Pars transversa et ascendens"],"rhomboiden":["Rautenmuskeln","Rhomboideus major/minor"],"rotatoren":["Rotatorenmanschette","Infraspinatus, Teres minor"],"teres":["Großer Rundmuskel","Teres major"],"latissimus":["Latissimus","Latissimus dorsi"],"ruecken_u":["Rückenstrecker","Erector spinae"],"bizeps":["Bizeps","Biceps brachii"],"brachialis":["Oberarmmuskel","Brachialis"],"brachiorad":["Oberarmspeichenmuskel","Brachioradialis"],"ua_beuger":["Unterarmbeuger","Flexoren des Unterarms"],"ua_strecker":["Unterarmstrecker","Extensoren des Unterarms"],"trizeps_l":["Trizeps, langer Kopf","Triceps brachii, Caput longum"],"trizeps_s":["Trizeps, seitlicher Kopf","Triceps brachii, Caput laterale"],"bauch":["Gerader Bauchmuskel","Rectus abdominis"],"bauch_s":["Schräge Bauchmuskeln","Obliquus externus abdominis"],"hueftbeuger":["Hüftbeuger","Iliopsoas"],"gluteus_m":["Mittlerer Gesäßmuskel","Gluteus medius"],"gluteus":["Großer Gesäßmuskel","Gluteus maximus"],"quad_rf":["Gerader Oberschenkelmuskel","Rectus femoris"],"quad_vl":["Äußerer Quadrizeps","Vastus lateralis"],"quad_vm":["Innerer Quadrizeps","Vastus medialis"],"adduktoren":["Adduktoren","Adductor longus/magnus"],"hams_a":["Beinbeuger außen","Biceps femoris"],"hams_i":["Beinbeuger innen","Semitendinosus, Semimembranosus"],"waden":["Zwillingswadenmuskel","Gastrocnemius"],"soleus":["Schollenmuskel","Soleus"],"schienbein":["Schienbeinmuskel","Tibialis anterior"]},"front":[["brust_o","M99.4,83.7C97.6,81.4 92.5,80.0 88.4,79.4C84.3,78.9 78.7,79.1 75.0,80.5C71.2,81.9 66.0,86.1 66.0,88.1C66.0,90.0 71.2,91.5 75.0,92.4C78.7,93.3 84.3,93.3 88.4,93.5C92.5,93.6 97.6,95.1 99.4,93.5C101.2,91.8 101.2,86.1 99.4,83.7Z M100.6,93.5C102.4,95.1 107.5,93.6 111.6,93.5C115.7,93.3 121.3,93.3 125.0,92.4C128.8,91.5 134.0,90.0 134.0,88.1C134.0,86.1 128.8,81.9 125.0,80.5C121.3,79.1 115.7,78.9 111.6,79.4C107.5,80.0 102.4,81.4 100.6,83.7C98.8,86.1 98.8,91.8 100.6,93.5Z",84.6,87.3],["brust_u","M99.4,95.2C97.7,90.7 92.8,95.3 88.8,95.2C84.8,95.0 79.3,94.1 75.4,94.1C71.5,94.1 67.2,93.2 65.3,95.2C63.5,97.1 63.3,102.0 64.2,106.0C65.1,109.9 67.6,115.7 70.9,118.9C74.3,122.2 79.7,124.9 84.4,125.4C89.0,125.9 96.4,127.2 98.9,122.2C101.4,117.1 101.1,99.7 99.4,95.2Z M101.1,122.2C103.6,127.2 111.0,125.9 115.6,125.4C120.3,124.9 125.7,122.2 129.1,118.9C132.4,115.7 134.9,109.9 135.8,106.0C136.7,102.0 136.5,97.1 134.7,95.2C132.8,93.2 128.5,94.1 124.6,94.1C120.7,94.1 115.2,95.0 111.2,95.2C107.2,95.3 102.3,90.7 100.6,95.2C98.9,99.7 98.6,117.1 101.1,122.2Z",81.0,106.5],["serratus","M65.9,123.2C64.2,123.7 62.0,126.4 61.4,129.7C60.9,132.9 61.4,139.7 62.5,142.6C63.7,145.5 66.6,148.0 68.1,146.9C69.6,145.9 70.9,139.6 71.5,136.1C72.1,132.7 72.4,128.6 71.5,126.4C70.6,124.3 67.6,122.6 65.9,123.2Z M128.5,126.4C127.6,128.6 127.9,132.7 128.5,136.1C129.1,139.6 130.4,145.9 131.9,146.9C133.4,148.0 136.3,145.5 137.5,142.6C138.6,139.7 139.1,132.9 138.6,129.7C138.0,126.4 135.8,123.7 134.1,123.2C132.4,122.6 129.4,124.3 128.5,126.4Z",66.8,134.2],["schulter_v","M70.8,78.8C70.1,77.0 65.2,79.1 63.0,80.9C60.7,82.7 58.3,85.6 57.4,89.6C56.4,93.5 56.8,100.4 57.4,104.7C57.9,109.0 59.4,115.5 60.7,115.5C62.0,115.5 64.1,108.7 65.2,104.7C66.3,100.7 66.5,96.1 67.5,91.7C68.4,87.4 71.6,80.6 70.8,78.8Z M132.5,91.7C133.5,96.1 133.7,100.7 134.8,104.7C135.9,108.7 138.0,115.5 139.3,115.5C140.6,115.5 142.1,109.0 142.6,104.7C143.2,100.4 143.6,93.5 142.6,89.6C141.7,85.6 139.3,82.7 137.0,80.9C134.8,79.1 129.9,77.0 129.2,78.8C128.4,80.6 131.6,87.4 132.5,91.7Z",63.1,95.1],["schulter_s","M59.7,78.6C59.1,77.9 53.9,81.8 51.8,85.1C49.8,88.3 47.9,93.5 47.4,98.0C46.8,102.5 47.4,108.8 48.5,112.1C49.6,115.3 52.8,118.7 54.1,117.5C55.4,116.2 56.1,109.2 56.3,104.5C56.5,99.8 54.6,93.7 55.2,89.4C55.8,85.1 60.2,79.3 59.7,78.6Z M144.8,89.4C145.4,93.7 143.5,99.8 143.7,104.5C143.9,109.2 144.6,116.2 145.9,117.5C147.2,118.7 150.4,115.3 151.5,112.1C152.6,108.8 153.2,102.5 152.6,98.0C152.1,93.5 150.2,88.3 148.2,85.1C146.1,81.8 140.9,77.9 140.3,78.6C139.8,79.3 144.2,85.1 144.8,89.4Z",53.3,97.9],["nacken","M89.6,63.3C87.8,63.1 85.0,68.5 81.8,70.9C78.6,73.2 70.2,75.9 70.6,77.4C71.0,78.8 80.3,80.4 84.0,79.5C87.8,78.6 92.1,74.7 93.0,72.0C93.9,69.3 91.5,63.5 89.6,63.3Z M107.0,72.0C107.9,74.7 112.2,78.6 116.0,79.5C119.7,80.4 129.0,78.8 129.4,77.4C129.8,75.9 121.4,73.2 118.2,70.9C115.0,68.5 112.2,63.1 110.4,63.3C108.5,63.5 106.1,69.3 107.0,72.0Z",83.8,72.6],["latissimus","M64.8,127.0C63.5,127.4 62.4,133.5 62.5,137.8C62.7,142.1 64.6,151.1 65.9,152.9C67.2,154.7 69.6,151.5 70.4,148.6C71.1,145.7 71.3,139.2 70.4,135.6C69.5,132.0 66.1,126.6 64.8,127.0Z M129.6,135.6C128.7,139.2 128.9,145.7 129.6,148.6C130.4,151.5 132.8,154.7 134.1,152.9C135.4,151.1 137.3,142.1 137.5,137.8C137.6,133.5 136.5,127.4 135.2,127.0C133.9,126.6 130.5,132.0 129.6,135.6Z",67,150],["bizeps","M56.3,116.2C55.0,116.2 53.1,118.8 51.8,122.7C50.5,126.7 49.2,134.4 48.4,140.0C47.7,145.6 47.0,151.7 47.3,156.2C47.7,160.7 49.2,166.8 50.7,167.0C52.2,167.2 55.0,162.1 56.3,157.3C57.6,152.4 58.0,143.6 58.5,137.8C59.1,132.1 60.0,126.3 59.6,122.7C59.3,119.1 57.6,116.2 56.3,116.2Z M140.4,122.7C140.0,126.3 140.9,132.1 141.5,137.8C142.0,143.6 142.4,152.4 143.7,157.3C145.0,162.1 147.8,167.2 149.3,167.0C150.8,166.8 152.3,160.7 152.7,156.2C153.0,151.7 152.3,145.6 151.6,140.0C150.8,134.4 149.5,126.7 148.2,122.7C146.9,118.8 145.0,116.2 143.7,116.2C142.4,116.2 140.7,119.1 140.4,122.7Z",53,136],["brachialis","M48.3,126.4C47.9,126.4 45.8,134.5 44.9,139.4C44.0,144.3 42.7,150.9 42.7,155.6C42.7,160.3 44.2,167.3 44.9,167.5C45.6,167.7 46.8,161.4 47.1,156.7C47.5,152.0 47.0,144.4 47.1,139.4C47.3,134.4 48.6,126.4 48.3,126.4Z M152.9,139.4C153.0,144.4 152.5,152.0 152.9,156.7C153.2,161.4 154.4,167.7 155.1,167.5C155.8,167.3 157.3,160.3 157.3,155.6C157.3,150.9 156.0,144.3 155.1,139.4C154.2,134.5 152.1,126.4 151.7,126.4C151.4,126.4 152.7,134.4 152.9,139.4Z",45.8,147.5],["brachiorad","M44.4,167.2C43.1,167.9 41.4,170.9 39.9,175.8C38.4,180.6 36.6,189.7 35.5,196.3C34.3,203.0 33.0,211.4 33.2,215.8C33.4,220.1 35.3,224.2 36.6,222.2C37.9,220.2 39.6,210.2 41.1,203.9C42.6,197.6 44.4,189.8 45.5,184.4C46.7,179.0 48.0,174.3 47.8,171.5C47.6,168.6 45.7,166.4 44.4,167.2Z M152.2,171.5C152.0,174.3 153.3,179.0 154.5,184.4C155.6,189.8 157.4,197.6 158.9,203.9C160.4,210.2 162.1,220.2 163.4,222.2C164.7,224.2 166.6,220.1 166.8,215.8C167.0,211.4 165.7,203.0 164.5,196.3C163.4,189.7 161.6,180.6 160.1,175.8C158.6,170.9 156.9,167.9 155.6,167.2C154.3,166.4 152.4,168.6 152.2,171.5Z",40.5,192.1],["ua_beuger","M50.4,168.7C49.3,169.8 48.4,175.7 47.1,181.7C45.8,187.6 44.1,196.6 42.6,204.3C41.1,212.1 38.4,222.9 38.1,228.1C37.8,233.3 39.5,238.0 41.0,235.7C42.5,233.3 45.3,221.4 47.1,214.1C48.8,206.7 50.4,197.9 51.5,191.4C52.7,184.9 54.0,178.9 53.8,175.2C53.6,171.4 51.5,167.6 50.4,168.7Z M146.2,175.2C146.0,178.9 147.3,184.9 148.5,191.4C149.6,197.9 151.2,206.7 152.9,214.1C154.7,221.4 157.5,233.3 159.0,235.7C160.5,238.0 162.2,233.3 161.9,228.1C161.6,222.9 158.9,212.1 157.4,204.3C155.9,196.6 154.2,187.6 152.9,181.7C151.6,175.7 150.7,169.8 149.6,168.7C148.5,167.6 146.4,171.4 146.2,175.2Z",46.5,199.9],["bauch","M99.4,123.5C97.3,107.2 89.3,120.1 86.6,122.5C83.9,124.8 83.8,129.7 83.3,137.6C82.7,145.5 82.9,159.4 83.3,170.0C83.6,180.6 84.0,193.7 85.5,201.3C87.0,208.9 89.9,212.1 92.2,215.3C94.6,218.6 98.2,236.0 99.4,220.7C100.6,205.4 101.5,139.9 99.4,123.5Z M100.6,220.7C101.8,236.0 105.4,218.6 107.8,215.3C110.1,212.1 113.0,208.9 114.5,201.3C116.0,193.7 116.4,180.6 116.7,170.0C117.1,159.4 117.3,145.5 116.7,137.6C116.2,129.7 116.1,124.8 113.4,122.5C110.7,120.1 102.7,107.2 100.6,123.5C98.5,139.9 99.4,205.4 100.6,220.7Z",92,178],["bauch_s","M82.6,126.2C81.1,122.8 74.7,124.6 72.5,128.3C70.2,132.1 69.3,140.8 69.1,148.9C68.9,157.0 70.2,168.8 71.4,176.9C72.5,185.0 73.8,192.2 75.8,197.5C77.9,202.7 82.6,211.3 83.7,208.3C84.8,205.2 82.9,189.0 82.6,179.1C82.2,169.2 81.4,157.7 81.4,148.9C81.4,140.0 84.0,129.6 82.6,126.2Z M118.6,148.9C118.6,157.7 117.8,169.2 117.4,179.1C117.1,189.0 115.2,205.2 116.3,208.3C117.4,211.3 122.1,202.7 124.2,197.5C126.2,192.2 127.5,185.0 128.6,176.9C129.8,168.8 131.1,157.0 130.9,148.9C130.7,140.8 129.8,132.1 127.5,128.3C125.3,124.6 118.9,122.8 117.4,126.2C116.0,129.6 118.6,140.0 118.6,148.9Z",76,160],["hueftbeuger","M87.0,212.0C84.5,210.0 80.9,211.8 80.2,215.2C79.6,218.7 81.5,228.2 83.3,232.5C85.1,236.8 89.2,242.1 91.1,241.2C93.0,240.3 95.5,232.0 94.8,227.1C94.1,222.3 89.4,214.0 87.0,212.0Z M105.2,227.1C104.5,232.0 107.0,240.3 108.9,241.2C110.8,242.1 114.9,236.8 116.7,232.5C118.5,228.2 120.4,218.7 119.8,215.2C119.1,211.8 115.5,210.0 113.0,212.0C110.6,214.0 105.9,222.3 105.2,227.1Z",87.3,225.6],["gluteus_m","M70.1,203.2C68.8,203.6 66.4,208.2 65.6,211.8C64.9,215.4 64.7,223.4 65.6,224.8C66.5,226.2 69.9,223.0 71.2,220.5C72.5,218.0 73.6,212.6 73.5,209.7C73.3,206.8 71.4,202.8 70.1,203.2Z M126.5,209.7C126.4,212.6 127.5,218.0 128.8,220.5C130.1,223.0 133.5,226.2 134.4,224.8C135.3,223.4 135.1,215.4 134.4,211.8C133.6,208.2 131.2,203.6 129.9,203.2C128.6,202.8 126.7,206.8 126.5,209.7Z",69.2,214.0],["quad_rf","M78.4,226.4C76.6,227.2 74.0,239.0 72.3,248.0C70.5,257.0 68.9,270.7 68.0,280.4C67.1,290.2 66.6,299.9 66.9,306.4C67.1,312.8 68.0,320.0 69.6,319.3C71.2,318.6 74.4,310.3 76.4,302.0C78.4,293.8 80.6,279.4 81.7,269.6C82.7,259.9 83.4,250.9 82.9,243.7C82.4,236.5 80.2,225.7 78.4,226.4Z M117.1,243.7C116.6,250.9 117.3,259.9 118.3,269.6C119.4,279.4 121.6,293.8 123.6,302.0C125.6,310.3 128.8,318.6 130.4,319.3C132.0,320.0 132.9,312.8 133.1,306.4C133.4,299.9 132.9,290.2 132.0,280.4C131.1,270.7 129.5,257.0 127.7,248.0C126.0,239.0 123.4,227.2 121.6,226.4C119.8,225.7 117.6,236.5 117.1,243.7Z",75.6,265],["quad_vl","M70.4,228.5C68.8,229.2 64.6,239.3 62.3,247.9C60.1,256.6 58.0,269.7 56.9,280.3C55.9,290.9 55.5,304.1 56.2,311.6C56.8,319.2 59.6,327.3 61.1,325.7C62.6,324.1 64.1,311.3 65.3,301.9C66.6,292.6 67.3,279.2 68.4,269.5C69.4,259.8 71.5,250.4 71.8,243.6C72.2,236.8 72.0,227.8 70.4,228.5Z M128.2,243.6C128.5,250.4 130.6,259.8 131.6,269.5C132.7,279.2 133.4,292.6 134.7,301.9C135.9,311.3 137.4,324.1 138.9,325.7C140.4,327.3 143.2,319.2 143.8,311.6C144.5,304.1 144.1,290.9 143.1,280.3C142.0,269.7 139.9,256.6 137.7,247.9C135.4,239.3 131.2,229.2 129.6,228.5C128.0,227.8 127.8,236.8 128.2,243.6Z",61.4,282],["quad_vm","M81.5,281.2C80.0,281.6 77.2,292.7 75.9,298.5C74.6,304.2 73.6,311.3 73.7,315.8C73.8,320.3 75.3,325.5 76.8,325.5C78.3,325.5 81.3,320.6 82.7,315.8C84.0,310.9 85.3,302.1 85.1,296.3C84.9,290.6 83.1,280.8 81.5,281.2Z M114.9,296.3C114.7,302.1 116.0,310.9 117.3,315.8C118.7,320.6 121.7,325.5 123.2,325.5C124.7,325.5 126.2,320.3 126.3,315.8C126.4,311.3 125.4,304.2 124.1,298.5C122.8,292.7 120.0,281.6 118.5,281.2C116.9,280.8 115.1,290.6 114.9,296.3Z",79.3,305.5],["adduktoren","M88.5,231.7C85.7,232.5 83.5,245.8 82.4,253.3C81.2,260.9 81.0,270.8 81.5,277.1C81.9,283.4 83.4,292.2 85.2,291.1C87.0,290.1 90.0,277.6 92.3,270.6C94.7,263.6 100.0,255.5 99.4,249.0C98.8,242.5 91.4,231.0 88.5,231.7Z M100.6,249.0C100.0,255.5 105.3,263.6 107.7,270.6C110.0,277.6 113.0,290.1 114.8,291.1C116.6,292.2 118.1,283.4 118.5,277.1C119.0,270.8 118.8,260.9 117.6,253.3C116.5,245.8 114.3,232.5 111.5,231.7C108.6,231.0 101.2,242.5 100.6,249.0Z",88.3,262.2],["waden","M71.4,337.2C69.9,338.7 67.9,348.0 66.9,354.5C65.8,361.0 65.1,371.1 65.2,376.1C65.3,381.2 66.1,386.2 67.4,384.8C68.7,383.3 71.6,374.0 73.0,367.5C74.4,361.0 76.1,350.9 75.8,345.9C75.5,340.8 72.8,335.8 71.4,337.2Z M124.2,345.9C123.9,350.9 125.6,361.0 127.0,367.5C128.4,374.0 131.3,383.3 132.6,384.8C133.9,386.2 134.7,381.2 134.8,376.1C134.9,371.1 134.2,361.0 133.1,354.5C132.1,348.0 130.1,338.7 128.6,337.2C127.2,335.8 124.5,340.8 124.2,345.9Z",70.0,361.0],["soleus","M58.3,370.6C57.5,371.0 54.8,386.4 54.2,392.2C53.7,398.0 54.0,405.5 54.8,405.2C55.6,404.8 58.5,395.8 59.1,390.0C59.6,384.3 59.1,370.2 58.3,370.6Z M140.9,390.0C141.5,395.8 144.4,404.8 145.2,405.2C146.0,405.5 146.3,398.0 145.8,392.2C145.2,386.4 142.5,371.0 141.7,370.6C140.9,370.2 140.4,384.3 140.9,390.0Z",56.6,389.5],["schienbein","M63.7,336.2C62.4,336.5 59.6,346.4 58.0,354.5C56.4,362.6 54.7,376.1 54.0,384.8C53.2,393.4 52.9,403.1 53.4,406.4C53.9,409.6 55.8,408.5 57.1,404.2C58.4,399.9 59.9,389.1 61.3,380.5C62.8,371.8 65.7,359.8 66.0,352.4C66.4,345.0 65.0,335.8 63.7,336.2Z M134.0,352.4C134.3,359.8 137.2,371.8 138.7,380.5C140.1,389.1 141.6,399.9 142.9,404.2C144.2,408.5 146.1,409.6 146.6,406.4C147.1,403.1 146.8,393.4 146.0,384.8C145.3,376.1 143.6,362.6 142.0,354.5C140.4,346.4 137.6,336.5 136.3,336.2C135.0,335.8 133.6,345.0 134.0,352.4Z",59.1,374.1]],"back":[["schulter_s","M50.2,82.9C49.2,82.9 46.6,87.5 45.7,91.5C44.7,95.5 44.0,102.7 44.6,106.6C45.1,110.6 47.9,116.0 49.0,115.3C50.2,114.5 50.9,106.3 51.3,102.3C51.7,98.3 51.5,94.7 51.3,91.5C51.1,88.3 51.1,82.9 50.2,82.9Z M148.7,91.5C148.5,94.7 148.3,98.3 148.7,102.3C149.1,106.3 149.8,114.5 151.0,115.3C152.1,116.0 154.9,110.6 155.4,106.6C156.0,102.7 155.3,95.5 154.3,91.5C153.4,87.5 150.8,82.9 149.8,82.9C148.9,82.9 148.9,88.3 148.7,91.5Z",48.7,98.3],["schulter_h","M66.8,81.2C64.7,79.4 59.3,80.9 56.7,82.3C54.1,83.7 51.9,86.3 51.1,89.9C50.4,93.5 50.7,102.1 52.2,103.9C53.7,105.7 57.3,102.5 60.1,100.7C62.9,98.9 67.9,96.3 69.0,93.1C70.2,89.9 68.9,83.0 66.8,81.2Z M131.0,93.1C132.1,96.3 137.1,98.9 139.9,100.7C142.7,102.5 146.3,105.7 147.8,103.9C149.3,102.1 149.6,93.5 148.9,89.9C148.1,86.3 145.9,83.7 143.3,82.3C140.7,80.9 135.3,79.4 133.2,81.2C131.1,83.0 129.8,89.9 131.0,93.1Z",59.3,91.8],["nacken","M99.4,56.8C97.9,53.2 93.8,60.7 90.4,63.3C87.1,65.8 83.3,69.2 79.2,71.9C75.1,74.6 65.1,77.5 65.8,79.5C66.5,81.4 78.1,82.9 83.7,83.8C89.3,84.7 96.8,89.4 99.4,84.9C102.0,80.4 100.9,60.4 99.4,56.8Z M100.6,84.9C103.2,89.4 110.7,84.7 116.3,83.8C121.9,82.9 133.5,81.4 134.2,79.5C134.9,77.5 124.9,74.6 120.8,71.9C116.7,69.2 112.9,65.8 109.6,63.3C106.2,60.7 102.1,53.2 100.6,56.8C99.1,60.4 98.0,80.4 100.6,84.9Z",86.3,73.3],["trapez_mu","M99.4,84.7C98.1,73.3 93.4,83.9 91.7,86.8C90.1,89.7 89.7,95.6 89.5,101.9C89.3,108.2 89.7,117.6 90.6,124.6C91.5,131.6 93.6,139.0 95.1,144.1C96.5,149.1 98.7,164.8 99.4,154.9C100.1,145.0 100.7,96.0 99.4,84.7Z M100.6,154.9C101.3,164.8 103.5,149.1 104.9,144.1C106.4,139.0 108.5,131.6 109.4,124.6C110.3,117.6 110.7,108.2 110.5,101.9C110.3,95.6 109.9,89.7 108.3,86.8C106.6,83.9 101.9,73.3 100.6,84.7C99.3,96.0 99.9,145.0 100.6,154.9Z",94.3,116.2],["rhomboiden","M89.5,88.8C88.2,86.7 82.6,88.6 80.6,91.0C78.5,93.3 76.8,98.4 77.2,102.9C77.6,107.4 80.7,114.6 82.8,118.0C84.9,121.4 88.6,125.7 89.5,123.4C90.5,121.0 88.4,109.7 88.4,103.9C88.4,98.2 90.8,91.0 89.5,88.8Z M111.6,103.9C111.6,109.7 109.5,121.0 110.5,123.4C111.4,125.7 115.1,121.4 117.2,118.0C119.3,114.6 122.4,107.4 122.8,102.9C123.2,98.4 121.5,93.3 119.4,91.0C117.4,88.6 111.8,86.7 110.5,88.8C109.2,91.0 111.6,98.2 111.6,103.9Z",84.7,104.7],["rotatoren","M76.4,94.2C74.8,92.9 69.7,94.2 67.5,96.3C65.2,98.5 62.6,103.9 63.0,107.1C63.4,110.4 66.9,114.5 69.7,115.8C72.5,117.0 78.5,116.7 79.8,114.7C81.1,112.7 78.1,107.3 77.6,103.9C77.0,100.5 78.1,95.4 76.4,94.2Z M122.4,103.9C121.9,107.3 118.9,112.7 120.2,114.7C121.5,116.7 127.5,117.0 130.3,115.8C133.1,114.5 136.6,110.4 137.0,107.1C137.4,103.9 134.8,98.5 132.5,96.3C130.3,94.2 125.2,92.9 123.6,94.2C121.9,95.4 123.0,100.5 122.4,103.9Z",72.3,105.3],["teres","M70.1,117.6C67.2,117.2 63.8,117.9 62.3,119.7C60.8,121.5 59.9,126.6 61.2,128.4C62.5,130.2 67.0,131.6 70.1,130.5C73.3,129.4 80.2,124.0 80.2,121.9C80.2,119.7 73.1,117.9 70.1,117.6Z M119.8,121.9C119.8,124.0 126.7,129.4 129.9,130.5C133.0,131.6 137.5,130.2 138.8,128.4C140.1,126.6 139.2,121.5 137.7,119.7C136.2,117.9 132.8,117.2 129.9,117.6C126.9,117.9 119.8,119.7 119.8,121.9Z",68.8,123.6],["latissimus","M81.2,118.0C77.1,115.1 69.8,122.5 66.6,127.7C63.5,132.9 62.0,141.8 62.2,149.3C62.3,156.9 65.0,166.6 67.8,173.1C70.6,179.6 74.8,184.4 79.0,188.2C83.1,192.0 89.8,198.6 92.4,195.8C95.0,192.9 94.8,179.4 94.6,170.9C94.4,162.5 93.5,153.8 91.3,145.0C89.0,136.2 85.3,120.9 81.2,118.0Z M108.7,145.0C106.5,153.8 105.6,162.5 105.4,170.9C105.2,179.4 105.0,192.9 107.6,195.8C110.2,198.6 116.9,192.0 121.0,188.2C125.2,184.4 129.4,179.6 132.2,173.1C135.0,166.6 137.7,156.9 137.8,149.3C138.0,141.8 136.5,132.9 133.4,127.7C130.2,122.5 122.9,115.1 118.8,118.0C114.7,120.9 111.0,136.2 108.7,145.0Z",79.4,158.5],["ruecken_u","M98.4,150.9C97.5,139.7 94.1,145.7 92.8,149.8C91.5,153.9 90.8,166.5 90.6,175.7C90.4,184.9 90.4,198.0 91.7,204.9C93.0,211.7 97.3,225.8 98.4,216.8C99.6,207.8 99.4,162.0 98.4,150.9Z M101.6,216.8C102.7,225.8 107.0,211.7 108.3,204.9C109.6,198.0 109.6,184.9 109.4,175.7C109.2,166.5 108.5,153.9 107.2,149.8C105.9,145.7 102.5,139.7 101.6,150.9C100.6,162.0 100.4,207.8 101.6,216.8Z",94.4,179.6],["ua_strecker","M48.6,164.7C46.6,166.1 44.2,172.2 41.9,178.7C39.7,185.2 36.9,195.6 35.2,203.6C33.5,211.5 31.7,221.5 31.8,226.2C32.0,230.9 34.5,234.7 36.3,231.6C38.2,228.6 40.8,215.4 43.0,207.9C45.3,200.3 47.9,192.6 49.8,186.3C51.6,180.0 54.4,173.7 54.2,170.1C54.1,166.5 50.7,163.2 48.6,164.7Z M145.8,170.1C145.6,173.7 148.4,180.0 150.2,186.3C152.1,192.6 154.7,200.3 157.0,207.9C159.2,215.4 161.8,228.6 163.7,231.6C165.5,234.7 168.0,230.9 168.2,226.2C168.3,221.5 166.5,211.5 164.8,203.6C163.1,195.6 160.3,185.2 158.1,178.7C155.8,172.2 153.4,166.1 151.4,164.7C149.3,163.2 145.9,166.5 145.8,170.1Z",42.6,196.1],["trizeps_l","M59.1,104.2C57.8,103.7 55.4,110.7 54.6,116.1C53.9,121.5 54.2,130.3 54.6,136.6C55.0,142.9 55.7,153.2 56.9,153.9C58.0,154.6 60.4,146.7 61.3,140.9C62.3,135.2 62.8,125.4 62.5,119.3C62.1,113.2 60.4,104.7 59.1,104.2Z M137.5,119.3C137.2,125.4 137.7,135.2 138.7,140.9C139.6,146.7 142.0,154.6 143.1,153.9C144.3,153.2 145.0,142.9 145.4,136.6C145.8,130.3 146.1,121.5 145.4,116.1C144.6,110.7 142.2,103.7 140.9,104.2C139.6,104.7 137.9,113.2 137.5,119.3Z",58.2,128.5],["trizeps_s","M51.1,108.2C50.0,109.6 47.8,117.4 46.6,123.3C45.5,129.2 44.2,137.9 44.4,143.8C44.6,149.8 46.3,157.7 47.8,158.9C49.3,160.2 52.4,156.2 53.4,151.4C54.3,146.5 53.4,135.9 53.4,129.8C53.4,123.7 53.7,118.3 53.4,114.7C53.0,111.1 52.2,106.7 51.1,108.2Z M146.6,114.7C146.3,118.3 146.6,123.7 146.6,129.8C146.6,135.9 145.7,146.5 146.6,151.4C147.6,156.2 150.7,160.2 152.2,158.9C153.7,157.7 155.4,149.8 155.6,143.8C155.8,137.9 154.5,129.2 153.4,123.3C152.2,117.4 150.0,109.6 148.9,108.2C147.8,106.7 147.0,111.1 146.6,114.7Z",50.0,132.9],["bauch_s","M65.8,174.8C64.7,175.8 63.4,187.0 63.5,192.0C63.7,197.1 65.4,203.6 66.9,205.0C68.4,206.4 71.9,203.9 72.5,200.7C73.1,197.4 71.4,189.9 70.3,185.6C69.1,181.2 66.9,173.7 65.8,174.8Z M129.7,185.6C128.6,189.9 126.9,197.4 127.5,200.7C128.1,203.9 131.6,206.4 133.1,205.0C134.6,203.6 136.3,197.1 136.5,192.0C136.6,187.0 135.3,175.8 134.2,174.8C133.1,173.7 130.9,181.2 129.7,185.6Z",67.8,191.6],["gluteus_m","M71.6,204.2C68.3,205.3 66.0,208.0 64.9,211.8C63.8,215.6 63.1,224.4 64.9,226.9C66.8,229.4 72.4,229.1 76.1,226.9C79.9,224.7 85.8,217.5 87.3,213.9C88.8,210.3 87.7,206.9 85.1,205.3C82.5,203.7 75.0,203.1 71.6,204.2Z M114.9,205.3C112.3,206.9 111.2,210.3 112.7,213.9C114.2,217.5 120.1,224.7 123.9,226.9C127.6,229.1 133.2,229.4 135.1,226.9C136.9,224.4 136.2,215.6 135.1,211.8C134.0,208.0 131.7,205.3 128.4,204.2C125.0,203.1 117.5,203.7 114.9,205.3Z",75.0,214.8],["gluteus","M87.6,213.0C83.4,213.5 77.9,222.0 74.2,225.9C70.5,229.9 66.9,231.5 65.3,236.7C63.8,242.0 62.5,252.4 64.9,257.3C67.2,262.1 73.7,265.5 79.4,265.9C85.2,266.3 96.1,266.6 99.4,259.4C102.7,252.2 101.4,230.4 99.4,222.7C97.4,215.0 91.8,212.4 87.6,213.0Z M100.6,222.7C98.6,230.4 97.3,252.2 100.6,259.4C103.9,266.6 114.8,266.3 120.6,265.9C126.3,265.5 132.8,262.1 135.1,257.3C137.5,252.4 136.2,242.0 134.7,236.7C133.1,231.5 129.5,229.9 125.8,225.9C122.1,222.0 116.6,213.5 112.4,213.0C108.2,212.4 102.6,215.0 100.6,222.7Z",81.8,240.1],["quad_vl","M62.4,260.0C61.8,256.7 58.3,273.6 57.2,281.6C56.2,289.5 55.6,304.2 56.1,307.5C56.6,310.7 59.3,308.9 60.3,301.0C61.4,293.1 62.9,263.2 62.4,260.0Z M139.7,301.0C140.7,308.9 143.4,310.7 143.9,307.5C144.4,304.2 143.8,289.5 142.8,281.6C141.7,273.6 138.2,256.7 137.6,260.0C137.1,263.2 138.6,293.1 139.7,301.0Z",59.0,287.5],["adduktoren","M93.4,260.7C92.8,258.5 89.3,268.2 88.2,273.6C87.1,279.0 86.3,290.9 86.9,293.1C87.4,295.2 90.6,292.0 91.7,286.6C92.8,281.2 93.9,262.8 93.4,260.7Z M108.3,286.6C109.4,292.0 112.6,295.2 113.1,293.1C113.7,290.9 112.9,279.0 111.8,273.6C110.7,268.2 107.2,258.5 106.6,260.7C106.1,262.8 107.2,281.2 108.3,286.6Z",90.0,278.5],["hams_a","M66.7,262.7C64.5,264.7 62.1,274.1 60.8,281.1C59.5,288.1 58.5,298.0 58.9,304.8C59.3,311.7 61.6,319.8 63.3,322.1C65.0,324.5 68.2,323.4 69.3,318.9C70.5,314.4 69.5,303.4 70.2,295.1C70.9,286.8 74.2,274.6 73.6,269.2C73.0,263.8 68.8,260.7 66.7,262.7Z M126.4,269.2C125.8,274.6 129.1,286.8 129.8,295.1C130.5,303.4 129.5,314.4 130.7,318.9C131.8,323.4 135.0,324.5 136.7,322.1C138.4,319.8 140.7,311.7 141.1,304.8C141.5,298.0 140.5,288.1 139.2,281.1C137.9,274.1 135.5,264.7 133.3,262.7C131.2,260.7 127.0,263.8 126.4,269.2Z",66.1,293.4],["hams_i","M76.8,266.2C74.5,270.5 74.3,282.0 73.7,290.0C73.0,297.9 72.0,308.1 72.8,313.7C73.5,319.3 76.3,325.6 78.3,323.4C80.2,321.3 82.6,308.9 84.6,300.8C86.6,292.7 89.8,281.0 90.2,274.8C90.7,268.7 89.5,265.5 87.2,264.0C85.0,262.6 79.1,261.9 76.8,266.2Z M112.8,264.0C110.5,265.5 109.3,268.7 109.8,274.8C110.2,281.0 113.4,292.7 115.4,300.8C117.4,308.9 119.8,321.3 121.7,323.4C123.7,325.6 126.5,319.3 127.2,313.7C128.0,308.1 127.0,297.9 126.3,290.0C125.7,282.0 125.5,270.5 123.2,266.2C120.9,261.9 115.0,262.6 112.8,264.0Z",80.5,290.4],["waden","M58.8,332.4C56.6,334.6 55.1,343.4 54.2,349.7C53.4,356.0 52.9,365.5 53.8,370.2C54.7,374.9 57.8,380.1 59.6,377.8C61.4,375.4 63.4,363.0 64.6,356.2C65.9,349.3 68.2,340.7 67.2,336.7C66.2,332.8 61.0,330.3 58.8,332.4Z M132.8,336.7C131.8,340.7 134.1,349.3 135.4,356.2C136.6,363.0 138.6,375.4 140.4,377.8C142.2,380.1 145.3,374.9 146.2,370.2C147.1,365.5 146.6,356.0 145.8,349.7C144.9,343.4 143.4,334.6 141.2,332.4C139.0,330.3 133.8,332.8 132.8,336.7Z M68.4,334.6C66.8,337.8 66.1,349.3 65.6,356.2C65.0,363.0 64.1,373.1 65.2,375.6C66.4,378.1 70.6,375.6 72.5,371.3C74.4,367.0 76.0,355.4 76.4,349.7C76.8,343.9 76.2,339.2 74.9,336.7C73.5,334.2 69.9,331.3 68.4,334.6Z M125.1,336.7C123.8,339.2 123.2,343.9 123.6,349.7C124.0,355.4 125.6,367.0 127.5,371.3C129.4,375.6 133.6,378.1 134.8,375.6C135.9,373.1 135.0,363.0 134.4,356.2C133.9,349.3 133.2,337.8 131.6,334.6C130.1,331.3 126.5,334.2 125.1,336.7Z",59.7,353.8],["soleus","M53.6,368.6C51.9,370.2 50.7,385.2 50.7,391.3C50.6,397.4 51.3,403.0 53.3,405.3C55.2,407.7 59.6,408.2 62.2,405.3C64.8,402.4 67.5,393.4 68.9,388.0C70.4,382.6 72.3,374.0 71.0,372.9C69.6,371.8 63.8,382.3 60.9,381.6C58.0,380.8 55.3,367.0 53.6,368.6Z M139.1,381.6C136.2,382.3 130.4,371.8 129.0,372.9C127.7,374.0 129.6,382.6 131.1,388.0C132.5,393.4 135.2,402.4 137.8,405.3C140.4,408.2 144.8,407.7 146.7,405.3C148.7,403.0 149.4,397.4 149.3,391.3C149.3,385.2 148.1,370.2 146.4,368.6C144.7,367.0 142.0,380.8 139.1,381.6Z",60.1,387.6]],"right":{"f":["adduktoren","brachialis","brachiorad","gluteus_m","hams_i","nacken","quad_vm","rhomboiden","schulter_s","serratus","soleus","teres","trizeps_s","waden"],"b":["brachialis","brachiorad","gluteus_m","hams_i","quad_vl","quad_vm","rhomboiden","schulter_s","soleus","teres","trizeps_s"]},"groups":{"Brust":["brust_o","brust_u","serratus"],"Schulter":["schulter_v","schulter_s","schulter_h","rotatoren","nacken"],"Rücken":["trapez_mu","rhomboiden","teres","latissimus","ruecken_u"],"Arme":["bizeps","brachialis","brachiorad","ua_beuger","ua_strecker","trizeps_l","trizeps_s"],"Bauch":["bauch","bauch_s","hueftbeuger"],"Beine":["gluteus","gluteus_m","quad_rf","quad_vl","quad_vm","adduktoren","hams_a","hams_i","waden","soleus","schienbein"]}};
+const EX_LIB = [["bankdruecken","Bankdrücken (Langhantel)","kg","brust_u,brust_o","schulter_v,trizeps_s,trizeps_l"],["kh-bankdruecken","Bankdrücken (Kurzhantel)","kg","brust_u","brust_o,schulter_v,trizeps_s,trizeps_l"],["schraegbank","Schrägbankdrücken (Kurzhantel, 30°)","kg","brust_o","brust_u,schulter_v,trizeps_s"],["lh-schraegbank","Schrägbankdrücken (Langhantel)","kg","brust_o","brust_u,schulter_v,trizeps_s,trizeps_l"],["negativbank","Negativbankdrücken","kg","brust_u","trizeps_s,trizeps_l,schulter_v"],["brustpresse","Brustpresse (Maschine)","kg","brust_u","brust_o,schulter_v,trizeps_s"],["dips","Dips (Brust-Fokus)","bw","brust_u,trizeps_l,trizeps_s","brust_o,schulter_v"],["liegestuetze","Liegestütze","bw","brust_u","brust_o,schulter_v,trizeps_s,trizeps_l,serratus,bauch"],["kabelflys","Kabelzug-Flys","kg","brust_u,brust_o","schulter_v"],["butterfly","Butterfly (Maschine)","kg","brust_u","brust_o,schulter_v"],["kh-flys","Kurzhantel-Flys","kg","brust_u","brust_o,schulter_v"],["pullover","Pullover (Kurzhantel)","kg","latissimus,brust_u","teres,trizeps_l,serratus"],["ueberkopf-trizeps","Überkopf-Trizepsstrecken am Kabel","kg","trizeps_l","trizeps_s"],["trizeps-seil","Trizepsdrücken am Kabel (Seil)","kg","trizeps_s,trizeps_l",""],["trizeps-stange","Trizepsdrücken am Kabel (Stange)","kg","trizeps_s","trizeps_l"],["french-press","French Press (SZ-Stange)","kg","trizeps_l,trizeps_s",""],["enges-bankdruecken","Enges Bankdrücken","kg","trizeps_s,trizeps_l","brust_u,schulter_v"],["bankdips","Bankdips","bw","trizeps_s,trizeps_l","schulter_v,brust_u"],["kickbacks","Trizeps-Kickbacks","kg","trizeps_l,trizeps_s","schulter_h"],["schulterdruecken","Schulterdrücken (Kurzhantel)","kg","schulter_v","schulter_s,trizeps_s,trizeps_l,nacken"],["military-press","Schulterdrücken stehend (Langhantel)","kg","schulter_v","schulter_s,trizeps_s,brust_o,nacken,bauch"],["seitheben","Seitheben (Kurzhantel)","kg","schulter_s","schulter_v,nacken"],["seitheben-kabel","Seitheben am Kabel","kg","schulter_s","schulter_v,nacken"],["frontheben","Frontheben","kg","schulter_v","brust_o,schulter_s"],["reverse-flys","Reverse Flys","kg","schulter_h","rhomboiden,trapez_mu,rotatoren"],["facepulls","Face Pulls am Kabel","kg","schulter_h,rotatoren","rhomboiden,trapez_mu,nacken"],["aufrechtes-rudern","Aufrechtes Rudern","kg","schulter_s,nacken","schulter_v,bizeps"],["shrugs","Shrugs (Kurzhantel)","kg","nacken","trapez_mu,ua_beuger"],["klimmzuege","Klimmzüge","bw","latissimus,teres","rhomboiden,trapez_mu,schulter_h,bizeps,brachialis,ua_beuger"],["klimmzuege-eng","Klimmzüge eng (Untergriff)","bw","latissimus,bizeps","teres,brachialis,rhomboiden,trapez_mu"],["latzug","Latzug (breiter Griff)","kg","latissimus,teres","rhomboiden,trapez_mu,schulter_h,bizeps,brachialis"],["latzug-eng","Latzug eng (neutraler Griff)","kg","latissimus","teres,bizeps,brachialis,rhomboiden"],["lh-rudern","Langhantelrudern vorgebeugt","kg","latissimus,rhomboiden,trapez_mu","teres,schulter_h,bizeps,brachialis,ruecken_u,hams_a"],["kh-rudern","Kurzhantelrudern einarmig","kg","latissimus,rhomboiden","teres,trapez_mu,schulter_h,bizeps,brachialis"],["kabelrudern","Kabelrudern sitzend (enger Griff)","kg","latissimus,rhomboiden,trapez_mu","teres,schulter_h,bizeps,brachialis,ruecken_u"],["t-bar-rudern","T-Bar-Rudern","kg","rhomboiden,trapez_mu,latissimus","teres,schulter_h,bizeps,ruecken_u"],["maschinenrudern","Rudern an der Maschine","kg","rhomboiden,trapez_mu,latissimus","teres,schulter_h,bizeps"],["kabel-pullover","Kabel-Pullover (gestreckte Arme)","kg","latissimus","teres,trizeps_l"],["kreuzheben","Kreuzheben","kg","gluteus,ruecken_u,hams_a,hams_i","quad_vl,quad_vm,quad_rf,adduktoren,nacken,trapez_mu,ua_beuger"],["hyperextensions","Hyperextensions","bw","ruecken_u","gluteus,hams_a,hams_i"],["sz-curls","Langhantel-Curls (SZ-Stange)","kg","bizeps","brachialis,brachiorad"],["kh-curls","Kurzhantel-Curls","kg","bizeps","brachialis,brachiorad"],["hammer-curls","Hammer-Curls (Kurzhantel)","kg","brachialis,brachiorad","bizeps"],["schraegbank-curls","Schrägbank-Curls","kg","bizeps","brachialis"],["konzentrationscurls","Konzentrationscurls","kg","bizeps","brachialis"],["kabel-curls","Bizeps-Curls am Kabel","kg","bizeps","brachialis,brachiorad"],["scott-curls","Scott-Curls (Preacher)","kg","bizeps,brachialis","brachiorad"],["reverse-curls","Reverse Curls","kg","brachiorad,brachialis","ua_strecker,bizeps"],["handgelenk-curls","Handgelenk-Curls","kg","ua_beuger",""],["kniebeugen","Kniebeugen (Langhantel)","kg","quad_rf,quad_vl,quad_vm,gluteus","adduktoren,hams_a,hams_i,ruecken_u,soleus"],["frontkniebeugen","Frontkniebeugen","kg","quad_vl,quad_vm,quad_rf","gluteus,adduktoren,ruecken_u,bauch"],["goblet-squat","Goblet Squat","kg","quad_vl,quad_vm,quad_rf,gluteus","adduktoren,bauch"],["beinpresse","Beinpresse","kg","quad_vl,quad_vm,quad_rf,gluteus","adduktoren,hams_a,soleus"],["hackenschmidt","Hackenschmidt-Kniebeugen","kg","quad_vl,quad_vm,quad_rf","gluteus,adduktoren"],["ausfallschritte","Ausfallschritte","kg","quad_vl,quad_vm,quad_rf,gluteus","adduktoren,gluteus_m,hams_a,soleus"],["bulgarian","Bulgarische Split Squats","kg","quad_vl,quad_vm,gluteus","quad_rf,adduktoren,gluteus_m,hams_a"],["step-ups","Step-ups","kg","quad_vl,quad_vm,gluteus","quad_rf,gluteus_m,hams_a"],["beinstrecker","Beinstrecker","kg","quad_rf,quad_vl,quad_vm",""],["rdl","Rumänisches Kreuzheben","kg","hams_a,hams_i,gluteus","ruecken_u,adduktoren,ua_beuger,nacken"],["beinbeuger","Beinbeuger","kg","hams_a,hams_i","waden"],["beinbeuger-sitzend","Beinbeuger sitzend","kg","hams_a,hams_i","waden"],["hip-thrust","Hip Thrust","kg","gluteus","hams_a,hams_i,quad_vl,gluteus_m,adduktoren"],["abduktoren","Abduktoren (Maschine)","kg","gluteus_m","gluteus"],["adduktoren","Adduktoren (Maschine)","kg","adduktoren",""],["wadenheben","Wadenheben stehend","kg","waden","soleus"],["wadenheben-sitzend","Wadenheben sitzend","kg","soleus","waden"],["beinheben","Hängendes Beinheben","bw","hueftbeuger,bauch","bauch_s,quad_rf,ua_beuger"],["knieheben","Hängendes Knieheben","bw","hueftbeuger,bauch","bauch_s"],["plank","Plank","time","bauch","bauch_s,schulter_v,gluteus,quad_rf"],["seitstuetz","Seitstütz","time","bauch_s","gluteus_m,bauch"],["crunches","Crunches","bw","bauch","bauch_s"],["kabel-crunch","Kabel-Crunch","kg","bauch","bauch_s"],["russian-twist","Russian Twist","bw","bauch_s","bauch,hueftbeuger"],["ab-wheel","Ab Wheel Rollout","bw","bauch","bauch_s,latissimus,schulter_v,hueftbeuger"],["pallof","Pallof Press","kg","bauch_s","bauch"],["holzhacker","Holzhacker am Kabel","kg","bauch_s","bauch,schulter_v"]];
+const TONE_HEX = { y: '#fff200', m: '#ec008c', c: '#00aeef' };
+const normName = s => String(s || '').toLowerCase().replace(/\(.*?\)/g, ' ').replace(/[^a-z0-9äöüß]+/g, ' ').trim();
+const LIB_BY_ID = Object.fromEntries(EX_LIB.map(e => [e[0], e]));
+const LIB_BY_NAME = Object.fromEntries(EX_LIB.map(e => [normName(e[1]), e]));
+const csvMus = v => String(v || '').split(',').filter(k => BODY.names[k]);
+// Muskeln aus der Bibliothek, passend zu Kennung oder Name der Übung
+function libMuscles(id, name) {
+  const e = LIB_BY_ID[id] || LIB_BY_NAME[normName(name)];
+  return e ? { p: csvMus(e[3]), s: csvMus(e[4]) } : { p: [], s: [] };
+}
+function cleanMuscles(m) {
+  if (!m || typeof m !== 'object' || (!Array.isArray(m.p) && !Array.isArray(m.s))) return null;
+  const p = [...new Set((Array.isArray(m.p) ? m.p : []).filter(k => BODY.names[k]))];
+  const s = [...new Set((Array.isArray(m.s) ? m.s : []).filter(k => BODY.names[k] && !p.includes(k)))];
+  return { p, s };
+}
+
+
+/* ---------- Muskeln: Darstellung ---------- */
+const mixHex = (a, b, t) => { const h = x => [1, 3, 5].map(i => parseInt(x.slice(i, i + 2), 16)); const A = h(a), B2 = h(b); return '#' + A.map((v, i) => Math.round(v * t + B2[i] * (1 - t)).toString(16).padStart(2, '0')).join(''); };
+const MUS_BASE = '#505057';
+const musOf = x => (x && x.muscles) || (x ? libMuscles(x.id, x.name) : { p: [], s: [] });
+const musOrder = m => m.p.concat(m.s);
+const musSoft = tk => mixHex(TONE_HEX[tk] || '#ffffff', MUS_BASE, 0.45);
+// Körper als SVG; Nummern als runde Marken darüber (in % positioniert, skalieren mit)
+function bodyFig(view, tk, m, o = {}) {
+  const tone = TONE_HEX[tk] || '#ffffff', soft = musSoft(tk), v = view === 'front' ? 'f' : 'b', list = BODY[view === 'front' ? 'front' : 'back'];
+  const order = musOrder(m), side = o.side || 'auto', w = o.w || 150, lr = o.lr ?? 9;
+  const d = Math.max(14, Math.round(lr * 2 * w / 200)), fs = Math.max(8.5, Math.round(d * 6) / 10);
+  const paths = list.map(([k, dd]) => `<path class="m" data-m="${k}" d="${dd}" fill="${m.p.includes(k) ? tone : m.s.includes(k) ? soft : MUS_BASE}"/>`).join('');
+  const lines = view === 'front' ? '<path class="ln" d="M86,146H114M85,166H115M86,186H114M100,127V216"/>' : '<path class="ln" d="M100,150V214"/>';
+  const labs = o.nums === false ? '' : list.filter(([k]) => order.includes(k) && (o.allLabels || !LABEL_VIEW[k] || LABEL_VIEW[k] === view)).map(([k, , x, y]) => {
+    const rx = side === 'right' || (side === 'auto' && BODY.right[v].includes(k)) ? 200 - x : x;
+    return `<span class="mlab" style="left:${rx / 2}%;top:${Math.round(y / 4.4 * 100) / 100}%;width:${d}px;height:${d}px;font-size:${fs}px">${order.indexOf(k) + 1}</span>`;
+  }).join('');
+  return `<div class="bodyfig" style="width:${w}px"><svg viewBox="0 0 200 440" role="img" aria-label="${view === 'front' ? 'Vorderseite' : 'Rückseite'}: ${esc(order.map((k, i) => `${i + 1} ${BODY.names[k][0]}`).join(', ') || 'keine Muskeln')}"><path d="${BODY.sil}" fill="#38383d"/><ellipse cx="100" cy="30" rx="17" ry="22" fill="#38383d"/>${paths}${lines}</svg>${labs}</div>`;
+}
+// Muskeln, die vorne und hinten zu sehen sind, bekommen ihre Nummer nur auf der Seite, wo sie hauptsächlich liegen
+const LABEL_VIEW = { latissimus: 'back', nacken: 'back', schulter_s: 'front', bauch_s: 'front', gluteus_m: 'back', quad_vl: 'front', adduktoren: 'front', waden: 'back', soleus: 'back' };
+const FRONT_IDS = new Set(BODY.front.map(f => f[0])), BACK_IDS = new Set(BODY.back.map(f => f[0]));
+const bestView = m => { const f = m.p.filter(k => FRONT_IDS.has(k) && !BACK_IDS.has(k)).length, b = m.p.filter(k => BACK_IDS.has(k) && !FRONT_IDS.has(k)).length; return b > f ? 'back' : 'front'; };
+function musLegend(m, tk) {
+  const order = musOrder(m);
+  if (!order.length) return '<div class="small muted">Noch keine Muskeln eingetragen.</div>';
+  return `<ol class="mleg">${order.map((k, i) => { const main = m.p.includes(k); return `<li><span class="mnum">${i + 1}</span><span class="mn">${esc(BODY.names[k][0])} <small>${esc(BODY.names[k][1])}</small></span><span class="mrole${main ? ' main' : ''}" style="${main ? `color:${TONE_HEX[tk] || '#fff'}` : ''}">${main ? 'Haupt' : 'Neben'}</span></li>`; }).join('')}</ol>`;
+}
+const musSwatches = tk => `<div class="msw"><span><i style="background:${TONE_HEX[tk] || '#fff'}"></i>Hauptmuskel</span><span><i style="background:${musSoft(tk)}"></i>Nebenmuskel</span></div>`;
+function musBlock(x, tk) {
+  const m = musOf(x);
+  if (!musOrder(m).length) return `<div class="small muted">Für diese Übung sind noch keine Muskeln hinterlegt. Im Plan unter „Bearbeiten“ antippen.</div>`;
+  return `<div class="musbox"><button type="button" class="musfigs" data-act="mus-full" data-ex="${esc(x.id)}" data-tone="${tk}" aria-label="Muskeln im Vollbild öffnen">
+      <span class="mcol">${bodyFig('front', tk, m)}<span class="eyebrow">Vorne</span></span>
+      <span class="mcol">${bodyFig('back', tk, m)}<span class="eyebrow">Hinten</span></span>
+      <span class="mexp">${ICON.expand}</span></button>
+    ${musSwatches(tk)}${musLegend(m, tk)}</div>`;
+}
+// Übung zu einer Kennung finden (laufendes Training, Builder, Pläne)
+function exById(id) {
+  if (draft) { const it = draft.items.find(it => it.ex.id === id); if (it) return it.ex; }
+  if (builder) for (const d of DAYS) { const x = builder.work[d].exercises.find(y => y.id === id); if (x) return x; }
+  for (const p of [cfg.me, partner()]) for (const d of DAYS) { const x = st().plans[p][d].exercises.find(y => y.id === id); if (x) return x; }
+  return null;
+}
+/* Zoom mit zwei Fingern (und Verschieben mit einem Finger, wenn gezoomt). onTap bekommt das angetippte Element. */
+function attachZoom(stage, wrap, pill, onTap) {
+  let sc = 1, tx = 0, ty = 0, g = null, lastTap = 0;
+  const pts = new Map();
+  const apply = () => {
+    const r = stage.getBoundingClientRect();
+    sc = Math.min(4, Math.max(1, sc));
+    tx = Math.min(0, Math.max(r.width * (1 - sc), tx)); ty = Math.min(0, Math.max(r.height * (1 - sc), ty));
+    wrap.style.transform = `translate(${tx}px,${ty}px) scale(${sc})`;
+    if (pill) pill.textContent = sc.toFixed(1).replace('.', ',') + '×';
+  };
+  const local = e => { const r = stage.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  stage.addEventListener('pointerdown', e => {
+    pts.set(e.pointerId, local(e)); try { stage.setPointerCapture(e.pointerId); } catch (er) {}
+    const a = [...pts.values()];
+    if (a.length === 2) g = { d: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y), s: sc, tx, ty, mx: (a[0].x + a[1].x) / 2, my: (a[0].y + a[1].y) / 2, pinch: true };
+    else if (a.length === 1) g = { x: a[0].x, y: a[0].y, tx, ty, t: Date.now(), moved: false, pinch: false, cx: e.clientX, cy: e.clientY };
+  });
+  stage.addEventListener('pointermove', e => {
+    if (!pts.has(e.pointerId) || !g) return;
+    pts.set(e.pointerId, local(e));
+    const a = [...pts.values()];
+    if (g.pinch && a.length >= 2) {
+      const d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y), mx = (a[0].x + a[1].x) / 2, my = (a[0].y + a[1].y) / 2;
+      const ns = Math.min(4, Math.max(1, g.s * d / g.d));
+      tx = mx - (g.mx - g.tx) * ns / g.s; ty = my - (g.my - g.ty) * ns / g.s; sc = ns; apply();
+    } else if (!g.pinch && a.length === 1) {
+      const dx = a[0].x - g.x, dy = a[0].y - g.y;
+      if (Math.abs(dx) + Math.abs(dy) > 8) g.moved = true;
+      if (sc > 1 && g.moved) { tx = g.tx + dx; ty = g.ty + dy; apply(); }
+    }
+  });
+  const end = e => {
+    if (!pts.has(e.pointerId)) return;
+    pts.delete(e.pointerId);
+    if (g && !g.pinch && !g.moved && e.type === 'pointerup' && Date.now() - g.t < 500) {
+      const now = Date.now();
+      if (!onTap && now - lastTap < 320) { sc = 1; tx = ty = 0; apply(); }
+      lastTap = now;
+      if (onTap) onTap(document.elementFromPoint(g.cx, g.cy));
+    }
+    if (!pts.size) g = null; else if (g && g.pinch) g = null;
+  };
+  stage.addEventListener('pointerup', end); stage.addEventListener('pointercancel', end);
+  return { reset: () => { sc = 1; tx = ty = 0; apply(); } };
+}
+function openMusFull(x, tk) {
+  const m = musOf(x), order = musOrder(m);
+  const chips = order.map((k, i) => `<span class="mchip${m.p.includes(k) ? '' : ' soft'}" style="background:${m.p.includes(k) ? TONE_HEX[tk] : musSoft(tk)};color:${m.p.includes(k) && tk !== 'm' ? '#000' : '#fff'}"><b>${i + 1}</b>${esc(BODY.names[k][0])}</span>`).join('');
+  $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><div class="sheet full musfull" role="dialog" aria-modal="true" aria-label="Muskeln: ${esc(x.name)}">
+    <div class="mf-top"><button class="iconbtn glass" data-act="mclose" aria-label="Schließen">${ICON.x}</button><div class="mf-t"><span class="eyebrow" style="color:${TONE_HEX[tk] || '#fff'}">Muskeln</span><b>${esc(x.name)}</b></div><span style="width:44px"></span></div>
+    <div class="mf-ctl"><div class="seg2" role="group" aria-label="Ansicht"><button data-act="mf-side" data-v="f" aria-pressed="true">Vorne</button><button data-act="mf-side" data-v="b" aria-pressed="false">Hinten</button></div><span class="zpill" id="mf-z">1,0×</span></div>
+    <div class="zstage" id="mf-stage"><div class="zwrap" id="mf-wrap"><div class="flip" id="mf-flip"><div class="face">${bodyFig('front', tk, m, { w: 230, lr: 8 })}</div><div class="face bk">${bodyFig('back', tk, m, { w: 230, lr: 8 })}</div></div></div></div>
+    <div class="small muted" style="text-align:center">2 Finger zum Zoomen · doppelt tippen setzt zurück</div>
+    <div class="mchips">${chips || '<span class="small muted">Keine Muskeln hinterlegt.</span>'}</div>
+  </div></div>`;
+  attachZoom($('#mf-stage'), $('#mf-wrap'), $('#mf-z'));
+}
+/* Muskel-Editor im Plan-Builder: 1× tippen Haupt, 2× Neben, 3× aus */
+let musEd = null;
+function openMusEditor() {
+  const inp = $('#f-muscles'); if (!inp) return;
+  let m; try { m = cleanMuscles(JSON.parse(inp.value)); } catch (e) { m = null; }
+  musEd = { m: m || { p: [], s: [] }, view: 'front', tk: DAY_TONE[builder.day] };
+  const ov = document.createElement('div');
+  ov.className = 'museditor'; ov.id = 'museditor';
+  ov.innerHTML = `<div class="me-top"><button type="button" class="linkbtn" data-act="me-cancel">Abbrechen</button><div class="mf-t"><b>Muskeln wählen</b><span class="eyebrow" style="color:${TONE_HEX[musEd.tk]}">${esc(($('#f-name') || {}).value || 'Neue Übung')}</span></div><button type="button" class="btn small primary" data-act="me-done">Fertig</button></div>
+    <div class="mf-ctl"><div class="seg2" role="group" aria-label="Ansicht"><button type="button" data-act="me-side" data-v="front" aria-pressed="true">Vorne</button><button type="button" data-act="me-side" data-v="back" aria-pressed="false">Hinten</button></div><span class="zpill" id="me-z">1,0×</span></div>
+    <div class="zstage me-stage" id="me-stage"><div class="zwrap" id="me-wrap"></div></div>
+    <div class="msw me-hint"><span><i style="background:${TONE_HEX[musEd.tk]}"></i>1× Haupt</span><span><i style="background:${musSoft(musEd.tk)}"></i>2× Neben</span><span><i style="background:${MUS_BASE}"></i>3× aus</span></div>
+    <div id="me-leg" class="me-leg"></div>`;
+  $('#exform').appendChild(ov);
+  musEdRender();
+  attachZoom($('#me-stage'), $('#me-wrap'), $('#me-z'), el => {
+    const k = el && el.closest && el.closest('[data-m]') && el.closest('[data-m]').dataset.m;
+    if (!k) return;
+    const m2 = musEd.m;
+    if (m2.p.includes(k)) { m2.p = m2.p.filter(y => y !== k); m2.s.push(k); }
+    else if (m2.s.includes(k)) m2.s = m2.s.filter(y => y !== k);
+    else m2.p.push(k);
+    musEdRender();
+  });
+}
+function musEdRender() {
+  $('#me-wrap').innerHTML = `<div class="me-fig">${bodyFig(musEd.view, musEd.tk, musEd.m, { w: 260, lr: 7, allLabels: true })}</div>`;
+  $('#me-leg').innerHTML = musLegend(musEd.m, musEd.tk);
+  document.querySelectorAll('[data-act="me-side"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === musEd.view)));
+}
+function musPreview(m, tk) {
+  const order = musOrder(m);
+  return `<div class="mprev">${bodyFig('front', tk, m, { w: 64, nums: false })}${bodyFig('back', tk, m, { w: 64, nums: false })}
+    <span class="mptxt">${order.length ? `<b>Haupt:</b> ${esc(m.p.map(k => BODY.names[k][0]).join(', ') || '–')}<br><b>Neben:</b> ${esc(m.s.map(k => BODY.names[k][0]).join(', ') || '–')}` : '<span class="muted">Noch keine Muskeln. Tippe auf „Muskeln bearbeiten“.</span>'}</span></div>`;
+}
+/* Suche in der Bibliothek beim Anlegen einer Übung */
+let sugGroup = '';
+function renderSug() {
+  const box = $('#f-sug'), inp = $('#f-name'); if (!box || !inp) return;
+  const q = normName(inp.value), toks = q.split(' ').filter(Boolean);
+  const chips = `<div class="chips sugchips" role="group" aria-label="Nach Muskelgruppe filtern">${['', ...Object.keys(BODY.groups)].map(g => `<button type="button" class="pchip" data-act="sug-g" data-v="${g}" aria-pressed="${sugGroup === g}">${g || 'Alle'}</button>`).join('')}</div>`;
+  if (!toks.length && !sugGroup) { box.innerHTML = chips; return; }
+  const hits = EX_LIB.filter(e => {
+    const n = normName(e[1]) + ' ' + e[0].replace(/-/g, ' ');
+    if (!toks.every(t => n.includes(t))) return false;
+    return !sugGroup || csvMus(e[3]).some(k => BODY.groups[sugGroup].includes(k));
+  }).slice(0, 8);
+  const tk = DAY_TONE[builder.day];
+  const hl = name => { if (!toks.length) return esc(name); const re = new RegExp('(' + toks.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')', 'ig'); return esc(name).replace(re, '<u>$1</u>'); };
+  box.innerHTML = chips + `<div class="eyebrow" style="margin:4px 2px 0">${hits.length} ${hits.length === 1 ? 'Treffer' : 'Treffer'} in der Bibliothek</div>
+    <div class="suglist" role="listbox" aria-label="Passende Übungen">${hits.map(e => { const m = { p: csvMus(e[3]), s: csvMus(e[4]) }; return `<button type="button" role="option" class="sugitem" data-act="sug-pick" data-id="${e[0]}">${bodyFig(bestView(m), tk, m, { w: 22, nums: false })}<span class="sgt"><b>${hl(e[1])}</b><span>${TYPE_LABEL[e[2]]} · ${esc(m.p.map(k => BODY.names[k][0]).join(', '))}</span></span>${ICON.right}</button>`; }).join('')}
+    ${inp.value.trim() ? `<button type="button" class="sugitem new" data-act="sug-close"><span class="plus">+</span><span class="sgt"><b>„${esc(inp.value.trim())}“ als neue Übung anlegen</b><span>Muskeln danach selbst antippen</span></span></button>` : ''}</div>`;
+}
+function pickSug(id) {
+  const e = LIB_BY_ID[id]; if (!e) return;
+  const m = { p: csvMus(e[3]), s: csvMus(e[4]) };
+  $('#f-name').value = e[1];
+  const ty = $('#f-type'); ty.value = e[2]; ty.dispatchEvent(new Event('input', { bubbles: true }));
+  $('#f-muscles').value = JSON.stringify(m);
+  $('#f-libid').value = e[0];
+  $('#f-mus-prev').innerHTML = musPreview(m, DAY_TONE[builder.day]);
+  if (e[2] === 'bw') { const l = $('#f-load'); if (l) { l.value = LOAD_DEFAULT[e[0]] ?? 100; l.dispatchEvent(new Event('input', { bubbles: true })); } }
+  sugGroup = ''; $('#f-sug').innerHTML = ''; $('#f-sug').hidden = true;
+}
 
 /* ---------- Hilfsfunktionen ---------- */
 const $ = (s, r = document) => r.querySelector(s);
@@ -122,7 +311,7 @@ function flameBoard() {
     <section class="card fboard" aria-label="Wochenstreak und Flammen, du und ${esc(other)}">
       <div class="fb-top">${side(me, a)}<div class="fb-mid"><img src="${FLAME.W}" alt="Wochenflamme"><span class="eyebrow">Streak</span></div>${side(other, b, true)}</div>
       <div class="fb-week">${weekSlots(a.week)}<span class="eyebrow">Woche</span>${weekSlots(b.week, true)}</div>
-      <div class="fb-duel">${DAYS.map(d => `<div><b class="mono">${a.counts[d]}</b><img src="${FLAME[d]}" alt="${esc(dl(d))}"><span class="mono muted">${b.counts[d]}</span></div>`).join('')}</div>
+      <div class="fb-duel">${DAYS.map(d => `<div><b class="mono">${a.counts[d]}</b><img src="${FLAME[d]}" alt=""><span class="mono muted">${b.counts[d]}</span><i class="fb-k t-${DAY_TONE[d]}">${esc(dl(d))}</i></div>`).join('')}</div>
     </section>`;
 }
 function viewDone(id) {
@@ -186,6 +375,7 @@ const ICON = {
   flip: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/></svg>',
   barT: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="2.5" y="7" width="19" height="10" rx="1.5"/><path d="M8 12h8"/></svg>',
   dl: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>',
+  expand: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>',
   warn: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17v.5"/></svg>',
   trash: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13"/></svg>',
   del: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 5H9l-6 7 6 7h12z"/><path d="m16 9-5 6M11 9l5 6"/></svg>'
@@ -228,6 +418,7 @@ function cleanEx(x) {
     warmup: type === 'kg' && (x.warmup === undefined ? WARMUP_DEFAULT.has(id) : !!x.warmup), personal: !!x.personal
   };
   if (type === 'bw') o.load = cleanLoad(x.load, id);
+  o.muscles = cleanMuscles(x.muscles) || libMuscles(id, o.name);
   if (x.replaces) o.replaces = str(x.replaces, 64);
   return o;
 }
@@ -587,7 +778,7 @@ function deloadState(p) {
 const deloadW = W => (W > 0 ? W * 0.9 : W < 0 ? W * 1.1 : 0);
 
 /* ---------- Plan-Abgleich ---------- */
-const SHARED_FIELDS = ['name', 'type', 'sets', 'min', 'max', 'warmup', 'load'];
+const SHARED_FIELDS = ['name', 'type', 'sets', 'min', 'max', 'warmup', 'load', 'muscles'];
 function fieldChanges(a, b, sharedOnly) {
   const c = [];
   if (a.name !== b.name) c.push('Name');
@@ -596,6 +787,7 @@ function fieldChanges(a, b, sharedOnly) {
   if (a.min !== b.min || a.max !== b.max) c.push(`${b.type === 'time' ? 'Sek.' : 'Wdh.'} ${a.min}–${a.max} → ${b.min}–${b.max}`);
   if (!!a.warmup !== !!b.warmup) c.push(b.warmup ? 'Aufwärmsatz an' : 'Aufwärmsatz aus');
   if (a.type === 'bw' && b.type === 'bw' && loadOf(a) !== loadOf(b)) c.push(`Lastanteil ${loadOf(a)} → ${loadOf(b)} %`);
+  if (JSON.stringify(musOf(a)) !== JSON.stringify(musOf(b))) c.push('Muskeln');
   if (sharedOnly) return c;
   if (b.type !== 'time' && (a.step || 0) !== (b.step || 0)) c.push(`Steigerung ${fmtN(a.step || 0)} → ${fmtN(b.step || 0)} kg`);
   if ((a.cue || '') !== (b.cue || '')) c.push('Ausführung');
@@ -1143,7 +1335,6 @@ async function startRestore() {
 const SPOT_LIFE = 3 * 864e5, SPOT_MAX = 30 * 864e5, SPOT_SHOW = 5000;
 const SPOT_WORDS = ['DURCHGEPUMPT', 'ERLEDIGT', 'AUSGEPOWERT', 'ABGEHAKT', 'DURCHGEZOGEN', 'GESCHAFFT', 'PLATT', 'ABGERISSEN'];
 const SPOT_EMOJI = ['💪', '🔥', '😂', '👏', '🫡', '😮‍💨'];
-const TONE_HEX = { y: '#fff200', m: '#ec008c', c: '#00aeef' };
 const SPOT = { inbox: [], gallery: [], urls: {}, facing: 'environment', stream: null, ed: null, view: null, galDel: null, ready: false };
 
 const SDB = {
@@ -1995,11 +2186,12 @@ function exCard(it, i) {
     ${hint ? `<div class="exhint">${esc(hint)}${it.kind === 'plateau' && !draft.deload ? `<div class="btnrow"><button class="btn small" data-act="plateau-down" data-i="${i}">Heute −10 %</button></div><span class="small muted">Oder im Plan die Spanne anheben, z. B. ${x.min}–${x.max} → ${x.min + 2}–${x.max + 2}.</span>` : ''}</div>` : ''}
     ${sw ? `<div class="swaphint"><span><b>${esc(sw.person)}</b> hat heute ${esc(sw.data.fromName)} durch <b>${esc(sw.data.to.name)}</b> getauscht.</span><div class="btnrow"><button class="btn small primary" data-act="swap-follow" data-i="${i}" data-id="${esc(sw.id)}">Auch tauschen</button><button class="btn small ghost" data-act="swap-ignore" data-id="${esc(sw.id)}">Nein</button></div></div>` : ''}
     ${mine && mine.note ? `<div class="small muted">Deine Notiz vom letzten Mal: ${esc(mine.note)}</div>` : ''}
-    <details class="how"><summary>Ausführung & Video</summary><div class="body">
+    <div class="howrow"><details class="how"><summary>Ausführung & Video</summary><div class="body">
       ${x.cue ? `<p>${esc(x.cue)}</p>` : ''}
       ${x.image ? `<img src="${esc(x.image)}" alt="${esc(x.name)}" loading="lazy">` : ''}
       <a class="vlink" href="${esc(videoUrl(x))}" target="_blank" rel="noopener">▶ ${x.video ? 'Video ansehen' : 'Shorts auf YouTube'}</a>
     </div></details>
+    <details class="how mus" data-ex="${esc(x.id)}" ${musOpen.has(x.id) ? 'open' : ''}><summary>Muskeln</summary><div class="body">${musBlock(x, DAY_TONE[draft.day])}</div></details></div>
     <div class="sets ${x.type}">${cols}${warm}${rows}</div>
     <div class="cardacts"><button class="addset" data-act="addset" data-i="${i}">+ Satz</button><button class="addset" data-act="delset" data-i="${i}" ${it.sets.length <= 1 ? 'disabled' : ''}>− Satz</button><span class="sp"></span>${it.removed ? '' : `<button class="addset" data-act="swap-open" data-i="${i}">${ICON.swap} Heute tauschen</button>`}</div>
     <label class="note"><span>Notiz</span><textarea id="note-${i}" data-note="${i}" rows="2" placeholder="z. B. Schulter zwickt, nächstes Mal enger greifen">${esc(it.note)}</textarea></label>
@@ -2249,6 +2441,7 @@ function viewExercise(id) {
     </div>
     <section class="card chart"><div class="rowbetween"><b>${label}</b><div class="legend"><span class="ln">${LEG(false)}Du</span><span class="ln">${LEG(true)}${esc(other)}</span></div></div>
       ${chartSvg(series, label)}<span class="small muted">ohne Deload-Einheiten${total ? ` · Körpergewicht × ${pct} % + Zusatz/Abzug` : ''}${noBody.length ? ` · ${noBody.map(p => p === me ? 'Du hast' : esc(p) + ' hat').join(', ')} noch kein Körpergewicht eingetragen` : ''}</span></section>
+    ${def ? `<section class="card musc"><b>Muskeln</b>${musBlock(def, DAY_TONE[day] || 'y')}</section>` : ''}
     <div class="sec-title"><h2>Alle Einheiten</h2></div>
     <section class="card">${sessions.length ? sessions.map(h => `<div class="sess"><div class="top"><span class="who" style="color:var(--fg)">${h.person === me ? 'Du' : esc(h.person)}</span><span class="mono">${fmtDate(h.ts)}${h.deload ? ' · Deload' : ''}</span></div>
       ${sessLine(h)}${h.note ? `<p class="quote muted">${esc(h.note)}</p>` : ''}</div>`).join('') : '<div class="empty">Noch nicht trainiert.</div>'}</section>`;
@@ -2537,7 +2730,8 @@ const sheetHead = (eyebrow, title) => `<div class="shead"><button type="button" 
 function exerciseForm(mode, i) {
   const w = builder.work[builder.day];
   const old = mode === 'add' ? null : w.exercises[i];
-  const x = mode === 'edit' ? old : { id: '', name: '', type: old ? old.type : 'kg', sets: old ? old.sets : 3, min: old ? old.min : 8, max: old ? old.max : 12, step: old ? old.step : 2.5, cue: '', video: '', image: '', warmup: false, personal: old ? old.personal : false, load: old && old.type === 'bw' ? loadOf(old) : 100 };
+  sugGroup = '';
+  const x = mode === 'edit' ? old : { id: '', name: '', muscles: { p: [], s: [] }, type: old ? old.type : 'kg', sets: old ? old.sets : 3, min: old ? old.min : 8, max: old ? old.max : 12, step: old ? old.step : 2.5, cue: '', video: '', image: '', warmup: false, personal: old ? old.personal : false, load: old && old.type === 'bw' ? loadOf(old) : 100 };
   const curLoad = x.type === 'bw' ? loadOf(x) : 100;
   const title = mode === 'add' ? 'Neue Übung' : mode === 'edit' ? 'Übung bearbeiten' : 'Übung austauschen';
   $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet full form" id="exform" data-mode="${mode}" data-i="${i ?? ''}" novalidate>
@@ -2545,13 +2739,19 @@ function exerciseForm(mode, i) {
     <h2>${title}</h2>
     ${mode === 'replace' ? `<p class="help" style="margin:0">Ersetzt <b>${esc(old.name)}</b>. Deren bisherige Einträge bleiben im Archiv erhalten.</p>` : ''}
     ${mode === 'edit' ? `<p class="help" style="margin:0">Änderungen hier gelten für dieselbe Übung, ihr Verlauf läuft weiter. Für eine andere Übung nutze „Austauschen“.</p>` : ''}
-    <label>Name<input class="inp" id="f-name" name="name" value="${esc(x.name)}" maxlength="60" required></label>
+    <label>${mode === 'edit' ? 'Name' : 'Name oder Suche'}<input class="inp" id="f-name" name="name" value="${esc(x.name)}" maxlength="60" required autocomplete="off"></label>
+    ${mode === 'edit' ? '' : '<div id="f-sug" class="sug"></div>'}
+    <input type="hidden" id="f-libid" name="libid" value="">
     <label>Art<select id="f-type" name="type">${Object.entries(TYPE_LABEL).map(([k, v]) => `<option value="${k}" ${x.type === k ? 'selected' : ''}>${v}${k === 'bw' ? ' (Wdh., optional ± kg)' : k === 'time' ? ' (Sekunden)' : ' (kg + Wdh.)'}</option>`).join('')}</select></label>
     <div id="f-load-l" class="loadbox" ${x.type === 'bw' ? '' : 'hidden'}>
       <label>Lastanteil Körpergewicht<span class="field pctf"><input id="f-load" name="load" inputmode="numeric" autocomplete="off" value="${curLoad}" aria-label="Lastanteil Körpergewicht in Prozent"><span>%</span></span>
         <span class="help">Anteil, der in die Gesamtlast eingeht. Eigene Zahl eintragen oder Vorlage wählen. Wird mit ${esc(partner())} abgeglichen.</span></label>
       <div class="chips loadchips">${st().presets.map(pr => `<button type="button" class="pchip" data-act="fload" data-v="${pr.pct}" aria-pressed="${pr.pct === curLoad}">${pr.pct} % ${esc(pr.name)}</button>`).join('')}<a class="pchip lnk" href="#vorlagen" data-act="mclose">Vorlagen bearbeiten</a></div>
     </div>
+    <div class="musform"><span class="eyebrow">Muskeln · wird mit ${esc(partner())} abgeglichen</span>
+      <div id="f-mus-prev">${musPreview(musOf(x), DAY_TONE[builder.day])}</div>
+      <input type="hidden" id="f-muscles" name="muscles" value="${esc(JSON.stringify(musOf(x)))}">
+      <button type="button" class="btn small" data-act="mus-edit">Muskeln bearbeiten</button></div>
     <div class="grid3"><label>Sätze<input class="inp" id="f-sets" name="sets" inputmode="numeric" value="${x.sets}"></label>
       <label><span id="f-unit-min">${x.type === 'time' ? 'Sek. von' : 'Wdh. von'}</span><input class="inp" id="f-min" name="min" inputmode="numeric" value="${x.min}"></label>
       <label>bis<input class="inp" id="f-max" name="max" inputmode="numeric" value="${x.max}"></label></div>
@@ -2566,6 +2766,7 @@ function exerciseForm(mode, i) {
     <div class="err" id="f-err" hidden></div>
     <div class="sbar"><button class="btn primary" type="submit">${mode === 'replace' ? 'Austauschen' : 'Übernehmen'}</button></div>
   </form></div>`;
+  if (mode !== 'edit') renderSug();
   setTimeout(() => { const n = $('#f-name'); if (n && mode !== 'edit') n.focus(); }, 50);
 }
 function submitExercise(form) {
@@ -2580,14 +2781,18 @@ function submitExercise(form) {
   if (!min || !max || min > max) return err('Bitte gib eine gültige Spanne an, z. B. 8 bis 12.');
   const url = v => { v = String(v || '').trim(); return /^https?:\/\//i.test(v) ? v : ''; };
   const data = { name, type, sets, min, max, step: type === 'time' ? 0 : Math.max(0, num(f.get('step'))), cue: String(f.get('cue') || '').trim(), video: url(f.get('video')), image: url(f.get('image')), warmup: type === 'kg' && f.get('warmup') === 'on', personal: f.get('personal') === 'on' };
+  try { data.muscles = cleanMuscles(JSON.parse(f.get('muscles') || 'null')) || { p: [], s: [] }; } catch (e) { data.muscles = { p: [], s: [] }; }
+  const libId = String(f.get('libid') || '');
+  const used = id => DAYS.some(d => builder.work[d].exercises.some(y => y.id === id));
+  const newId = () => (LIB_BY_ID[libId] && LIB_BY_ID[libId][1] === name && !used(libId) ? libId : 'u-' + uid().slice(0, 8));
   if (type === 'bw') {
     const lv = String(f.get('load') ?? '').trim();
     if (!/^\d{1,3}$/.test(lv) || +lv > 200) return err('Lastanteil: bitte eine Zahl von 0 bis 200 eintragen.');
     data.load = +lv;
   }
   if (mode === 'edit') { Object.assign(w.exercises[i], data); if (type !== 'bw') delete w.exercises[i].load; }
-  else if (mode === 'add') w.exercises.push({ id: 'u-' + uid().slice(0, 8), ...data });
-  else { const old = w.exercises[i]; w.exercises.splice(i, 1, { id: 'u-' + uid().slice(0, 8), replaces: old.id, ...data }); }
+  else if (mode === 'add') w.exercises.push({ id: newId(), ...data });
+  else { const old = w.exercises[i]; w.exercises.splice(i, 1, { id: newId(), replaces: old.id, ...data }); }
   $('#modal').innerHTML = ''; markDirty(); render();
 }
 function savePlan() {
@@ -2647,6 +2852,8 @@ function viewSettings() {
 }
 /* ---------- Lastanteil-Vorlagen (gemeinsam für beide) ---------- */
 let presetEdit = null;
+const musOpen = new Set();
+document.addEventListener('toggle', e => { const d = e.target; if (d && d.matches && d.matches('details.mus')) { if (d.open) musOpen.add(d.dataset.ex); else musOpen.delete(d.dataset.ex); } }, true);
 const presetsDirty = () => presetEdit && JSON.stringify(presetEdit) !== JSON.stringify(st().presets);
 function viewPresets() {
   if (!presetEdit) presetEdit = clone(st().presets);
@@ -2767,6 +2974,15 @@ const actions = {
   addset: t => { const i = +t.dataset.i, it = draft.items[i]; it.sets.forEach((s, j) => readSetInputs(i, j)); const l = it.sets[it.sets.length - 1]; it.sets.push(blankSet(null, { w: l ? l.w : '', neg: l ? l.neg : false, alt: l ? l.alt : '', mk: l ? l.mk : '', lab: l ? l.lab : '' })); saveDraft(); rerenderCard(i); },
   delset: t => { const i = +t.dataset.i, it = draft.items[i]; if (it.sets.length <= 1) return; it.sets.forEach((s, j) => readSetInputs(i, j)); it.sets.pop(); saveDraft(); rerenderCard(i); },
   'swap-open': t => swapForm(+t.dataset.i),
+  'mus-full': t => { const x = exById(t.dataset.ex); if (x) openMusFull(x, t.dataset.tone); },
+  'mf-side': t => { const f = $('#mf-flip'); if (!f) return; f.classList.toggle('turned', t.dataset.v === 'b'); document.querySelectorAll('[data-act="mf-side"]').forEach(b => b.setAttribute('aria-pressed', String(b === t))); },
+  'mus-edit': () => openMusEditor(),
+  'me-side': t => { musEd.view = t.dataset.v; musEdRender(); },
+  'me-cancel': () => { const o = $('#museditor'); if (o) o.remove(); musEd = null; },
+  'me-done': () => { $('#f-muscles').value = JSON.stringify(musEd.m); $('#f-mus-prev').innerHTML = musPreview(musEd.m, musEd.tk); const o = $('#museditor'); if (o) o.remove(); musEd = null; },
+  'sug-g': t => { sugGroup = t.dataset.v; renderSug(); },
+  'sug-pick': t => pickSug(t.dataset.id),
+  'sug-close': () => { sugGroup = ''; $('#f-sug').innerHTML = ''; },
   fload: t => { const el = $('#f-load'); if (el) el.value = t.dataset.v; document.querySelectorAll('.loadchips .pchip[data-v]').forEach(b => b.setAttribute('aria-pressed', String(b === t))); },
   'swap-follow': t => {
     const sw = st().swaps.find(e => e.id === t.dataset.id), i = +t.dataset.i; if (!sw) return;
@@ -2937,6 +3153,8 @@ document.addEventListener('input', e => {
     if (t.dataset.pre === 'pct') { const v = t.value.replace(/[^0-9]/g, '').slice(0, 3); pr.pct = v === '' ? '' : +v; if (t.value !== v) t.value = v; }
     else pr.name = t.value;
     if (was !== !!presetsDirty()) { const id = t.id, pos = t.selectionStart; render(); const n = document.getElementById(id); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} } }
+  } else if (t.id === 'f-name' && $('#f-sug')) {
+    $('#f-libid').value = ''; renderSug();
   } else if (t.id === 'f-load') {
     document.querySelectorAll('.loadchips .pchip[data-v]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === t.value.trim())));
   } else if (t.id === 'f-type') {
