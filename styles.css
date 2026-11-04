@@ -515,3 +515,52 @@ details.older summary { cursor: pointer; font-weight: 600; color: var(--dim); }
 .done-slot .empty-slot { border: 1.5px dashed rgba(255,255,255,.28); }
 .done-slot .eyebrow { font-size: 10px; }
 .done-go { margin-top: auto; width: 100%; max-width: 420px; }
+
+/* ---------- 1.6: Spots löschen ---------- */
+.cam-ths { gap: 14px; }
+.cam-thw { position: relative; }
+.cam-x { position: absolute; top: -12px; right: -12px; width: 40px; height: 40px; border: 0; background: transparent; padding: 0; display: grid; place-items: center; cursor: pointer; z-index: 1; }
+.cam-x i { width: 22px; height: 22px; border-radius: 50%; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.55); color: #fff; display: grid; place-items: center; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.cam-x svg { width: 11px; height: 11px; }
+.spdel { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.spdel img { width: 90px; height: 160px; object-fit: cover; border-radius: 16px; border: 1px solid rgba(255,255,255,.35); }
+.btnrow.col { flex-direction: column; }
+.btnrow.col .btn { flex: none; width: 100%; }
+
+/* ---------- 1.6: Training ---------- */
+.exhint { font-size: 13px; font-weight: 600; line-height: 1.4; color: var(--tone); display: flex; flex-direction: column; gap: 8px; margin-top: -4px; }
+.exhint .btnrow { margin-top: 2px; }
+.tag.kgtag { color: var(--fg); }
+.sign { width: 40px; }
+.sign:disabled { cursor: default; }
+.set.ok .field.mk-up, .field.mk-up { border: 1px solid var(--tone); }
+.set.ok .field.mk-down, .field.mk-down { border: 1.5px dashed var(--tone); }
+.set.ok .field.mk-deload, .field.mk-deload { border: 1.5px dashed rgba(255,255,255,.6); }
+.set.ok .field.kgf.plus, .field.kgf.plus { border: 1px solid var(--tone); }
+.field.kgf.plus .sign { background: var(--tone); color: var(--tone-ink); border-right-color: transparent; }
+.set.ok .field.kgf.minus, .field.kgf.minus { border: 1.5px dashed var(--tone); }
+.field.kgf.minus .sign { color: var(--tone); border-right: 1.5px dashed var(--tone); }
+.setlab { display: grid; grid-template-columns: 22px minmax(0, 1fr) minmax(0, 1fr) 46px; gap: 8px; margin-top: -2px; }
+.setlab span:nth-child(2) { font: 600 10px var(--mono); letter-spacing: .1em; color: var(--tone); padding-left: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.setlab span.dl { color: var(--fg); }
+.sfeel { display: flex; justify-content: flex-end; gap: 6px; flex-wrap: wrap; margin: 2px 0 4px; }
+.sfeel button { border: 1px solid rgba(255,255,255,.3); background: transparent; color: var(--fg); border-radius: 999px; min-height: 36px; padding: 0 14px; font-weight: 600; font-size: 14px; cursor: pointer; }
+.sfeel button[aria-pressed="true"] { background: var(--fg); color: #000; border-color: var(--fg); }
+
+/* ---------- 1.6: Lastanteil im Builder und Vorlagen ---------- */
+.loadbox { display: flex; flex-direction: column; gap: 8px; }
+.loadbox .field, .prerow .field { height: 48px; }
+.loadbox .field input { font: 400 16px var(--body); text-align: left; padding-left: 13px; }
+.loadchips { margin-top: 0; }
+.pchip { min-height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.3); background: transparent; color: var(--fg); font: 600 14px var(--body); display: inline-flex; align-items: center; text-decoration: none; cursor: pointer; text-transform: none; letter-spacing: 0; }
+.pchip[aria-pressed="true"] { background: var(--fg); color: #000; border-color: var(--fg); }
+.pchip.lnk { border: 0; color: var(--dim); padding: 0 4px; }
+.prerow { display: grid; grid-template-columns: minmax(0, 1fr) 84px 40px; gap: 8px; align-items: center; padding: 8px 8px 8px 16px; border-top: 1px solid rgba(255,255,255,.12); }
+.prerow:first-child { border-top: 0; }
+.prerow .field { height: 42px; }
+.prename { border: 0; background: transparent; font: 500 15px var(--body); color: var(--fg); height: 42px; min-width: 0; padding: 0; }
+.prename::placeholder { color: rgba(255,255,255,.35); }
+.predel { width: 40px; height: 42px; border: 0; background: transparent; color: var(--dim); display: grid; place-items: center; cursor: pointer; padding: 0; }
+.addset.muted { color: var(--dim); }
+.rows .row svg { flex: none; color: var(--dim); }
+.form label .field input, .form label .field span { text-transform: none; letter-spacing: 0; }
