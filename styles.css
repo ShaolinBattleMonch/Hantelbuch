@@ -564,3 +564,5 @@ details.older summary { cursor: pointer; font-weight: 600; color: var(--dim); }
 .addset.muted { color: var(--dim); }
 .rows .row svg { flex: none; color: var(--dim); }
 .form label .field input, .form label .field span { text-transform: none; letter-spacing: 0; }
+.excwarn { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; font-weight: 600; line-height: 1.4; color: var(--y); }
+.excwarn svg { flex: none; margin-top: 1px; }
