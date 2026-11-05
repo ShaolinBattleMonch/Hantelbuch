@@ -4,7 +4,7 @@
    zuerst auf dem Handy, beim Sync in der Google-Tabelle. Der aktuelle Stand wird immer aus dem Log berechnet.
    Ausnahme: der Vault. Seine Bilder bleiben verschlüsselt nur auf diesem Handy und werden nie synchronisiert. */
 
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.9.0';
 const SCRIPT_MIN = 2;            // benötigte Version des Google-Skripts
 const PEOPLE = ['Manu', 'Rob'];
 const DAYS = ['A', 'B', 'C'];    // interne Kennung der Trainingstage, angezeigt werden die Kürzel
@@ -462,6 +462,7 @@ function cleanEntry(en) {
   if (Array.isArray(en.rm) && en.rm.length) o.rm = en.rm.slice(0, 10).map(r => (REM_WHY[r] ? r : ''));
   if (type === 'tr' && int(en.tt)) o.tt = int(en.tt);
   if (type === 'bw' && en.load != null && en.load !== '') o.load = cleanLoad(en.load);
+  if (en.from && typeof en.from === 'object' && en.from.id) o.from = { id: str(en.from.id, 64), name: str(en.from.name, 80) };
   return o;
 }
 // Bewertung eines Satzes; alte Einträge hatten nur eine Bewertung pro Übung
@@ -482,7 +483,7 @@ function st() { return _st || (_st = buildState()); }
 function buildState() {
   const all = events.slice().sort((a, b) => a.seq - b.seq)
     .concat(pending.filter(p => !seenIds.has(p.id)).sort((a, b) => a.ts.localeCompare(b.ts)));
-  const s = { spotSeen: {}, spotMyReact: {}, plans: {}, last: {}, workouts: [], skips: [], swaps: [], feed: [], changes: {}, lastChange: {}, lastShared: {}, decisions: {}, lastAction: {}, hist: {}, exInfo: {}, bw: {}, avatars: {}, first: {}, presets: clone(DEFAULT_PRESETS) };
+  const s = { spotSeen: {}, spotMyReact: {}, plans: {}, last: {}, workouts: [], skips: [], swaps: [], feed: [], changes: {}, lastChange: {}, lastShared: {}, decisions: {}, lastAction: {}, hist: {}, wedits: [], exInfo: {}, bw: {}, avatars: {}, first: {}, presets: clone(DEFAULT_PRESETS) };
   _st = s; // für dl() während des Aufbaus
   // Nachträgliche Änderungen an abgeschlossenen Trainings: es gilt die jeweils letzte, nur von derselben Person
   const edits = {};
@@ -494,7 +495,7 @@ function buildState() {
     const ed = e.type === 'workout' ? edits[e.id] : null;
     if (ed && (ed.person === e.person || (ed.data && ed.data.as === e.person))) {
       if (ed.data.deleted) return;
-      e = { ...e, data: { ...(e.data || {}), entries: ed.data.entries, edited: ed.ts } };
+      e = { ...e, data: { ...(e.data || {}), entries: ed.data.entries, edited: ed.ts, editedBy: ed.person } };
     }
     const d = e.data || {}; e.k = k;
     if (!s.first[e.person]) s.first[e.person] = e.ts;
@@ -516,6 +517,12 @@ function buildState() {
         s.exInfo[en.exId] = { name: en.name, type: en.type };
       });
       s.feed.push(e);
+    } else if (e.type === 'workout_edit') {
+      // Training des anderen angepasst (Entwickleroptionen): erscheint in den Neuigkeiten und beim anderen in der Glocke
+      if (typeof d.ref === 'string' && !d.deleted && PEOPLE.includes(d.as) && d.as !== e.person) {
+        d.chg = (Array.isArray(d.chg) ? d.chg : []).slice(0, 12).map(c => str(c, 120)).filter(Boolean);
+        s.wedits.push(e); s.feed.push(e);
+      }
     } else if (e.type === 'skip') {
       if (!DAYS.includes(d.day)) return;
       s.last[e.person] = { day: d.day, ts: e.ts, kind: 'skip' }; s.skips.push(e);
@@ -978,13 +985,20 @@ function notices() {
     out.push({ id, kind: 'sets', ts: h[2].ts, day: d, title: `${x.name}: ${more ? 'öfter ein Satz mehr' : 'öfter ein Satz weniger'}`,
       text: more ? `Du hast die letzten 3 Male mehr als ${x.sets} Sätze gemacht. Plan auf ${Math.min(10, x.sets + 1)} Sätze anpassen?` : `Du hast die letzten 3 Male wegen Zeit oder Erschöpfung Sätze gestrichen. Plan auf ${Math.max(1, x.sets - 1)} ${x.sets - 1 === 1 ? 'Satz' : 'Sätze'} anpassen?` });
   }));
+  s.wedits.forEach(e => {
+    const id = 'edit-' + e.id;
+    if (e.data.as !== me || ack[id] || Date.now() - new Date(e.ts) > 14 * 864e5) return;
+    const w = s.workouts.find(x => x.id === e.data.ref); if (!w) return;
+    out.push({ id, kind: 'edit', ts: e.ts, wid: w.id, title: `${e.person} hat dein Training angepasst`,
+      text: `${dl(w.data.day)} vom ${fmtDate(w.ts)}: ${e.data.chg.length ? e.data.chg.join(' · ') : 'Werte korrigiert'}.` });
+  });
   return out;
 }
 function noticeCard(n) {
   return `<section class="card notice n-${n.kind}" style="gap:10px">
-    <div style="display:flex;align-items:center;gap:10px"><span class="nic" aria-hidden="true">${n.kind === 'regen' ? ICON.moon : ICON.list}</span><div style="flex:1;display:flex;flex-direction:column"><b>${esc(n.title)}</b><span class="mono muted small">${fmtDate(n.ts)} · nur für dich</span></div></div>
+    <div style="display:flex;align-items:center;gap:10px"><span class="nic" aria-hidden="true">${n.kind === 'regen' ? ICON.moon : n.kind === 'edit' ? ICON.swap : ICON.list}</span><div style="flex:1;display:flex;flex-direction:column"><b>${esc(n.title)}</b><span class="mono muted small">${fmtDate(n.ts)} · nur für dich</span></div></div>
     <span class="small">${esc(n.text)}</span>
-    <div class="btnrow">${n.kind === 'sets' ? `<a class="btn small primary" href="#plan">Im Plan ändern</a>` : ''}<button class="btn small ghost" data-act="notice-ok" data-id="${esc(n.id)}">${n.kind === 'regen' ? 'Verstanden' : 'Ausblenden'}</button></div>
+    <div class="btnrow">${n.kind === 'sets' ? `<a class="btn small primary" href="#plan">Im Plan ändern</a>` : n.kind === 'edit' ? `<a class="btn small primary" href="#training-log:${encodeURIComponent(n.wid)}">Ansehen</a>` : ''}<button class="btn small ghost" data-act="notice-ok" data-id="${esc(n.id)}">${n.kind === 'sets' ? 'Ausblenden' : 'Verstanden'}</button></div>
   </section>`;
 }
 
@@ -2195,6 +2209,11 @@ function feedItem(e) {
       + imp.map(i => `<span class="chip ${i.pr ? 'pr' : ''}">${esc(i.name.replace(/\s*\(.*\)$/, ''))} ${esc(i.label)}${i.pr ? ' · Rekord' : ''}</span>`).join('')
       + (notes ? `<span class="chip">${notes} ${notes === 1 ? 'Notiz' : 'Notizen'}</span>` : '');
     href = '#training-log:' + encodeURIComponent(e.id);
+  } else if (e.type === 'workout_edit') {
+    const w = st().workouts.find(x => x.id === d.ref); if (!w) return '';
+    t = `${dayChip(w.data.day, d.as)}<span>${who} ${me ? 'hast' : 'hat'} ${d.as === cfg.me ? 'dein' : esc(d.as) + 's'} Training vom ${fmtDate(w.ts)} angepasst</span>`;
+    extra = (d.chg.length ? d.chg : ['Werte korrigiert']).map(c => `<span class="chip">${esc(c)}</span>`).join('');
+    href = '#training-log:' + encodeURIComponent(w.id);
   } else if (e.type === 'swap') {
     t = `${dayChip(d.day, p)}<span>${who} ${me ? 'hast' : 'hat'} heute ${esc(d.fromName)} durch ${esc(d.to.name)} getauscht</span>`;
     extra = '<span class="chip">für beide</span>';
@@ -2527,6 +2546,7 @@ function knownExercises() {
 }
 function swapForm(i) {
   const it = draft.items[i], x = it.ex;
+  swCtx = { mode: 'draft', i, x, day: draft.day };
   $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet full form" id="swapform" data-i="${i}" novalidate>
     ${sheetHead(`${esc(dl(draft.day))} · ${esc(x.name)}`, 'Heute tauschen')}
     <h2>Heute tauschen</h2>
@@ -2545,20 +2565,84 @@ function swapForm(i) {
   </form></div>`;
   swGroup = 'Passend'; renderSwSug();
 }
+/* Tauschen oder Ergänzen in einem gespeicherten Training (Bearbeiten, auch Trainings des anderen) */
+function weSwapForm(i) {
+  const w = st().workouts.find(x => x.id === wedit.id); if (!w) return;
+  readWorkoutForm();
+  const add = i === 'add', en = add ? null : wedit.entries[i];
+  const x = add ? { id: '', name: '', muscles: { p: [], s: [] } } : { id: en.exId, name: en.name, type: en.type };
+  swCtx = { mode: 'edit', i, add, x, day: w.data.day };
+  const whose = w.person === cfg.me ? 'du' : esc(w.person);
+  $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet full form" id="swapform" data-mode="edit" novalidate>
+    ${sheetHead(`${w.person !== cfg.me ? esc(w.person) + ' · ' : ''}${esc(dl(w.data.day))} · ${fmtDate(w.ts)}`, add ? 'Übung hinzufügen' : 'Übung tauschen')}
+    <h2>${add ? 'Übung hinzufügen' : 'Übung tauschen'}</h2>
+    <p class="help" style="margin:0">${add ? `Ergänzt eine Übung, die ${whose} gemacht, aber nicht eingetragen ${w.person === cfg.me ? 'hast' : 'hat'}.` : `Ersetzt <b>${esc(en.name)}</b> nur in diesem Training. Der Plan bleibt unverändert. Sätze, Wiederholungen und Bewertungen werden übernommen, das Gewicht nur bei gleicher Art.`}</p>
+    <label>${add ? 'Übung suchen' : 'Ersatzübung suchen'}<span class="swsearch">${ICON.search}<input class="inp" id="sw-name" name="name" maxlength="60" autocomplete="off" required placeholder="z. B. Beinpresse, Burpees"></span></label>
+    <input type="hidden" id="sw-lib" name="libid" value="">
+    <div id="sw-sug" class="sug"></div>
+    <label>Art<select id="sw-type" name="type">${Object.entries(TYPE_LABEL).map(([k, v]) => `<option value="${k}" ${(add ? 'kg' : en.type) === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+    ${add ? `<label>Sätze<input class="inp" id="sw-sets" name="sets" inputmode="numeric" value="3"></label>` : ''}
+    <div class="err" id="sw-err" hidden></div>
+    <div class="sbar"><button class="btn primary" type="submit">${add ? 'Hinzufügen' : 'Tauschen'}</button></div>
+  </form></div>`;
+  swGroup = add ? 'Alle' : 'Passend'; renderSwSug();
+}
+// Satzwerte beim Tausch übernehmen: Wiederholungen und Bewertungen bleiben, Gewicht nur bei gleicher Art, Sekunden zwischen Zeit-Arten
+function convSet(from, to, s) {
+  const o = { ...s };
+  if (from === to) return o;
+  const secs = from === 'time' ? s.r : from === 'tr' ? (s.w ?? s.t) : '';
+  const reps = from === 'time' ? '' : s.r;
+  delete o.t; delete o.neg;
+  if (to === 'time') { o.r = secs || ''; delete o.w; }
+  else if (to === 'tr') { o.w = secs || ''; o.r = reps || ''; }
+  else { o.w = ''; o.r = reps || ''; }
+  return o;
+}
+function submitWeSwap(form) {
+  const f = new FormData(form), ctx = swCtx;
+  const err = m => { const e = $('#sw-err'); e.textContent = m; e.hidden = false; };
+  const name = String(f.get('name') || '').trim();
+  if (!name) return err('Bitte wähle oder gib eine Übung ein.');
+  const known = knownExercises().get(name.toLowerCase()), libE = LIB_BY_ID[String(f.get('libid') || '')];
+  const type = known ? known.type : TYPE_LABEL[f.get('type')] ? f.get('type') : 'kg';
+  const id = known ? known.id : libE && libE[1] === name ? libE[0] : 's-' + slug(name);
+  const nm = known ? known.name : name;
+  const def = PEOPLE.flatMap(p => DAYS.flatMap(d => st().plans[p][d].exercises)).find(y => y.id === id);
+  if (wedit.entries.some((o, k) => k !== ctx.i && o.exId === id)) return err('Die Übung ist schon in diesem Training.');
+  if (ctx.add) {
+    const n = int(f.get('sets'));
+    if (!n || n > 10) return err('Bitte gib 1 bis 10 Sätze an.');
+    wedit.entries.push({ exId: id, name: nm, type, note: '', feel: '', ...(type === 'bw' && def && def.load != null ? { load: def.load } : {}), sets: Array.from({ length: n }, () => ({ w: '', r: '' })) });
+    wedit.focus = wedit.entries.length - 1;
+  } else {
+    const en = wedit.entries[ctx.i];
+    if (id === en.exId) return err('Das ist dieselbe Übung.');
+    en.sets = en.sets.map(x => convSet(en.type, type, x));
+    if (!en.from) en.from = { id: en.exId, name: en.name };
+    if (en.from.id === id) delete en.from;
+    if (type !== en.type) delete en.tt;
+    en.exId = id; en.name = nm; en.type = type;
+    if (type === 'bw') { if (def && def.load != null) en.load = def.load; } else delete en.load;
+    wedit.focus = ctx.i;
+  }
+  swCtx = null; workoutForm();
+}
 /* Suche in der Bibliothek beim Tauschen: ohne Suchbegriff zuerst Übungen mit denselben Hauptmuskeln */
-let swGroup = 'Passend';
+let swGroup = 'Passend', swCtx = null;
 function swMatches(x) {
   const m = x.muscles && x.muscles.p.length ? x.muscles : libMuscles(x.id, x.name), P = new Set(m.p);
   return EX_LIB.filter(e => e[0] !== x.id && normName(e[1]) !== normName(x.name)).map(e => ({ e, sc: csvMus(e[3]).filter(k => P.has(k)).length })).filter(o => o.sc > 0).sort((a, b) => b.sc - a.sc).map(o => o.e);
 }
 function renderSwSug() {
   const box = $('#sw-sug'), inp = $('#sw-name'), form = $('#swapform'); if (!box || !inp || !form) return;
-  const it = draft.items[+form.dataset.i], x = it.ex, tk = DAY_TONE[draft.day];
+  if (!swCtx) return;
+  const x = swCtx.x, tk = DAY_TONE[swCtx.day];
   const lib = $('#sw-lib').value;
   const item = (e, sel) => { const m = { p: csvMus(e[3]), s: csvMus(e[4]) }; return `<button type="button" role="option" class="sugitem ${sel ? 'sel' : ''}" data-act="${sel ? 'sw-clear' : 'sw-pick'}" data-id="${e[0]}" aria-selected="${!!sel}">${bodyFig(bestView(m), tk, m, { w: 22, nums: false })}<span class="sgt"><b>${esc(e[1])}</b><span>${esc(m.p.map(k => BODY.names[k][0]).join(', '))}</span></span><span class="tp">${sel ? 'Ändern' : TYPE_LABEL[e[2]]}</span></button>`; };
   if (lib && LIB_BY_ID[lib]) { box.innerHTML = `<div class="suglist">${item(LIB_BY_ID[lib], true)}</div>`; return; }
   const q = normName(inp.value), toks = q.split(' ').filter(Boolean);
-  const groups = ['Passend', 'Alle', 'Kondition', ...Object.keys(BODY.groups)];
+  const groups = [...(swCtx.add ? [] : ['Passend']), 'Alle', 'Kondition', ...Object.keys(BODY.groups)];
   const chips = `<div class="chips scroll" role="group" aria-label="Nach Muskelgruppe filtern">${groups.map(g => `<button type="button" class="pchip ${g === swGroup ? 'tonep' : ''}" data-act="sw-g" data-v="${g}" aria-pressed="${g === swGroup}">${g}</button>`).join('')}</div>`;
   let hits, label;
   const match = e => { const n = normName(e[1]) + ' ' + e[0].replace(/-/g, ' '); return toks.every(t => n.includes(t)); };
@@ -2566,18 +2650,20 @@ function renderSwSug() {
   else if (swGroup === 'Alle') { hits = EX_LIB.filter(match).sort((a, b) => a[1].localeCompare(b[1], 'de')); label = 'Alle Übungen'; }
   else { hits = EX_LIB.filter(e => match(e) && inGroup(e, swGroup)); label = swGroup === 'Kondition' ? 'Ganzkörper / Kondition' : swGroup; }
   if (toks.length && !hits.length && swGroup === 'Passend') { hits = EX_LIB.filter(match); label = 'Treffer in der Bibliothek'; }
-  hits = hits.filter(e => e[0] !== x.id).slice(0, 30);
+  const inTr = swCtx.mode === 'edit' && wedit ? new Set(wedit.entries.map(en => en.exId)) : new Set();
+  hits = hits.filter(e => e[0] !== x.id && !inTr.has(e[0])).slice(0, 30);
   box.innerHTML = chips + `<div class="eyebrow" style="margin:4px 2px 0">${esc(label)} · ${hits.length}</div>
     <div class="suglist" role="listbox" aria-label="${esc(label)}">${hits.map(e => item(e)).join('')}
-    ${inp.value.trim() ? `<div class="sugitem new"><span class="plus">+</span><span class="sgt"><b>„${esc(inp.value.trim())}“ als neue Übung</b><span>Art und Spanne unten einstellen</span></span></div>` : ''}</div>`;
+    ${inp.value.trim() ? `<div class="sugitem new"><span class="plus">+</span><span class="sgt"><b>„${esc(inp.value.trim())}“ als neue Übung</b><span>${swCtx.mode === 'edit' ? 'Art unten einstellen' : 'Art und Spanne unten einstellen'}</span></span></div>` : ''}</div>`;
   const on = box.querySelector('.chips.scroll .pchip[aria-pressed="true"]'); if (on) on.parentElement.scrollLeft = Math.max(0, on.offsetLeft - 16);
 }
 function pickSw(id) {
   const e = LIB_BY_ID[id]; if (!e) return;
   $('#sw-lib').value = id; $('#sw-name').value = e[1];
   const ty = $('#sw-type'); ty.value = e[2];
+  if (!$('#sw-min')) { renderSwSug(); return; }
   if (TIMED_RANGE[e[2]]) { $('#sw-min').value = TIMED_RANGE[e[2]][0]; $('#sw-max').value = TIMED_RANGE[e[2]][1]; }
-  else { const x = draft.items[+$('#swapform').dataset.i].ex; if (isTimed(x.type)) { $('#sw-min').value = 8; $('#sw-max').value = 12; } }
+  else { const x = swCtx.x; if (isTimed(x.type)) { $('#sw-min').value = 8; $('#sw-max').value = 12; } }
   renderSwSug();
 }
 function doSwap(i, x, from, by, shared) {
@@ -2728,33 +2814,67 @@ function viewWorkout(id) {
       <div class="mono muted small">${fmtDate(e.ts)}, ${fmtTime(d.start)}–${fmtTime(d.end)} · ${duration(d.start, d.end)}${d.deload ? ' · Deload' : ''}</div>
       ${e.abort ? `<span class="chip" style="align-self:flex-start">Abgebrochen · ${e.abort.done} von ${e.abort.plan} Sätzen</span>` : ''}
       ${imp.length ? `<div class="chips">${imp.map(i => `<span class="chip ${i.pr ? 'pr' : ''}">${esc(i.name)} ${esc(i.label)}${i.pr ? ' · Rekord' : ''}</span>`).join('')}</div>` : ''}</div>
-    ${d.edited ? `<span class="small muted">Nachträglich bearbeitet am ${fmtDate(d.edited)}, ${fmtTime(d.edited)}</span>` : ''}
-    <section class="card">${d.entries.map(en => `<a class="sess" href="#uebung:${encodeURIComponent(en.exId)}"><div class="top"><b style="color:var(--fg)">${esc(en.name)}</b><span class="mono">${en.sets.length} ${en.sets.length === 1 ? 'Satz' : 'Sätze'}</span></div>
+    ${d.edited ? `<span class="small muted">Nachträglich bearbeitet${d.editedBy && d.editedBy !== e.person ? ` von ${d.editedBy === cfg.me ? 'dir' : esc(d.editedBy)}` : ''} am ${fmtDate(d.edited)}, ${fmtTime(d.edited)}</span>` : ''}
+    <section class="card">${d.entries.map(en => `<a class="sess" href="#uebung:${encodeURIComponent(en.exId)}"><div class="top"><b style="color:var(--fg)">${esc(en.name)}${en.from ? ` <span class="small muted" style="font-weight:400">statt ${esc(en.from.name)}</span>` : ''}</b><span class="mono">${en.sets.length} ${en.sets.length === 1 ? 'Satz' : 'Sätze'}</span></div>
       ${(() => { const l = bwLines(en, e.person, e.ts); const ft = feelText(en); return `<div class="v">${l ? l.main : fmtSets(en.type, en.sets)}</div>${l ? `<div class="mono muted small">${esc(l.sub)}</div>` : ''}${ft ? `<div class="small muted">${esc(ft)}</div>` : ''}`; })()}${en.note ? `<p class="quote muted">${esc(en.note)}</p>` : ''}</a>`).join('')}</section>
     ${e.person === cfg.me ? (wDelAsk === e.id
       ? `<section class="card"><b>Training endgültig löschen?</b><span class="small muted">Es verschwindet bei dir und bei ${esc(partner())} aus Verlauf, Statistik und Rotation.</span><div class="btnrow"><button class="btn small danger" data-act="w-del-yes" data-id="${esc(e.id)}">Löschen</button><button class="btn small ghost" data-act="w-del-no">Abbrechen</button></div></section>`
-      : `<div class="btnrow"><button class="btn glass" data-act="w-edit" data-id="${esc(e.id)}">Bearbeiten</button><button class="btn ghost danger-t" data-act="w-del" data-id="${esc(e.id)}">Löschen</button></div>`) : ''}`;
+      : `<div class="btnrow"><button class="btn glass" data-act="w-edit" data-id="${esc(e.id)}">Bearbeiten</button><button class="btn ghost danger-t" data-act="w-del" data-id="${esc(e.id)}">Löschen</button></div>`)
+      : LS.get('dev', false) ? `<div class="btnrow"><button class="btn glass" data-act="w-edit" data-id="${esc(e.id)}">Bearbeiten (Entwickleroptionen)</button></div>` : ''}`;
 }
 /* ---------- Abgeschlossenes Training bearbeiten ---------- */
-let wedit = null, wDelAsk = null;
+let wedit = null, wDelAsk = null, devN = 8;
 function workoutForm() {
   const w = st().workouts.find(x => x.id === wedit.id); if (!w) return;
+  const old = $('#wform'), bd = old && old.closest('.backdrop'), keep = old ? [old.scrollTop, bd ? bd.scrollTop : 0] : null;
   const wfmt = (type, v) => typeof v === 'string' ? esc(v) : type === 'kg' ? fmtIn(v) : v ? (v < 0 ? '-' : '') + fmtIn(v) : '';
+  const other = w.person !== cfg.me;
+  const whyRowW = (en, i) => {
+    const out = [];
+    if (en.rm && en.rm.length) out.push(`<div class="why" role="group" aria-label="Warum weniger Sätze?"><span class="eyebrow">${en.rm.length} ${en.rm.length === 1 ? 'Satz' : 'Sätze'} weniger · warum?</span><div class="chips">${Object.entries(REM_WHY).map(([k, v]) => `<button type="button" class="pchip" data-act="we-why-rm" data-i="${i}" data-v="${k}" aria-pressed="${en.rm[en.rm.length - 1] === k}">${v}</button>`).join('')}</div></div>`);
+    const added = en.sets.filter(x => x.add || x.a);
+    if (added.length) { const la = added[added.length - 1]; out.push(`<div class="why" role="group" aria-label="Warum mehr Sätze?"><span class="eyebrow">${added.length} ${added.length === 1 ? 'Satz' : 'Sätze'} mehr · warum?</span><div class="chips">${Object.entries(ADD_WHY).map(([k, v]) => `<button type="button" class="pchip" data-act="we-why-add" data-i="${i}" data-v="${k}" aria-pressed="${la.a === k}">${v}</button>`).join('')}</div></div>`); }
+    return out.join('');
+  };
   $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet full form" id="wform" novalidate>
-    ${sheetHead(`${w.person !== cfg.me ? esc(w.person) + ' · ' : ''}${esc(dl(w.data.day))} · ${fmtDate(w.ts)}`, 'Training bearbeiten')}
+    ${sheetHead(`${other ? esc(w.person) + ' · ' : ''}${esc(dl(w.data.day))} · ${fmtDate(w.ts)}`, 'Training bearbeiten')}
     <h2>Training bearbeiten</h2>
-    <p class="help" style="margin:0">Änderungen gelten auch für Steigerung und Statistik. ${esc(partner())} sieht das korrigierte Training.</p>
-    ${wedit.entries.map((en, i) => `<section class="card wed">
-      <div class="rowbetween"><b>${esc(en.name)}</b><span class="mono muted small">${en.type === 'time' ? 'Sekunden' : en.type === 'tr' ? 'Sek. · Wdh.' : en.type === 'bw' ? '± kg · Wdh.' : 'kg · Wdh.'}</span></div>
+    <p class="help" style="margin:0">Änderungen gelten auch für Steigerung und Statistik. ${other ? `${esc(w.person)} sieht das korrigierte Training und bekommt einen Hinweis in der Glocke.` : `${esc(partner())} sieht das korrigierte Training.`}</p>
+    ${wedit.entries.map((en, i) => `<section class="card wed" data-wi="${i}">
+      <div class="rowbetween" style="align-items:flex-start"><div style="display:flex;flex-direction:column;min-width:0"><b>${esc(en.name)}</b>${en.from ? `<span class="small muted">statt ${esc(en.from.name)}</span>` : ''}</div><span class="mono muted small" style="white-space:nowrap">${en.type === 'time' ? 'Sekunden' : en.type === 'tr' ? 'Sek. · Wdh.' : en.type === 'bw' ? '± kg · Wdh.' : 'kg · Wdh.'}</span></div>
       ${en.sets.map((st2, j) => `<div class="wrow"><span class="n mono">${j + 1}</span>
         ${en.type === 'time' ? '' : en.type === 'tr' ? `<input class="inp mono" data-we="w" data-i="${i}" data-j="${j}" inputmode="numeric" value="${esc(st2.w ?? st2.t ?? '')}" placeholder="Sek." aria-label="${esc(en.name)} Satz ${j + 1} Sekunden">` : `<input class="inp mono" data-we="w" data-i="${i}" data-j="${j}" inputmode="${en.type === 'bw' ? 'text' : 'decimal'}" value="${wfmt(en.type, st2.w)}" placeholder="${en.type === 'bw' ? '0' : 'kg'}" aria-label="${esc(en.name)} Satz ${j + 1} Gewicht">`}
-        <input class="inp mono" data-we="r" data-i="${i}" data-j="${j}" inputmode="numeric" value="${st2.r || ''}" placeholder="${en.type === 'time' ? 'Sek.' : 'Wdh.'}" aria-label="${esc(en.name)} Satz ${j + 1} ${en.type === 'time' ? 'Sekunden' : 'Wiederholungen'}"></div>`).join('')}
-      <div class="btnrow" style="gap:18px"><button type="button" class="addset" data-act="we-add" data-i="${i}">+ Satz</button><button type="button" class="addset" data-act="we-del" data-i="${i}">− Satz</button></div>
+        <input class="inp mono" data-we="r" data-i="${i}" data-j="${j}" inputmode="numeric" value="${st2.r || ''}" placeholder="${en.type === 'time' ? 'Sek.' : 'Wdh.'}" aria-label="${esc(en.name)} Satz ${j + 1} ${en.type === 'time' ? 'Sekunden' : 'Wiederholungen'}"></div>
+        <div class="sfeel" role="group" aria-label="Wie war Satz ${j + 1}?">${Object.entries(SET_FEEL).map(([k, v]) => `<button type="button" data-act="we-feel" data-i="${i}" data-j="${j}" data-v="${k}" aria-pressed="${st2.f === k}">${v}</button>`).join('')}</div>`).join('')}
+      <div class="cardacts"><button type="button" class="addset" data-act="we-add" data-i="${i}">+ Satz</button><button type="button" class="addset" data-act="we-del" data-i="${i}" ${en.sets.length ? '' : 'disabled'}>− Satz</button><span class="sp"></span><button type="button" class="addset" data-act="we-swap" data-i="${i}">${ICON.swap} Tauschen</button></div>
+      ${whyRowW(en, i)}
       <label>Notiz<textarea data-we="note" data-i="${i}" rows="2" maxlength="500">${esc(en.note || '')}</textarea></label>
+      ${wedit.ask === i
+        ? `<div class="btnrow"><button type="button" class="btn small danger" data-act="we-rmex-yes" data-i="${i}">${esc(en.name)} entfernen</button><button type="button" class="btn small ghost" data-act="we-rmex-no">Abbrechen</button></div>`
+        : `<button type="button" class="lnk danger-t" data-act="we-rmex" data-i="${i}" style="align-self:flex-start">Übung aus dem Training entfernen</button>`}
     </section>`).join('')}
+    <button type="button" class="btn glass" data-act="we-addex">${ICON.plus} Übung hinzufügen</button>
     <div class="err" id="we-err" hidden></div>
     <div class="sbar"><button class="btn primary" type="submit">Änderungen speichern</button></div>
   </form></div>`;
+  const nf = $('#wform'), nb = nf.closest('.backdrop');
+  if (wedit.focus != null) { const c = nf.querySelector(`[data-wi="${wedit.focus}"]`); wedit.focus = null; if (c) c.scrollIntoView({ block: 'start' }); }
+  else if (keep) { nf.scrollTop = keep[0]; if (nb) nb.scrollTop = keep[1]; }
+}
+function closeModal() {
+  if (swCtx && swCtx.mode === 'edit' && $('#swapform') && wedit) { const i = swCtx.i; swCtx = null; wedit.focus = i === 'add' ? null : i; workoutForm(); return; }
+  swCtx = null; $('#modal').innerHTML = '';
+}
+// Beim Öffnen: Sätze über dem Plan gelten als „mehr“ (für die Gründe), wie im Training
+function weditOf(w) {
+  const pl = st().plans[w.person][w.data.day];
+  const entries = clone(w.data.entries).map(en => {
+    const x = pl && pl.exercises.find(y => y.id === en.exId);
+    const n = x ? (w.data.deload ? Math.ceil((+x.sets || 1) / 2) : +x.sets || 0) - (en.rm ? en.rm.length : 0) : null;
+    en.sets.forEach((st2, j) => { if (st2.a || (n != null && j >= n)) st2.add = true; });
+    return en;
+  });
+  return { id: w.id, entries };
 }
 function readWorkoutForm() {
   document.querySelectorAll('#wform [data-we]').forEach(el => {
@@ -2768,16 +2888,28 @@ function readWorkoutForm() {
 function saveWorkoutEdit() {
   readWorkoutForm();
   const w = st().workouts.find(x => x.id === wedit.id); if (!w) return;
+  const errW = m => { const e = $('#we-err'); e.textContent = m; e.hidden = false; e.scrollIntoView({ block: 'center' }); };
+  for (const en of wedit.entries) {
+    const j = en.sets.findIndex(x => !(int(x.r) > 0) || (en.type === 'tr' && !(int(x.w ?? x.t) > 0)));
+    if (j >= 0) return errW(`${en.name}: In Satz ${j + 1} fehlt ein Wert. Trag ihn ein oder entferne leere Sätze mit „− Satz“.`);
+  }
   const entries = wedit.entries.map(en => ({
     exId: en.exId, name: en.name, type: en.type, feel: en.feel || '', note: String(en.note || '').trim().slice(0, 500),
     ...(en.type === 'bw' && en.load != null ? { load: en.load } : {}),
-    ...(en.rm && en.rm.length ? { rm: en.rm } : {}), ...(en.tt ? { tt: en.tt } : {}),
+    ...(en.rm && en.rm.length ? { rm: en.rm } : {}), ...(en.tt ? { tt: en.tt } : {}), ...(en.from ? { from: en.from } : {}),
     sets: en.sets.map(x => { const o = en.type === 'time' ? { r: int(x.r) } : en.type === 'tr' ? { t: int(x.w ?? x.t), r: int(x.r) } : { w: en.type === 'kg' ? Math.abs(num(String(x.w).replace('−', '-'))) : num(String(x.w).replace('−', '-')), r: int(x.r) }; if (SET_FEEL[x.f]) o.f = x.f; if (ADD_WHY[x.a]) o.a = x.a; return o; }).filter(x => x.r > 0)
   })).filter(en => en.sets.length || en.note);
   if (!entries.some(en => en.sets.length)) { const e = $('#we-err'); e.textContent = 'Mindestens ein Satz muss bleiben. Zum Entfernen des ganzen Trainings nutze „Löschen“.'; e.hidden = false; return; }
-  const before = JSON.stringify(w.data.entries.map(en => [en.exId, en.sets, en.note || ''])), after = JSON.stringify(entries.map(en => [en.exId, en.sets, en.note]));
+  const sig = en => JSON.stringify([en.sets, en.note || '', en.rm || []]);
+  const before = JSON.stringify(w.data.entries.map(en => [en.exId, sig(en)])), after = JSON.stringify(entries.map(en => [en.exId, sig(en)]));
   if (before === after) { $('#modal').innerHTML = ''; wedit = null; return; }
-  addEvent('workout_edit', { ref: w.id, entries, ...(w.person !== cfg.me ? { as: w.person } : {}) }, `${w.person !== cfg.me ? `Training von ${w.person}: ` : ''}${dl(w.data.day)} vom ${fmtDate(w.ts)} bearbeitet · ` + entries.map(en => `${en.name}: ${fmtSets(en.type, en.sets)}${en.note ? ` (Notiz: ${en.note})` : ''}`).join(' | '));
+  // Was hat sich geändert? (für Neuigkeiten und die Glocke des anderen)
+  const old = w.data.entries, oldIds = new Set(old.map(en => en.exId)), newIds = new Set(entries.map(en => en.exId)), chg = [];
+  const swapped = new Set();
+  entries.forEach(en => { if (oldIds.has(en.exId)) return; if (en.from && oldIds.has(en.from.id) && !newIds.has(en.from.id)) { chg.push(`${en.from.name} → ${en.name}`); swapped.add(en.from.id); } else chg.push(`+ ${en.name}`); });
+  old.forEach(en => { if (!newIds.has(en.exId) && !swapped.has(en.exId)) chg.push(`− ${en.name}`); });
+  if (entries.some(en => { const o = old.find(x => x.exId === en.exId); return o && sig(o) !== sig(en); })) chg.push('Werte korrigiert');
+  addEvent('workout_edit', { ref: w.id, entries, chg, ...(w.person !== cfg.me ? { as: w.person } : {}) }, `${w.person !== cfg.me ? `Training von ${w.person}: ` : ''}${dl(w.data.day)} vom ${fmtDate(w.ts)} bearbeitet${chg.length ? ` (${chg.join(', ')})` : ''} · ` + entries.map(en => `${en.name}: ${fmtSets(en.type, en.sets)}${en.note ? ` (Notiz: ${en.note})` : ''}`).join(' | '));
   $('#modal').innerHTML = ''; wedit = null; toast('Training geändert'); render();
 }
 
@@ -3121,7 +3253,8 @@ function viewSettings() {
       ${LS.get('dev', false) ? `<b>Person wechseln</b><span class="small muted">Nur nötig, wenn diese App auf dem falschen Handy eingerichtet wurde. Ein laufendes Training wird dabei verworfen, der Vault gesperrt.</span>
       <div class="pick">${PEOPLE.map(p => `<button data-act="s-me" data-v="${p}" aria-pressed="${cfg.me === p}">${p}</button>`).join('')}</div>
       <b style="margin-top:6px">Trainings von ${esc(partner())} bearbeiten</b><span class="small muted">Zum Korrigieren falscher Einträge. ${esc(partner())} sieht die Änderung, Steigerung und Statistik rechnen damit.</span>
-      <div class="devlist">${st().workouts.filter(w => w.person === partner()).slice(-8).reverse().map(w => `<div class="devrow">${dayChip(w.data.day, w.person)}<span class="mono small" style="flex:1">${fmtDate(w.ts)} · ${w.data.entries.reduce((a2, en) => a2 + en.sets.length, 0)} Sätze</span><button class="btn small" type="button" data-act="w-edit" data-id="${esc(w.id)}">Bearbeiten</button></div>`).join('') || `<span class="small muted">Noch keine Trainings von ${esc(partner())}.</span>`}</div>` : ''}
+      <div class="devlist">${st().workouts.filter(w => w.person === partner()).slice(-devN).reverse().map(w => `<div class="devrow">${dayChip(w.data.day, w.person)}<span class="mono small" style="flex:1">${fmtDate(w.ts)} · ${w.data.entries.reduce((a2, en) => a2 + en.sets.length, 0)} Sätze</span><button class="btn small" type="button" data-act="w-edit" data-id="${esc(w.id)}">Bearbeiten</button></div>`).join('') || `<span class="small muted">Noch keine Trainings von ${esc(partner())}.</span>`}</div>
+      ${st().workouts.filter(w => w.person === partner()).length > devN ? `<button class="btn small ghost" type="button" data-act="dev-more" style="align-self:flex-start">Ältere laden (${st().workouts.filter(w => w.person === partner()).length - devN} weitere)</button>` : ''}` : ''}
     </section>
     <section class="card"><b>Daten auf diesem Handy zurücksetzen</b>
       <span class="small muted">Löscht nur die Kopie des Trainingslogs auf diesem Handy. Beim nächsten Sync wird alles aus der Tabelle neu geladen. Der Vault bleibt erhalten.${waiting ? ` <b>${waiting} noch nicht gesendete Einträge gehen dabei verloren.</b>` : ''}</span>
@@ -3325,9 +3458,21 @@ const actions = {
   'pre-save': () => savePresets(),
   bdiscard: () => { builder.work[builder.day] = clone(st().plans[cfg.me][builder.day]); builder.dirty[builder.day] = false; render(); },
   bsave: () => savePlan(),
-  'w-edit': t => { const w = st().workouts.find(x => x.id === t.dataset.id); if (!w || (w.person !== cfg.me && !LS.get('dev', false))) return; wedit = { id: w.id, entries: clone(w.data.entries) }; workoutForm(); },
-  'we-add': t => { readWorkoutForm(); const en = wedit.entries[+t.dataset.i], l = en.sets[en.sets.length - 1]; en.sets.push({ w: l ? l.w : '', r: '' }); workoutForm(); },
-  'we-del': t => { readWorkoutForm(); const en = wedit.entries[+t.dataset.i]; if (en.sets.length) en.sets.pop(); workoutForm(); },
+  'w-edit': t => { const w = st().workouts.find(x => x.id === t.dataset.id); if (!w || (w.person !== cfg.me && !LS.get('dev', false))) return; wedit = weditOf(w); workoutForm(); },
+  'we-add': t => { readWorkoutForm(); const en = wedit.entries[+t.dataset.i], l = en.sets[en.sets.length - 1];
+    if (en.rm && en.rm.length) { en.rm.pop(); en.sets.push({ w: l ? (l.w ?? l.t ?? '') : '', r: '' }); }   // gestrichenen Satz zurückholen
+    else en.sets.push({ w: l ? (l.w ?? l.t ?? '') : '', r: '', add: true });
+    workoutForm(); },
+  'we-del': t => { readWorkoutForm(); const en = wedit.entries[+t.dataset.i]; if (!en.sets.length) return; const x = en.sets.pop(); if (!x.add && !x.a) (en.rm = en.rm || []).push(''); workoutForm(); },
+  'we-feel': t => { readWorkoutForm(); const x = wedit.entries[+t.dataset.i].sets[+t.dataset.j]; x.f = x.f === t.dataset.v ? '' : t.dataset.v; workoutForm(); },
+  'we-why-rm': t => { readWorkoutForm(); const en = wedit.entries[+t.dataset.i], k = en.rm.length - 1; en.rm[k] = en.rm[k] === t.dataset.v ? '' : t.dataset.v; workoutForm(); },
+  'we-why-add': t => { readWorkoutForm(); const ad = wedit.entries[+t.dataset.i].sets.filter(x => x.add || x.a), la = ad[ad.length - 1]; if (la) la.a = la.a === t.dataset.v ? '' : t.dataset.v; workoutForm(); },
+  'we-swap': t => weSwapForm(+t.dataset.i),
+  'we-addex': () => weSwapForm('add'),
+  'we-rmex': t => { readWorkoutForm(); wedit.ask = +t.dataset.i; workoutForm(); },
+  'we-rmex-no': () => { readWorkoutForm(); wedit.ask = null; workoutForm(); },
+  'we-rmex-yes': t => { readWorkoutForm(); wedit.entries.splice(+t.dataset.i, 1); wedit.ask = null; workoutForm(); },
+  'dev-more': () => { devN += 8; render(); },
   'w-del': t => { wDelAsk = t.dataset.id; render(); },
   'w-del-no': () => { wDelAsk = null; render(); },
   'w-del-yes': t => {
@@ -3365,8 +3510,8 @@ const actions = {
       <div class="btnrow col"><button class="btn danger" data-act="cam-del-yes" data-id="${esc(g.id)}">Löschen</button><button class="btn ghost" data-act="mclose">Abbrechen</button></div>`);
   },
   'cam-del-yes': async t => { $('#modal').innerHTML = ''; await deleteSpot(t.dataset.id, '#kamera'); },
-  mclose: () => { $('#modal').innerHTML = ''; },
-  'mclose-bg': (t, e) => { if (e.target === t) $('#modal').innerHTML = ''; },
+  mclose: () => closeModal(),
+  'mclose-bg': (t, e) => { if (e.target === t) closeModal(); },
   pin: t => { if (VAULT.pin.length >= 4) return; VAULT.pin += t.dataset.v; VAULT.msg = ''; if (VAULT.pin.length === 4) { render(); pinComplete(); } else render(); },
   'pin-del': () => { VAULT.pin = VAULT.pin.slice(0, -1); render(); },
   'v-lock': () => { lockVault(); location.hash = '#profil'; },
@@ -3407,7 +3552,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('submit', e => {
   if (e.target.id === 'exform') { e.preventDefault(); submitExercise(e.target); }
-  if (e.target.id === 'swapform') { e.preventDefault(); submitSwap(e.target); }
+  if (e.target.id === 'swapform') { e.preventDefault(); if (swCtx && swCtx.mode === 'edit') submitWeSwap(e.target); else submitSwap(e.target); }
   if (e.target.id === 'wform') { e.preventDefault(); saveWorkoutEdit(); }
   if (e.target.id === 'vaultform') { e.preventDefault(); saveVaultEntry(e.target); }
 });

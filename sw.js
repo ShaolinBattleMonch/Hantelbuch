@@ -1,6 +1,6 @@
 /* Hantelbuch – Service Worker: macht die App offline nutzbar.
    Bei einem Update der App-Dateien VERSION hochzählen, dann laden alle Geräte die neue Version. */
-const VERSION = 'hantelbuch-v18';
+const VERSION = 'hantelbuch-v19';
 const FONTS = 'hantelbuch-fonts';
 const SHELL = [
   './', './index.html', './styles.css', './app.js', './manifest.webmanifest',
