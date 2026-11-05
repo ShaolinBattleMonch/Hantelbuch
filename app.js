@@ -4,13 +4,17 @@
    zuerst auf dem Handy, beim Sync in der Google-Tabelle. Der aktuelle Stand wird immer aus dem Log berechnet.
    Ausnahme: der Vault. Seine Bilder bleiben verschlüsselt nur auf diesem Handy und werden nie synchronisiert. */
 
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.8.0';
 const SCRIPT_MIN = 2;            // benötigte Version des Google-Skripts
 const PEOPLE = ['Manu', 'Rob'];
 const DAYS = ['A', 'B', 'C'];    // interne Kennung der Trainingstage, angezeigt werden die Kürzel
 const DAY_SHORT = { A: 'B&T', B: 'R&B', C: 'B&B' };
 const DAY_TONE = { A: 'y', B: 'm', C: 'c' };   // Gelb, Magenta, Cyan
-const TYPE_LABEL = { kg: 'Gewicht', bw: 'Körpergewicht', time: 'Zeit' };
+const TYPE_LABEL = { kg: 'Gewicht', bw: 'Körpergewicht', time: 'Zeit', tr: 'Zeit + Wdh.' };
+const isTimed = type => type === 'time' || type === 'tr';   // Übungen mit Timer
+const REM_WHY = { zeit: 'Zeit', geraet: 'Gerät belegt', erschoepft: 'Erschöpft', schmerz: 'Schmerzen' };   // Grund für − Satz
+const ADD_WHY = { b: 'Bonus', r: 'Wiederholung' };   // Grund für + Satz
+const REGEN_H = 48;   // empfohlene Regeneration zwischen zwei gleichen Trainingstagen in Stunden
 const WARMUP_DEFAULT = new Set(['bankdruecken', 'lh-rudern', 'kniebeugen', 'rdl']);
 const WARMUP = [0.6, 6];         // ein Aufwärmsatz: 60 % × 6
 const FEEL = { leicht: 'Leicht', passt: 'Passt', schwer: 'Schwer' };   // alte Bewertung pro Übung (bis 1.5)
@@ -55,10 +59,13 @@ const DEFAULT_PLAN = {
 
 /* ---------- Muskeln: Körper-Illustration (eigene Zeichnung) und Bibliothek ---------- */
 const BODY = {"sil":"M91.0,50.0C87.8,53.0 92.2,63.8 90.0,68.0C87.8,72.2 82.7,73.3 78.0,75.0C73.3,76.7 66.5,76.5 62.0,78.0C57.5,79.5 53.8,80.7 51.0,84.0C48.2,87.3 46.2,92.0 45.0,98.0C43.8,104.0 44.7,111.7 44.0,120.0C43.3,128.3 41.7,140.3 41.0,148.0C40.3,155.7 40.8,159.0 40.0,166.0C39.2,173.0 37.3,182.0 36.0,190.0C34.7,198.0 33.1,206.7 32.0,214.0C30.9,221.3 30.8,228.7 29.5,234.0C28.2,239.3 25.4,241.3 24.0,246.0C22.6,250.7 20.7,257.7 21.0,262.0C21.3,266.3 23.8,271.7 25.7,272.0C27.6,272.3 30.9,268.0 32.7,264.0C34.5,260.0 34.8,254.0 36.7,248.0C38.6,242.0 41.8,236.3 44.0,228.0C46.2,219.7 48.3,207.0 50.0,198.0C51.7,189.0 52.8,181.7 54.0,174.0C55.2,166.3 56.0,159.0 57.0,152.0C58.0,145.0 58.8,136.0 60.0,132.0C61.2,128.0 62.8,125.0 64.0,128.0C65.2,131.0 66.2,141.7 67.0,150.0C67.8,158.3 69.0,169.0 69.0,178.0C69.0,187.0 67.7,196.7 67.0,204.0C66.3,211.3 66.2,214.3 65.0,222.0C63.8,229.7 61.0,239.3 59.5,250.0C58.0,260.7 56.5,274.7 55.9,286.0C55.3,297.3 56.0,309.0 55.9,318.0C55.8,327.0 55.9,331.0 55.1,340.0C54.3,349.0 51.9,361.7 51.1,372.0C50.3,382.3 50.4,394.3 50.3,402.0C50.2,409.7 51.0,413.7 50.3,418.0C49.6,422.3 46.2,425.0 46.0,428.0C45.8,431.0 46.0,434.7 49.0,436.0C52.0,437.3 61.3,438.0 64.0,436.0C66.7,434.0 65.0,428.3 65.0,424.0C65.0,419.7 63.6,417.3 64.3,410.0C65.0,402.7 67.3,390.0 69.1,380.0C70.8,370.0 73.2,358.3 74.8,350.0C76.3,341.7 76.7,338.3 78.4,330.0C80.1,321.7 82.9,310.7 85.2,300.0C87.5,289.3 90.0,274.0 92.5,266.0C95.0,258.0 98.8,254.3 100.0,252.0C101.2,249.7 98.8,249.7 100.0,252.0C101.2,254.3 105.0,258.0 107.5,266.0C110.0,274.0 112.5,289.3 114.8,300.0C117.1,310.7 119.9,321.7 121.6,330.0C123.3,338.3 123.7,341.7 125.2,350.0C126.8,358.3 129.2,370.0 130.9,380.0C132.7,390.0 135.0,402.7 135.7,410.0C136.4,417.3 134.9,419.7 135.0,424.0C135.1,428.3 133.3,434.0 136.0,436.0C138.7,438.0 148.0,437.3 151.0,436.0C154.0,434.7 154.2,431.0 154.0,428.0C153.8,425.0 150.4,422.3 149.7,418.0C149.0,413.7 149.8,409.7 149.7,402.0C149.6,394.3 149.7,382.3 148.9,372.0C148.1,361.7 145.7,349.0 144.9,340.0C144.1,331.0 144.2,327.0 144.1,318.0C144.0,309.0 144.7,297.3 144.1,286.0C143.5,274.7 142.0,260.7 140.5,250.0C139.0,239.3 136.2,229.7 135.0,222.0C133.8,214.3 133.7,211.3 133.0,204.0C132.3,196.7 131.0,187.0 131.0,178.0C131.0,169.0 132.2,158.3 133.0,150.0C133.8,141.7 134.8,131.0 136.0,128.0C137.2,125.0 138.8,128.0 140.0,132.0C141.2,136.0 142.0,145.0 143.0,152.0C144.0,159.0 144.8,166.3 146.0,174.0C147.2,181.7 148.3,189.0 150.0,198.0C151.7,207.0 153.8,219.7 156.0,228.0C158.2,236.3 161.4,242.0 163.3,248.0C165.2,254.0 165.5,260.0 167.3,264.0C169.1,268.0 172.4,272.3 174.3,272.0C176.2,271.7 178.7,266.3 179.0,262.0C179.3,257.7 177.4,250.7 176.0,246.0C174.6,241.3 171.8,239.3 170.5,234.0C169.2,228.7 169.1,221.3 168.0,214.0C166.9,206.7 165.3,198.0 164.0,190.0C162.7,182.0 160.8,173.0 160.0,166.0C159.2,159.0 159.7,155.7 159.0,148.0C158.3,140.3 156.7,128.3 156.0,120.0C155.3,111.7 156.2,104.0 155.0,98.0C153.8,92.0 151.8,87.3 149.0,84.0C146.2,80.7 142.5,79.5 138.0,78.0C133.5,76.5 126.7,76.7 122.0,75.0C117.3,73.3 112.2,72.2 110.0,68.0C107.8,63.8 112.2,53.0 109.0,50.0C105.8,47.0 94.2,47.0 91.0,50.0Z","names":{"brust_o":["Obere Brust","Pectoralis major, Pars clavicularis"],"brust_u":["Untere Brust","Pectoralis major, Pars sternocostalis"],"serratus":["Sägemuskel","Serratus anterior"],"schulter_v":["Vordere Schulter","Deltoideus, Pars clavicularis"],"schulter_s":["Seitliche Schulter","Deltoideus, Pars acromialis"],"schulter_h":["Hintere Schulter","Deltoideus, Pars spinalis"],"nacken":["Nacken","Trapezius, Pars descendens"],"trapez_mu":["Mittlerer/unterer Trapez","Trapezius, Pars transversa et ascendens"],"rhomboiden":["Rautenmuskeln","Rhomboideus major/minor"],"rotatoren":["Rotatorenmanschette","Infraspinatus, Teres minor"],"teres":["Großer Rundmuskel","Teres major"],"latissimus":["Latissimus","Latissimus dorsi"],"ruecken_u":["Rückenstrecker","Erector spinae"],"bizeps":["Bizeps","Biceps brachii"],"brachialis":["Oberarmmuskel","Brachialis"],"brachiorad":["Oberarmspeichenmuskel","Brachioradialis"],"ua_beuger":["Unterarmbeuger","Flexoren des Unterarms"],"ua_strecker":["Unterarmstrecker","Extensoren des Unterarms"],"trizeps_l":["Trizeps, langer Kopf","Triceps brachii, Caput longum"],"trizeps_s":["Trizeps, seitlicher Kopf","Triceps brachii, Caput laterale"],"bauch":["Gerader Bauchmuskel","Rectus abdominis"],"bauch_s":["Schräge Bauchmuskeln","Obliquus externus abdominis"],"hueftbeuger":["Hüftbeuger","Iliopsoas"],"gluteus_m":["Mittlerer Gesäßmuskel","Gluteus medius"],"gluteus":["Großer Gesäßmuskel","Gluteus maximus"],"quad_rf":["Gerader Oberschenkelmuskel","Rectus femoris"],"quad_vl":["Äußerer Quadrizeps","Vastus lateralis"],"quad_vm":["Innerer Quadrizeps","Vastus medialis"],"adduktoren":["Adduktoren","Adductor longus/magnus"],"hams_a":["Beinbeuger außen","Biceps femoris"],"hams_i":["Beinbeuger innen","Semitendinosus, Semimembranosus"],"waden":["Zwillingswadenmuskel","Gastrocnemius"],"soleus":["Schollenmuskel","Soleus"],"schienbein":["Schienbeinmuskel","Tibialis anterior"]},"front":[["brust_o","M99.4,83.7C97.6,81.4 92.5,80.0 88.4,79.4C84.3,78.9 78.7,79.1 75.0,80.5C71.2,81.9 66.0,86.1 66.0,88.1C66.0,90.0 71.2,91.5 75.0,92.4C78.7,93.3 84.3,93.3 88.4,93.5C92.5,93.6 97.6,95.1 99.4,93.5C101.2,91.8 101.2,86.1 99.4,83.7Z M100.6,93.5C102.4,95.1 107.5,93.6 111.6,93.5C115.7,93.3 121.3,93.3 125.0,92.4C128.8,91.5 134.0,90.0 134.0,88.1C134.0,86.1 128.8,81.9 125.0,80.5C121.3,79.1 115.7,78.9 111.6,79.4C107.5,80.0 102.4,81.4 100.6,83.7C98.8,86.1 98.8,91.8 100.6,93.5Z",84.6,87.3],["brust_u","M99.4,95.2C97.7,90.7 92.8,95.3 88.8,95.2C84.8,95.0 79.3,94.1 75.4,94.1C71.5,94.1 67.2,93.2 65.3,95.2C63.5,97.1 63.3,102.0 64.2,106.0C65.1,109.9 67.6,115.7 70.9,118.9C74.3,122.2 79.7,124.9 84.4,125.4C89.0,125.9 96.4,127.2 98.9,122.2C101.4,117.1 101.1,99.7 99.4,95.2Z M101.1,122.2C103.6,127.2 111.0,125.9 115.6,125.4C120.3,124.9 125.7,122.2 129.1,118.9C132.4,115.7 134.9,109.9 135.8,106.0C136.7,102.0 136.5,97.1 134.7,95.2C132.8,93.2 128.5,94.1 124.6,94.1C120.7,94.1 115.2,95.0 111.2,95.2C107.2,95.3 102.3,90.7 100.6,95.2C98.9,99.7 98.6,117.1 101.1,122.2Z",81.0,106.5],["serratus","M65.9,123.2C64.2,123.7 62.0,126.4 61.4,129.7C60.9,132.9 61.4,139.7 62.5,142.6C63.7,145.5 66.6,148.0 68.1,146.9C69.6,145.9 70.9,139.6 71.5,136.1C72.1,132.7 72.4,128.6 71.5,126.4C70.6,124.3 67.6,122.6 65.9,123.2Z M128.5,126.4C127.6,128.6 127.9,132.7 128.5,136.1C129.1,139.6 130.4,145.9 131.9,146.9C133.4,148.0 136.3,145.5 137.5,142.6C138.6,139.7 139.1,132.9 138.6,129.7C138.0,126.4 135.8,123.7 134.1,123.2C132.4,122.6 129.4,124.3 128.5,126.4Z",66.8,134.2],["schulter_v","M70.8,78.8C70.1,77.0 65.2,79.1 63.0,80.9C60.7,82.7 58.3,85.6 57.4,89.6C56.4,93.5 56.8,100.4 57.4,104.7C57.9,109.0 59.4,115.5 60.7,115.5C62.0,115.5 64.1,108.7 65.2,104.7C66.3,100.7 66.5,96.1 67.5,91.7C68.4,87.4 71.6,80.6 70.8,78.8Z M132.5,91.7C133.5,96.1 133.7,100.7 134.8,104.7C135.9,108.7 138.0,115.5 139.3,115.5C140.6,115.5 142.1,109.0 142.6,104.7C143.2,100.4 143.6,93.5 142.6,89.6C141.7,85.6 139.3,82.7 137.0,80.9C134.8,79.1 129.9,77.0 129.2,78.8C128.4,80.6 131.6,87.4 132.5,91.7Z",63.1,95.1],["schulter_s","M59.7,78.6C59.1,77.9 53.9,81.8 51.8,85.1C49.8,88.3 47.9,93.5 47.4,98.0C46.8,102.5 47.4,108.8 48.5,112.1C49.6,115.3 52.8,118.7 54.1,117.5C55.4,116.2 56.1,109.2 56.3,104.5C56.5,99.8 54.6,93.7 55.2,89.4C55.8,85.1 60.2,79.3 59.7,78.6Z M144.8,89.4C145.4,93.7 143.5,99.8 143.7,104.5C143.9,109.2 144.6,116.2 145.9,117.5C147.2,118.7 150.4,115.3 151.5,112.1C152.6,108.8 153.2,102.5 152.6,98.0C152.1,93.5 150.2,88.3 148.2,85.1C146.1,81.8 140.9,77.9 140.3,78.6C139.8,79.3 144.2,85.1 144.8,89.4Z",53.3,97.9],["nacken","M89.6,63.3C87.8,63.1 85.0,68.5 81.8,70.9C78.6,73.2 70.2,75.9 70.6,77.4C71.0,78.8 80.3,80.4 84.0,79.5C87.8,78.6 92.1,74.7 93.0,72.0C93.9,69.3 91.5,63.5 89.6,63.3Z M107.0,72.0C107.9,74.7 112.2,78.6 116.0,79.5C119.7,80.4 129.0,78.8 129.4,77.4C129.8,75.9 121.4,73.2 118.2,70.9C115.0,68.5 112.2,63.1 110.4,63.3C108.5,63.5 106.1,69.3 107.0,72.0Z",83.8,72.6],["latissimus","M64.8,127.0C63.5,127.4 62.4,133.5 62.5,137.8C62.7,142.1 64.6,151.1 65.9,152.9C67.2,154.7 69.6,151.5 70.4,148.6C71.1,145.7 71.3,139.2 70.4,135.6C69.5,132.0 66.1,126.6 64.8,127.0Z M129.6,135.6C128.7,139.2 128.9,145.7 129.6,148.6C130.4,151.5 132.8,154.7 134.1,152.9C135.4,151.1 137.3,142.1 137.5,137.8C137.6,133.5 136.5,127.4 135.2,127.0C133.9,126.6 130.5,132.0 129.6,135.6Z",67,150],["bizeps","M56.3,116.2C55.0,116.2 53.1,118.8 51.8,122.7C50.5,126.7 49.2,134.4 48.4,140.0C47.7,145.6 47.0,151.7 47.3,156.2C47.7,160.7 49.2,166.8 50.7,167.0C52.2,167.2 55.0,162.1 56.3,157.3C57.6,152.4 58.0,143.6 58.5,137.8C59.1,132.1 60.0,126.3 59.6,122.7C59.3,119.1 57.6,116.2 56.3,116.2Z M140.4,122.7C140.0,126.3 140.9,132.1 141.5,137.8C142.0,143.6 142.4,152.4 143.7,157.3C145.0,162.1 147.8,167.2 149.3,167.0C150.8,166.8 152.3,160.7 152.7,156.2C153.0,151.7 152.3,145.6 151.6,140.0C150.8,134.4 149.5,126.7 148.2,122.7C146.9,118.8 145.0,116.2 143.7,116.2C142.4,116.2 140.7,119.1 140.4,122.7Z",53,136],["brachialis","M48.3,126.4C47.9,126.4 45.8,134.5 44.9,139.4C44.0,144.3 42.7,150.9 42.7,155.6C42.7,160.3 44.2,167.3 44.9,167.5C45.6,167.7 46.8,161.4 47.1,156.7C47.5,152.0 47.0,144.4 47.1,139.4C47.3,134.4 48.6,126.4 48.3,126.4Z M152.9,139.4C153.0,144.4 152.5,152.0 152.9,156.7C153.2,161.4 154.4,167.7 155.1,167.5C155.8,167.3 157.3,160.3 157.3,155.6C157.3,150.9 156.0,144.3 155.1,139.4C154.2,134.5 152.1,126.4 151.7,126.4C151.4,126.4 152.7,134.4 152.9,139.4Z",45.8,147.5],["brachiorad","M44.4,167.2C43.1,167.9 41.4,170.9 39.9,175.8C38.4,180.6 36.6,189.7 35.5,196.3C34.3,203.0 33.0,211.4 33.2,215.8C33.4,220.1 35.3,224.2 36.6,222.2C37.9,220.2 39.6,210.2 41.1,203.9C42.6,197.6 44.4,189.8 45.5,184.4C46.7,179.0 48.0,174.3 47.8,171.5C47.6,168.6 45.7,166.4 44.4,167.2Z M152.2,171.5C152.0,174.3 153.3,179.0 154.5,184.4C155.6,189.8 157.4,197.6 158.9,203.9C160.4,210.2 162.1,220.2 163.4,222.2C164.7,224.2 166.6,220.1 166.8,215.8C167.0,211.4 165.7,203.0 164.5,196.3C163.4,189.7 161.6,180.6 160.1,175.8C158.6,170.9 156.9,167.9 155.6,167.2C154.3,166.4 152.4,168.6 152.2,171.5Z",40.5,192.1],["ua_beuger","M50.4,168.7C49.3,169.8 48.4,175.7 47.1,181.7C45.8,187.6 44.1,196.6 42.6,204.3C41.1,212.1 38.4,222.9 38.1,228.1C37.8,233.3 39.5,238.0 41.0,235.7C42.5,233.3 45.3,221.4 47.1,214.1C48.8,206.7 50.4,197.9 51.5,191.4C52.7,184.9 54.0,178.9 53.8,175.2C53.6,171.4 51.5,167.6 50.4,168.7Z M146.2,175.2C146.0,178.9 147.3,184.9 148.5,191.4C149.6,197.9 151.2,206.7 152.9,214.1C154.7,221.4 157.5,233.3 159.0,235.7C160.5,238.0 162.2,233.3 161.9,228.1C161.6,222.9 158.9,212.1 157.4,204.3C155.9,196.6 154.2,187.6 152.9,181.7C151.6,175.7 150.7,169.8 149.6,168.7C148.5,167.6 146.4,171.4 146.2,175.2Z",46.5,199.9],["bauch","M99.4,123.5C97.3,107.2 89.3,120.1 86.6,122.5C83.9,124.8 83.8,129.7 83.3,137.6C82.7,145.5 82.9,159.4 83.3,170.0C83.6,180.6 84.0,193.7 85.5,201.3C87.0,208.9 89.9,212.1 92.2,215.3C94.6,218.6 98.2,236.0 99.4,220.7C100.6,205.4 101.5,139.9 99.4,123.5Z M100.6,220.7C101.8,236.0 105.4,218.6 107.8,215.3C110.1,212.1 113.0,208.9 114.5,201.3C116.0,193.7 116.4,180.6 116.7,170.0C117.1,159.4 117.3,145.5 116.7,137.6C116.2,129.7 116.1,124.8 113.4,122.5C110.7,120.1 102.7,107.2 100.6,123.5C98.5,139.9 99.4,205.4 100.6,220.7Z",92,178],["bauch_s","M82.6,126.2C81.1,122.8 74.7,124.6 72.5,128.3C70.2,132.1 69.3,140.8 69.1,148.9C68.9,157.0 70.2,168.8 71.4,176.9C72.5,185.0 73.8,192.2 75.8,197.5C77.9,202.7 82.6,211.3 83.7,208.3C84.8,205.2 82.9,189.0 82.6,179.1C82.2,169.2 81.4,157.7 81.4,148.9C81.4,140.0 84.0,129.6 82.6,126.2Z M118.6,148.9C118.6,157.7 117.8,169.2 117.4,179.1C117.1,189.0 115.2,205.2 116.3,208.3C117.4,211.3 122.1,202.7 124.2,197.5C126.2,192.2 127.5,185.0 128.6,176.9C129.8,168.8 131.1,157.0 130.9,148.9C130.7,140.8 129.8,132.1 127.5,128.3C125.3,124.6 118.9,122.8 117.4,126.2C116.0,129.6 118.6,140.0 118.6,148.9Z",76,160],["hueftbeuger","M87.0,212.0C84.5,210.0 80.9,211.8 80.2,215.2C79.6,218.7 81.5,228.2 83.3,232.5C85.1,236.8 89.2,242.1 91.1,241.2C93.0,240.3 95.5,232.0 94.8,227.1C94.1,222.3 89.4,214.0 87.0,212.0Z M105.2,227.1C104.5,232.0 107.0,240.3 108.9,241.2C110.8,242.1 114.9,236.8 116.7,232.5C118.5,228.2 120.4,218.7 119.8,215.2C119.1,211.8 115.5,210.0 113.0,212.0C110.6,214.0 105.9,222.3 105.2,227.1Z",87.3,225.6],["gluteus_m","M70.1,203.2C68.8,203.6 66.4,208.2 65.6,211.8C64.9,215.4 64.7,223.4 65.6,224.8C66.5,226.2 69.9,223.0 71.2,220.5C72.5,218.0 73.6,212.6 73.5,209.7C73.3,206.8 71.4,202.8 70.1,203.2Z M126.5,209.7C126.4,212.6 127.5,218.0 128.8,220.5C130.1,223.0 133.5,226.2 134.4,224.8C135.3,223.4 135.1,215.4 134.4,211.8C133.6,208.2 131.2,203.6 129.9,203.2C128.6,202.8 126.7,206.8 126.5,209.7Z",69.2,214.0],["quad_rf","M78.4,226.4C76.6,227.2 74.0,239.0 72.3,248.0C70.5,257.0 68.9,270.7 68.0,280.4C67.1,290.2 66.6,299.9 66.9,306.4C67.1,312.8 68.0,320.0 69.6,319.3C71.2,318.6 74.4,310.3 76.4,302.0C78.4,293.8 80.6,279.4 81.7,269.6C82.7,259.9 83.4,250.9 82.9,243.7C82.4,236.5 80.2,225.7 78.4,226.4Z M117.1,243.7C116.6,250.9 117.3,259.9 118.3,269.6C119.4,279.4 121.6,293.8 123.6,302.0C125.6,310.3 128.8,318.6 130.4,319.3C132.0,320.0 132.9,312.8 133.1,306.4C133.4,299.9 132.9,290.2 132.0,280.4C131.1,270.7 129.5,257.0 127.7,248.0C126.0,239.0 123.4,227.2 121.6,226.4C119.8,225.7 117.6,236.5 117.1,243.7Z",75.6,265],["quad_vl","M70.4,228.5C68.8,229.2 64.6,239.3 62.3,247.9C60.1,256.6 58.0,269.7 56.9,280.3C55.9,290.9 55.5,304.1 56.2,311.6C56.8,319.2 59.6,327.3 61.1,325.7C62.6,324.1 64.1,311.3 65.3,301.9C66.6,292.6 67.3,279.2 68.4,269.5C69.4,259.8 71.5,250.4 71.8,243.6C72.2,236.8 72.0,227.8 70.4,228.5Z M128.2,243.6C128.5,250.4 130.6,259.8 131.6,269.5C132.7,279.2 133.4,292.6 134.7,301.9C135.9,311.3 137.4,324.1 138.9,325.7C140.4,327.3 143.2,319.2 143.8,311.6C144.5,304.1 144.1,290.9 143.1,280.3C142.0,269.7 139.9,256.6 137.7,247.9C135.4,239.3 131.2,229.2 129.6,228.5C128.0,227.8 127.8,236.8 128.2,243.6Z",61.4,282],["quad_vm","M81.5,281.2C80.0,281.6 77.2,292.7 75.9,298.5C74.6,304.2 73.6,311.3 73.7,315.8C73.8,320.3 75.3,325.5 76.8,325.5C78.3,325.5 81.3,320.6 82.7,315.8C84.0,310.9 85.3,302.1 85.1,296.3C84.9,290.6 83.1,280.8 81.5,281.2Z M114.9,296.3C114.7,302.1 116.0,310.9 117.3,315.8C118.7,320.6 121.7,325.5 123.2,325.5C124.7,325.5 126.2,320.3 126.3,315.8C126.4,311.3 125.4,304.2 124.1,298.5C122.8,292.7 120.0,281.6 118.5,281.2C116.9,280.8 115.1,290.6 114.9,296.3Z",79.3,305.5],["adduktoren","M88.5,231.7C85.7,232.5 83.5,245.8 82.4,253.3C81.2,260.9 81.0,270.8 81.5,277.1C81.9,283.4 83.4,292.2 85.2,291.1C87.0,290.1 90.0,277.6 92.3,270.6C94.7,263.6 100.0,255.5 99.4,249.0C98.8,242.5 91.4,231.0 88.5,231.7Z M100.6,249.0C100.0,255.5 105.3,263.6 107.7,270.6C110.0,277.6 113.0,290.1 114.8,291.1C116.6,292.2 118.1,283.4 118.5,277.1C119.0,270.8 118.8,260.9 117.6,253.3C116.5,245.8 114.3,232.5 111.5,231.7C108.6,231.0 101.2,242.5 100.6,249.0Z",88.3,262.2],["waden","M71.4,337.2C69.9,338.7 67.9,348.0 66.9,354.5C65.8,361.0 65.1,371.1 65.2,376.1C65.3,381.2 66.1,386.2 67.4,384.8C68.7,383.3 71.6,374.0 73.0,367.5C74.4,361.0 76.1,350.9 75.8,345.9C75.5,340.8 72.8,335.8 71.4,337.2Z M124.2,345.9C123.9,350.9 125.6,361.0 127.0,367.5C128.4,374.0 131.3,383.3 132.6,384.8C133.9,386.2 134.7,381.2 134.8,376.1C134.9,371.1 134.2,361.0 133.1,354.5C132.1,348.0 130.1,338.7 128.6,337.2C127.2,335.8 124.5,340.8 124.2,345.9Z",70.0,361.0],["soleus","M58.3,370.6C57.5,371.0 54.8,386.4 54.2,392.2C53.7,398.0 54.0,405.5 54.8,405.2C55.6,404.8 58.5,395.8 59.1,390.0C59.6,384.3 59.1,370.2 58.3,370.6Z M140.9,390.0C141.5,395.8 144.4,404.8 145.2,405.2C146.0,405.5 146.3,398.0 145.8,392.2C145.2,386.4 142.5,371.0 141.7,370.6C140.9,370.2 140.4,384.3 140.9,390.0Z",56.6,389.5],["schienbein","M63.7,336.2C62.4,336.5 59.6,346.4 58.0,354.5C56.4,362.6 54.7,376.1 54.0,384.8C53.2,393.4 52.9,403.1 53.4,406.4C53.9,409.6 55.8,408.5 57.1,404.2C58.4,399.9 59.9,389.1 61.3,380.5C62.8,371.8 65.7,359.8 66.0,352.4C66.4,345.0 65.0,335.8 63.7,336.2Z M134.0,352.4C134.3,359.8 137.2,371.8 138.7,380.5C140.1,389.1 141.6,399.9 142.9,404.2C144.2,408.5 146.1,409.6 146.6,406.4C147.1,403.1 146.8,393.4 146.0,384.8C145.3,376.1 143.6,362.6 142.0,354.5C140.4,346.4 137.6,336.5 136.3,336.2C135.0,335.8 133.6,345.0 134.0,352.4Z",59.1,374.1]],"back":[["schulter_s","M50.2,82.9C49.2,82.9 46.6,87.5 45.7,91.5C44.7,95.5 44.0,102.7 44.6,106.6C45.1,110.6 47.9,116.0 49.0,115.3C50.2,114.5 50.9,106.3 51.3,102.3C51.7,98.3 51.5,94.7 51.3,91.5C51.1,88.3 51.1,82.9 50.2,82.9Z M148.7,91.5C148.5,94.7 148.3,98.3 148.7,102.3C149.1,106.3 149.8,114.5 151.0,115.3C152.1,116.0 154.9,110.6 155.4,106.6C156.0,102.7 155.3,95.5 154.3,91.5C153.4,87.5 150.8,82.9 149.8,82.9C148.9,82.9 148.9,88.3 148.7,91.5Z",48.7,98.3],["schulter_h","M66.8,81.2C64.7,79.4 59.3,80.9 56.7,82.3C54.1,83.7 51.9,86.3 51.1,89.9C50.4,93.5 50.7,102.1 52.2,103.9C53.7,105.7 57.3,102.5 60.1,100.7C62.9,98.9 67.9,96.3 69.0,93.1C70.2,89.9 68.9,83.0 66.8,81.2Z M131.0,93.1C132.1,96.3 137.1,98.9 139.9,100.7C142.7,102.5 146.3,105.7 147.8,103.9C149.3,102.1 149.6,93.5 148.9,89.9C148.1,86.3 145.9,83.7 143.3,82.3C140.7,80.9 135.3,79.4 133.2,81.2C131.1,83.0 129.8,89.9 131.0,93.1Z",59.3,91.8],["nacken","M99.4,56.8C97.9,53.2 93.8,60.7 90.4,63.3C87.1,65.8 83.3,69.2 79.2,71.9C75.1,74.6 65.1,77.5 65.8,79.5C66.5,81.4 78.1,82.9 83.7,83.8C89.3,84.7 96.8,89.4 99.4,84.9C102.0,80.4 100.9,60.4 99.4,56.8Z M100.6,84.9C103.2,89.4 110.7,84.7 116.3,83.8C121.9,82.9 133.5,81.4 134.2,79.5C134.9,77.5 124.9,74.6 120.8,71.9C116.7,69.2 112.9,65.8 109.6,63.3C106.2,60.7 102.1,53.2 100.6,56.8C99.1,60.4 98.0,80.4 100.6,84.9Z",86.3,73.3],["trapez_mu","M99.4,84.7C98.1,73.3 93.4,83.9 91.7,86.8C90.1,89.7 89.7,95.6 89.5,101.9C89.3,108.2 89.7,117.6 90.6,124.6C91.5,131.6 93.6,139.0 95.1,144.1C96.5,149.1 98.7,164.8 99.4,154.9C100.1,145.0 100.7,96.0 99.4,84.7Z M100.6,154.9C101.3,164.8 103.5,149.1 104.9,144.1C106.4,139.0 108.5,131.6 109.4,124.6C110.3,117.6 110.7,108.2 110.5,101.9C110.3,95.6 109.9,89.7 108.3,86.8C106.6,83.9 101.9,73.3 100.6,84.7C99.3,96.0 99.9,145.0 100.6,154.9Z",94.3,116.2],["rhomboiden","M89.5,88.8C88.2,86.7 82.6,88.6 80.6,91.0C78.5,93.3 76.8,98.4 77.2,102.9C77.6,107.4 80.7,114.6 82.8,118.0C84.9,121.4 88.6,125.7 89.5,123.4C90.5,121.0 88.4,109.7 88.4,103.9C88.4,98.2 90.8,91.0 89.5,88.8Z M111.6,103.9C111.6,109.7 109.5,121.0 110.5,123.4C111.4,125.7 115.1,121.4 117.2,118.0C119.3,114.6 122.4,107.4 122.8,102.9C123.2,98.4 121.5,93.3 119.4,91.0C117.4,88.6 111.8,86.7 110.5,88.8C109.2,91.0 111.6,98.2 111.6,103.9Z",84.7,104.7],["rotatoren","M76.4,94.2C74.8,92.9 69.7,94.2 67.5,96.3C65.2,98.5 62.6,103.9 63.0,107.1C63.4,110.4 66.9,114.5 69.7,115.8C72.5,117.0 78.5,116.7 79.8,114.7C81.1,112.7 78.1,107.3 77.6,103.9C77.0,100.5 78.1,95.4 76.4,94.2Z M122.4,103.9C121.9,107.3 118.9,112.7 120.2,114.7C121.5,116.7 127.5,117.0 130.3,115.8C133.1,114.5 136.6,110.4 137.0,107.1C137.4,103.9 134.8,98.5 132.5,96.3C130.3,94.2 125.2,92.9 123.6,94.2C121.9,95.4 123.0,100.5 122.4,103.9Z",72.3,105.3],["teres","M70.1,117.6C67.2,117.2 63.8,117.9 62.3,119.7C60.8,121.5 59.9,126.6 61.2,128.4C62.5,130.2 67.0,131.6 70.1,130.5C73.3,129.4 80.2,124.0 80.2,121.9C80.2,119.7 73.1,117.9 70.1,117.6Z M119.8,121.9C119.8,124.0 126.7,129.4 129.9,130.5C133.0,131.6 137.5,130.2 138.8,128.4C140.1,126.6 139.2,121.5 137.7,119.7C136.2,117.9 132.8,117.2 129.9,117.6C126.9,117.9 119.8,119.7 119.8,121.9Z",68.8,123.6],["latissimus","M81.2,118.0C77.1,115.1 69.8,122.5 66.6,127.7C63.5,132.9 62.0,141.8 62.2,149.3C62.3,156.9 65.0,166.6 67.8,173.1C70.6,179.6 74.8,184.4 79.0,188.2C83.1,192.0 89.8,198.6 92.4,195.8C95.0,192.9 94.8,179.4 94.6,170.9C94.4,162.5 93.5,153.8 91.3,145.0C89.0,136.2 85.3,120.9 81.2,118.0Z M108.7,145.0C106.5,153.8 105.6,162.5 105.4,170.9C105.2,179.4 105.0,192.9 107.6,195.8C110.2,198.6 116.9,192.0 121.0,188.2C125.2,184.4 129.4,179.6 132.2,173.1C135.0,166.6 137.7,156.9 137.8,149.3C138.0,141.8 136.5,132.9 133.4,127.7C130.2,122.5 122.9,115.1 118.8,118.0C114.7,120.9 111.0,136.2 108.7,145.0Z",79.4,158.5],["ruecken_u","M98.4,150.9C97.5,139.7 94.1,145.7 92.8,149.8C91.5,153.9 90.8,166.5 90.6,175.7C90.4,184.9 90.4,198.0 91.7,204.9C93.0,211.7 97.3,225.8 98.4,216.8C99.6,207.8 99.4,162.0 98.4,150.9Z M101.6,216.8C102.7,225.8 107.0,211.7 108.3,204.9C109.6,198.0 109.6,184.9 109.4,175.7C109.2,166.5 108.5,153.9 107.2,149.8C105.9,145.7 102.5,139.7 101.6,150.9C100.6,162.0 100.4,207.8 101.6,216.8Z",94.4,179.6],["ua_strecker","M48.6,164.7C46.6,166.1 44.2,172.2 41.9,178.7C39.7,185.2 36.9,195.6 35.2,203.6C33.5,211.5 31.7,221.5 31.8,226.2C32.0,230.9 34.5,234.7 36.3,231.6C38.2,228.6 40.8,215.4 43.0,207.9C45.3,200.3 47.9,192.6 49.8,186.3C51.6,180.0 54.4,173.7 54.2,170.1C54.1,166.5 50.7,163.2 48.6,164.7Z M145.8,170.1C145.6,173.7 148.4,180.0 150.2,186.3C152.1,192.6 154.7,200.3 157.0,207.9C159.2,215.4 161.8,228.6 163.7,231.6C165.5,234.7 168.0,230.9 168.2,226.2C168.3,221.5 166.5,211.5 164.8,203.6C163.1,195.6 160.3,185.2 158.1,178.7C155.8,172.2 153.4,166.1 151.4,164.7C149.3,163.2 145.9,166.5 145.8,170.1Z",42.6,196.1],["trizeps_l","M59.1,104.2C57.8,103.7 55.4,110.7 54.6,116.1C53.9,121.5 54.2,130.3 54.6,136.6C55.0,142.9 55.7,153.2 56.9,153.9C58.0,154.6 60.4,146.7 61.3,140.9C62.3,135.2 62.8,125.4 62.5,119.3C62.1,113.2 60.4,104.7 59.1,104.2Z M137.5,119.3C137.2,125.4 137.7,135.2 138.7,140.9C139.6,146.7 142.0,154.6 143.1,153.9C144.3,153.2 145.0,142.9 145.4,136.6C145.8,130.3 146.1,121.5 145.4,116.1C144.6,110.7 142.2,103.7 140.9,104.2C139.6,104.7 137.9,113.2 137.5,119.3Z",58.2,128.5],["trizeps_s","M51.1,108.2C50.0,109.6 47.8,117.4 46.6,123.3C45.5,129.2 44.2,137.9 44.4,143.8C44.6,149.8 46.3,157.7 47.8,158.9C49.3,160.2 52.4,156.2 53.4,151.4C54.3,146.5 53.4,135.9 53.4,129.8C53.4,123.7 53.7,118.3 53.4,114.7C53.0,111.1 52.2,106.7 51.1,108.2Z M146.6,114.7C146.3,118.3 146.6,123.7 146.6,129.8C146.6,135.9 145.7,146.5 146.6,151.4C147.6,156.2 150.7,160.2 152.2,158.9C153.7,157.7 155.4,149.8 155.6,143.8C155.8,137.9 154.5,129.2 153.4,123.3C152.2,117.4 150.0,109.6 148.9,108.2C147.8,106.7 147.0,111.1 146.6,114.7Z",50.0,132.9],["bauch_s","M65.8,174.8C64.7,175.8 63.4,187.0 63.5,192.0C63.7,197.1 65.4,203.6 66.9,205.0C68.4,206.4 71.9,203.9 72.5,200.7C73.1,197.4 71.4,189.9 70.3,185.6C69.1,181.2 66.9,173.7 65.8,174.8Z M129.7,185.6C128.6,189.9 126.9,197.4 127.5,200.7C128.1,203.9 131.6,206.4 133.1,205.0C134.6,203.6 136.3,197.1 136.5,192.0C136.6,187.0 135.3,175.8 134.2,174.8C133.1,173.7 130.9,181.2 129.7,185.6Z",67.8,191.6],["gluteus_m","M71.6,204.2C68.3,205.3 66.0,208.0 64.9,211.8C63.8,215.6 63.1,224.4 64.9,226.9C66.8,229.4 72.4,229.1 76.1,226.9C79.9,224.7 85.8,217.5 87.3,213.9C88.8,210.3 87.7,206.9 85.1,205.3C82.5,203.7 75.0,203.1 71.6,204.2Z M114.9,205.3C112.3,206.9 111.2,210.3 112.7,213.9C114.2,217.5 120.1,224.7 123.9,226.9C127.6,229.1 133.2,229.4 135.1,226.9C136.9,224.4 136.2,215.6 135.1,211.8C134.0,208.0 131.7,205.3 128.4,204.2C125.0,203.1 117.5,203.7 114.9,205.3Z",75.0,214.8],["gluteus","M87.6,213.0C83.4,213.5 77.9,222.0 74.2,225.9C70.5,229.9 66.9,231.5 65.3,236.7C63.8,242.0 62.5,252.4 64.9,257.3C67.2,262.1 73.7,265.5 79.4,265.9C85.2,266.3 96.1,266.6 99.4,259.4C102.7,252.2 101.4,230.4 99.4,222.7C97.4,215.0 91.8,212.4 87.6,213.0Z M100.6,222.7C98.6,230.4 97.3,252.2 100.6,259.4C103.9,266.6 114.8,266.3 120.6,265.9C126.3,265.5 132.8,262.1 135.1,257.3C137.5,252.4 136.2,242.0 134.7,236.7C133.1,231.5 129.5,229.9 125.8,225.9C122.1,222.0 116.6,213.5 112.4,213.0C108.2,212.4 102.6,215.0 100.6,222.7Z",81.8,240.1],["quad_vl","M62.4,260.0C61.8,256.7 58.3,273.6 57.2,281.6C56.2,289.5 55.6,304.2 56.1,307.5C56.6,310.7 59.3,308.9 60.3,301.0C61.4,293.1 62.9,263.2 62.4,260.0Z M139.7,301.0C140.7,308.9 143.4,310.7 143.9,307.5C144.4,304.2 143.8,289.5 142.8,281.6C141.7,273.6 138.2,256.7 137.6,260.0C137.1,263.2 138.6,293.1 139.7,301.0Z",59.0,287.5],["adduktoren","M93.4,260.7C92.8,258.5 89.3,268.2 88.2,273.6C87.1,279.0 86.3,290.9 86.9,293.1C87.4,295.2 90.6,292.0 91.7,286.6C92.8,281.2 93.9,262.8 93.4,260.7Z M108.3,286.6C109.4,292.0 112.6,295.2 113.1,293.1C113.7,290.9 112.9,279.0 111.8,273.6C110.7,268.2 107.2,258.5 106.6,260.7C106.1,262.8 107.2,281.2 108.3,286.6Z",90.0,278.5],["hams_a","M66.7,262.7C64.5,264.7 62.1,274.1 60.8,281.1C59.5,288.1 58.5,298.0 58.9,304.8C59.3,311.7 61.6,319.8 63.3,322.1C65.0,324.5 68.2,323.4 69.3,318.9C70.5,314.4 69.5,303.4 70.2,295.1C70.9,286.8 74.2,274.6 73.6,269.2C73.0,263.8 68.8,260.7 66.7,262.7Z M126.4,269.2C125.8,274.6 129.1,286.8 129.8,295.1C130.5,303.4 129.5,314.4 130.7,318.9C131.8,323.4 135.0,324.5 136.7,322.1C138.4,319.8 140.7,311.7 141.1,304.8C141.5,298.0 140.5,288.1 139.2,281.1C137.9,274.1 135.5,264.7 133.3,262.7C131.2,260.7 127.0,263.8 126.4,269.2Z",66.1,293.4],["hams_i","M76.8,266.2C74.5,270.5 74.3,282.0 73.7,290.0C73.0,297.9 72.0,308.1 72.8,313.7C73.5,319.3 76.3,325.6 78.3,323.4C80.2,321.3 82.6,308.9 84.6,300.8C86.6,292.7 89.8,281.0 90.2,274.8C90.7,268.7 89.5,265.5 87.2,264.0C85.0,262.6 79.1,261.9 76.8,266.2Z M112.8,264.0C110.5,265.5 109.3,268.7 109.8,274.8C110.2,281.0 113.4,292.7 115.4,300.8C117.4,308.9 119.8,321.3 121.7,323.4C123.7,325.6 126.5,319.3 127.2,313.7C128.0,308.1 127.0,297.9 126.3,290.0C125.7,282.0 125.5,270.5 123.2,266.2C120.9,261.9 115.0,262.6 112.8,264.0Z",80.5,290.4],["waden","M58.8,332.4C56.6,334.6 55.1,343.4 54.2,349.7C53.4,356.0 52.9,365.5 53.8,370.2C54.7,374.9 57.8,380.1 59.6,377.8C61.4,375.4 63.4,363.0 64.6,356.2C65.9,349.3 68.2,340.7 67.2,336.7C66.2,332.8 61.0,330.3 58.8,332.4Z M132.8,336.7C131.8,340.7 134.1,349.3 135.4,356.2C136.6,363.0 138.6,375.4 140.4,377.8C142.2,380.1 145.3,374.9 146.2,370.2C147.1,365.5 146.6,356.0 145.8,349.7C144.9,343.4 143.4,334.6 141.2,332.4C139.0,330.3 133.8,332.8 132.8,336.7Z M68.4,334.6C66.8,337.8 66.1,349.3 65.6,356.2C65.0,363.0 64.1,373.1 65.2,375.6C66.4,378.1 70.6,375.6 72.5,371.3C74.4,367.0 76.0,355.4 76.4,349.7C76.8,343.9 76.2,339.2 74.9,336.7C73.5,334.2 69.9,331.3 68.4,334.6Z M125.1,336.7C123.8,339.2 123.2,343.9 123.6,349.7C124.0,355.4 125.6,367.0 127.5,371.3C129.4,375.6 133.6,378.1 134.8,375.6C135.9,373.1 135.0,363.0 134.4,356.2C133.9,349.3 133.2,337.8 131.6,334.6C130.1,331.3 126.5,334.2 125.1,336.7Z",59.7,353.8],["soleus","M53.6,368.6C51.9,370.2 50.7,385.2 50.7,391.3C50.6,397.4 51.3,403.0 53.3,405.3C55.2,407.7 59.6,408.2 62.2,405.3C64.8,402.4 67.5,393.4 68.9,388.0C70.4,382.6 72.3,374.0 71.0,372.9C69.6,371.8 63.8,382.3 60.9,381.6C58.0,380.8 55.3,367.0 53.6,368.6Z M139.1,381.6C136.2,382.3 130.4,371.8 129.0,372.9C127.7,374.0 129.6,382.6 131.1,388.0C132.5,393.4 135.2,402.4 137.8,405.3C140.4,408.2 144.8,407.7 146.7,405.3C148.7,403.0 149.4,397.4 149.3,391.3C149.3,385.2 148.1,370.2 146.4,368.6C144.7,367.0 142.0,380.8 139.1,381.6Z",60.1,387.6]],"right":{"f":["adduktoren","brachialis","brachiorad","gluteus_m","hams_i","nacken","quad_vm","rhomboiden","schulter_s","serratus","soleus","teres","trizeps_s","waden"],"b":["brachialis","brachiorad","gluteus_m","hams_i","quad_vl","quad_vm","rhomboiden","schulter_s","soleus","teres","trizeps_s"]},"groups":{"Brust":["brust_o","brust_u","serratus"],"Schulter":["schulter_v","schulter_s","schulter_h","rotatoren","nacken"],"Rücken":["trapez_mu","rhomboiden","teres","latissimus","ruecken_u"],"Arme":["bizeps","brachialis","brachiorad","ua_beuger","ua_strecker","trizeps_l","trizeps_s"],"Bauch":["bauch","bauch_s","hueftbeuger"],"Beine":["gluteus","gluteus_m","quad_rf","quad_vl","quad_vm","adduktoren","hams_a","hams_i","waden","soleus","schienbein"]}};
-const EX_LIB = [["bankdruecken","Bankdrücken (Langhantel)","kg","brust_u,brust_o","schulter_v,trizeps_s,trizeps_l"],["kh-bankdruecken","Bankdrücken (Kurzhantel)","kg","brust_u","brust_o,schulter_v,trizeps_s,trizeps_l"],["schraegbank","Schrägbankdrücken (Kurzhantel, 30°)","kg","brust_o","brust_u,schulter_v,trizeps_s"],["lh-schraegbank","Schrägbankdrücken (Langhantel)","kg","brust_o","brust_u,schulter_v,trizeps_s,trizeps_l"],["negativbank","Negativbankdrücken","kg","brust_u","trizeps_s,trizeps_l,schulter_v"],["brustpresse","Brustpresse (Maschine)","kg","brust_u","brust_o,schulter_v,trizeps_s"],["dips","Dips (Brust-Fokus)","bw","brust_u,trizeps_l,trizeps_s","brust_o,schulter_v"],["liegestuetze","Liegestütze","bw","brust_u","brust_o,schulter_v,trizeps_s,trizeps_l,serratus,bauch"],["kabelflys","Kabelzug-Flys","kg","brust_u,brust_o","schulter_v"],["butterfly","Butterfly (Maschine)","kg","brust_u","brust_o,schulter_v"],["kh-flys","Kurzhantel-Flys","kg","brust_u","brust_o,schulter_v"],["pullover","Pullover (Kurzhantel)","kg","latissimus,brust_u","teres,trizeps_l,serratus"],["ueberkopf-trizeps","Überkopf-Trizepsstrecken am Kabel","kg","trizeps_l","trizeps_s"],["trizeps-seil","Trizepsdrücken am Kabel (Seil)","kg","trizeps_s,trizeps_l",""],["trizeps-stange","Trizepsdrücken am Kabel (Stange)","kg","trizeps_s","trizeps_l"],["french-press","French Press (SZ-Stange)","kg","trizeps_l,trizeps_s",""],["enges-bankdruecken","Enges Bankdrücken","kg","trizeps_s,trizeps_l","brust_u,schulter_v"],["bankdips","Bankdips","bw","trizeps_s,trizeps_l","schulter_v,brust_u"],["kickbacks","Trizeps-Kickbacks","kg","trizeps_l,trizeps_s","schulter_h"],["schulterdruecken","Schulterdrücken (Kurzhantel)","kg","schulter_v","schulter_s,trizeps_s,trizeps_l,nacken"],["military-press","Schulterdrücken stehend (Langhantel)","kg","schulter_v","schulter_s,trizeps_s,brust_o,nacken,bauch"],["seitheben","Seitheben (Kurzhantel)","kg","schulter_s","schulter_v,nacken"],["seitheben-kabel","Seitheben am Kabel","kg","schulter_s","schulter_v,nacken"],["frontheben","Frontheben","kg","schulter_v","brust_o,schulter_s"],["reverse-flys","Reverse Flys","kg","schulter_h","rhomboiden,trapez_mu,rotatoren"],["facepulls","Face Pulls am Kabel","kg","schulter_h,rotatoren","rhomboiden,trapez_mu,nacken"],["aufrechtes-rudern","Aufrechtes Rudern","kg","schulter_s,nacken","schulter_v,bizeps"],["shrugs","Shrugs (Kurzhantel)","kg","nacken","trapez_mu,ua_beuger"],["klimmzuege","Klimmzüge","bw","latissimus,teres","rhomboiden,trapez_mu,schulter_h,bizeps,brachialis,ua_beuger"],["klimmzuege-eng","Klimmzüge eng (Untergriff)","bw","latissimus,bizeps","teres,brachialis,rhomboiden,trapez_mu"],["latzug","Latzug (breiter Griff)","kg","latissimus,teres","rhomboiden,trapez_mu,schulter_h,bizeps,brachialis"],["latzug-eng","Latzug eng (neutraler Griff)","kg","latissimus","teres,bizeps,brachialis,rhomboiden"],["lh-rudern","Langhantelrudern vorgebeugt","kg","latissimus,rhomboiden,trapez_mu","teres,schulter_h,bizeps,brachialis,ruecken_u,hams_a"],["kh-rudern","Kurzhantelrudern einarmig","kg","latissimus,rhomboiden","teres,trapez_mu,schulter_h,bizeps,brachialis"],["kabelrudern","Kabelrudern sitzend (enger Griff)","kg","latissimus,rhomboiden,trapez_mu","teres,schulter_h,bizeps,brachialis,ruecken_u"],["t-bar-rudern","T-Bar-Rudern","kg","rhomboiden,trapez_mu,latissimus","teres,schulter_h,bizeps,ruecken_u"],["maschinenrudern","Rudern an der Maschine","kg","rhomboiden,trapez_mu,latissimus","teres,schulter_h,bizeps"],["kabel-pullover","Kabel-Pullover (gestreckte Arme)","kg","latissimus","teres,trizeps_l"],["kreuzheben","Kreuzheben","kg","gluteus,ruecken_u,hams_a,hams_i","quad_vl,quad_vm,quad_rf,adduktoren,nacken,trapez_mu,ua_beuger"],["hyperextensions","Hyperextensions","bw","ruecken_u","gluteus,hams_a,hams_i"],["sz-curls","Langhantel-Curls (SZ-Stange)","kg","bizeps","brachialis,brachiorad"],["kh-curls","Kurzhantel-Curls","kg","bizeps","brachialis,brachiorad"],["hammer-curls","Hammer-Curls (Kurzhantel)","kg","brachialis,brachiorad","bizeps"],["schraegbank-curls","Schrägbank-Curls","kg","bizeps","brachialis"],["konzentrationscurls","Konzentrationscurls","kg","bizeps","brachialis"],["kabel-curls","Bizeps-Curls am Kabel","kg","bizeps","brachialis,brachiorad"],["scott-curls","Scott-Curls (Preacher)","kg","bizeps,brachialis","brachiorad"],["reverse-curls","Reverse Curls","kg","brachiorad,brachialis","ua_strecker,bizeps"],["handgelenk-curls","Handgelenk-Curls","kg","ua_beuger",""],["kniebeugen","Kniebeugen (Langhantel)","kg","quad_rf,quad_vl,quad_vm,gluteus","adduktoren,hams_a,hams_i,ruecken_u,soleus"],["frontkniebeugen","Frontkniebeugen","kg","quad_vl,quad_vm,quad_rf","gluteus,adduktoren,ruecken_u,bauch"],["goblet-squat","Goblet Squat","kg","quad_vl,quad_vm,quad_rf,gluteus","adduktoren,bauch"],["beinpresse","Beinpresse","kg","quad_vl,quad_vm,quad_rf,gluteus","adduktoren,hams_a,soleus"],["hackenschmidt","Hackenschmidt-Kniebeugen","kg","quad_vl,quad_vm,quad_rf","gluteus,adduktoren"],["ausfallschritte","Ausfallschritte","kg","quad_vl,quad_vm,quad_rf,gluteus","adduktoren,gluteus_m,hams_a,soleus"],["bulgarian","Bulgarische Split Squats","kg","quad_vl,quad_vm,gluteus","quad_rf,adduktoren,gluteus_m,hams_a"],["step-ups","Step-ups","kg","quad_vl,quad_vm,gluteus","quad_rf,gluteus_m,hams_a"],["beinstrecker","Beinstrecker","kg","quad_rf,quad_vl,quad_vm",""],["rdl","Rumänisches Kreuzheben","kg","hams_a,hams_i,gluteus","ruecken_u,adduktoren,ua_beuger,nacken"],["beinbeuger","Beinbeuger","kg","hams_a,hams_i","waden"],["beinbeuger-sitzend","Beinbeuger sitzend","kg","hams_a,hams_i","waden"],["hip-thrust","Hip Thrust","kg","gluteus","hams_a,hams_i,quad_vl,gluteus_m,adduktoren"],["abduktoren","Abduktoren (Maschine)","kg","gluteus_m","gluteus"],["adduktoren","Adduktoren (Maschine)","kg","adduktoren",""],["wadenheben","Wadenheben stehend","kg","waden","soleus"],["wadenheben-sitzend","Wadenheben sitzend","kg","soleus","waden"],["beinheben","Hängendes Beinheben","bw","hueftbeuger,bauch","bauch_s,quad_rf,ua_beuger"],["knieheben","Hängendes Knieheben","bw","hueftbeuger,bauch","bauch_s"],["plank","Plank","time","bauch","bauch_s,schulter_v,gluteus,quad_rf"],["seitstuetz","Seitstütz","time","bauch_s","gluteus_m,bauch"],["crunches","Crunches","bw","bauch","bauch_s"],["kabel-crunch","Kabel-Crunch","kg","bauch","bauch_s"],["russian-twist","Russian Twist","bw","bauch_s","bauch,hueftbeuger"],["ab-wheel","Ab Wheel Rollout","bw","bauch","bauch_s,latissimus,schulter_v,hueftbeuger"],["pallof","Pallof Press","kg","bauch_s","bauch"],["holzhacker","Holzhacker am Kabel","kg","bauch_s","bauch,schulter_v"]];
+const EX_LIB = [["bankdruecken","Bankdrücken (Langhantel)","kg","brust_u,brust_o","schulter_v,trizeps_s,trizeps_l"],["kh-bankdruecken","Bankdrücken (Kurzhantel)","kg","brust_u","brust_o,schulter_v,trizeps_s,trizeps_l"],["schraegbank","Schrägbankdrücken (Kurzhantel, 30°)","kg","brust_o","brust_u,schulter_v,trizeps_s"],["lh-schraegbank","Schrägbankdrücken (Langhantel)","kg","brust_o","brust_u,schulter_v,trizeps_s,trizeps_l"],["negativbank","Negativbankdrücken","kg","brust_u","trizeps_s,trizeps_l,schulter_v"],["brustpresse","Brustpresse (Maschine)","kg","brust_u","brust_o,schulter_v,trizeps_s"],["dips","Dips (Brust-Fokus)","bw","brust_u,trizeps_l,trizeps_s","brust_o,schulter_v"],["liegestuetze","Liegestütze","bw","brust_u","brust_o,schulter_v,trizeps_s,trizeps_l,serratus,bauch"],["kabelflys","Kabelzug-Flys","kg","brust_u,brust_o","schulter_v"],["butterfly","Butterfly (Maschine)","kg","brust_u","brust_o,schulter_v"],["kh-flys","Kurzhantel-Flys","kg","brust_u","brust_o,schulter_v"],["pullover","Pullover (Kurzhantel)","kg","latissimus,brust_u","teres,trizeps_l,serratus"],["ueberkopf-trizeps","Überkopf-Trizepsstrecken am Kabel","kg","trizeps_l","trizeps_s"],["trizeps-seil","Trizepsdrücken am Kabel (Seil)","kg","trizeps_s,trizeps_l",""],["trizeps-stange","Trizepsdrücken am Kabel (Stange)","kg","trizeps_s","trizeps_l"],["french-press","French Press (SZ-Stange)","kg","trizeps_l,trizeps_s",""],["enges-bankdruecken","Enges Bankdrücken","kg","trizeps_s,trizeps_l","brust_u,schulter_v"],["bankdips","Bankdips","bw","trizeps_s,trizeps_l","schulter_v,brust_u"],["kickbacks","Trizeps-Kickbacks","kg","trizeps_l,trizeps_s","schulter_h"],["schulterdruecken","Schulterdrücken (Kurzhantel)","kg","schulter_v","schulter_s,trizeps_s,trizeps_l,nacken"],["military-press","Schulterdrücken stehend (Langhantel)","kg","schulter_v","schulter_s,trizeps_s,brust_o,nacken,bauch"],["seitheben","Seitheben (Kurzhantel)","kg","schulter_s","schulter_v,nacken"],["seitheben-kabel","Seitheben am Kabel","kg","schulter_s","schulter_v,nacken"],["frontheben","Frontheben","kg","schulter_v","brust_o,schulter_s"],["reverse-flys","Reverse Flys","kg","schulter_h","rhomboiden,trapez_mu,rotatoren"],["facepulls","Face Pulls am Kabel","kg","schulter_h,rotatoren","rhomboiden,trapez_mu,nacken"],["aufrechtes-rudern","Aufrechtes Rudern","kg","schulter_s,nacken","schulter_v,bizeps"],["shrugs","Shrugs (Kurzhantel)","kg","nacken","trapez_mu,ua_beuger"],["klimmzuege","Klimmzüge","bw","latissimus,teres","rhomboiden,trapez_mu,schulter_h,bizeps,brachialis,ua_beuger"],["klimmzuege-eng","Klimmzüge eng (Untergriff)","bw","latissimus,bizeps","teres,brachialis,rhomboiden,trapez_mu"],["latzug","Latzug (breiter Griff)","kg","latissimus,teres","rhomboiden,trapez_mu,schulter_h,bizeps,brachialis"],["latzug-eng","Latzug eng (neutraler Griff)","kg","latissimus","teres,bizeps,brachialis,rhomboiden"],["lh-rudern","Langhantelrudern vorgebeugt","kg","latissimus,rhomboiden,trapez_mu","teres,schulter_h,bizeps,brachialis,ruecken_u,hams_a"],["kh-rudern","Kurzhantelrudern einarmig","kg","latissimus,rhomboiden","teres,trapez_mu,schulter_h,bizeps,brachialis"],["kabelrudern","Kabelrudern sitzend (enger Griff)","kg","latissimus,rhomboiden,trapez_mu","teres,schulter_h,bizeps,brachialis,ruecken_u"],["t-bar-rudern","T-Bar-Rudern","kg","rhomboiden,trapez_mu,latissimus","teres,schulter_h,bizeps,ruecken_u"],["maschinenrudern","Rudern an der Maschine","kg","rhomboiden,trapez_mu,latissimus","teres,schulter_h,bizeps"],["kabel-pullover","Kabel-Pullover (gestreckte Arme)","kg","latissimus","teres,trizeps_l"],["kreuzheben","Kreuzheben","kg","gluteus,ruecken_u,hams_a,hams_i","quad_vl,quad_vm,quad_rf,adduktoren,nacken,trapez_mu,ua_beuger"],["hyperextensions","Hyperextensions","bw","ruecken_u","gluteus,hams_a,hams_i"],["sz-curls","Langhantel-Curls (SZ-Stange)","kg","bizeps","brachialis,brachiorad"],["kh-curls","Kurzhantel-Curls","kg","bizeps","brachialis,brachiorad"],["hammer-curls","Hammer-Curls (Kurzhantel)","kg","brachialis,brachiorad","bizeps"],["schraegbank-curls","Schrägbank-Curls","kg","bizeps","brachialis"],["konzentrationscurls","Konzentrationscurls","kg","bizeps","brachialis"],["kabel-curls","Bizeps-Curls am Kabel","kg","bizeps","brachialis,brachiorad"],["scott-curls","Scott-Curls (Preacher)","kg","bizeps,brachialis","brachiorad"],["reverse-curls","Reverse Curls","kg","brachiorad,brachialis","ua_strecker,bizeps"],["handgelenk-curls","Handgelenk-Curls","kg","ua_beuger",""],["kniebeugen","Kniebeugen (Langhantel)","kg","quad_rf,quad_vl,quad_vm,gluteus","adduktoren,hams_a,hams_i,ruecken_u,soleus"],["frontkniebeugen","Frontkniebeugen","kg","quad_vl,quad_vm,quad_rf","gluteus,adduktoren,ruecken_u,bauch"],["goblet-squat","Goblet Squat","kg","quad_vl,quad_vm,quad_rf,gluteus","adduktoren,bauch"],["beinpresse","Beinpresse","kg","quad_vl,quad_vm,quad_rf,gluteus","adduktoren,hams_a,soleus"],["hackenschmidt","Hackenschmidt-Kniebeugen","kg","quad_vl,quad_vm,quad_rf","gluteus,adduktoren"],["ausfallschritte","Ausfallschritte","kg","quad_vl,quad_vm,quad_rf,gluteus","adduktoren,gluteus_m,hams_a,soleus"],["bulgarian","Bulgarische Split Squats","kg","quad_vl,quad_vm,gluteus","quad_rf,adduktoren,gluteus_m,hams_a"],["step-ups","Step-ups","kg","quad_vl,quad_vm,gluteus","quad_rf,gluteus_m,hams_a"],["beinstrecker","Beinstrecker","kg","quad_rf,quad_vl,quad_vm",""],["rdl","Rumänisches Kreuzheben","kg","hams_a,hams_i,gluteus","ruecken_u,adduktoren,ua_beuger,nacken"],["beinbeuger","Beinbeuger","kg","hams_a,hams_i","waden"],["beinbeuger-sitzend","Beinbeuger sitzend","kg","hams_a,hams_i","waden"],["hip-thrust","Hip Thrust","kg","gluteus","hams_a,hams_i,quad_vl,gluteus_m,adduktoren"],["abduktoren","Abduktoren (Maschine)","kg","gluteus_m","gluteus"],["adduktoren","Adduktoren (Maschine)","kg","adduktoren",""],["wadenheben","Wadenheben stehend","kg","waden","soleus"],["wadenheben-sitzend","Wadenheben sitzend","kg","soleus","waden"],["beinheben","Hängendes Beinheben","bw","hueftbeuger,bauch","bauch_s,quad_rf,ua_beuger"],["knieheben","Hängendes Knieheben","bw","hueftbeuger,bauch","bauch_s"],["plank","Plank","time","bauch","bauch_s,schulter_v,gluteus,quad_rf"],["seitstuetz","Seitstütz","time","bauch_s","gluteus_m,bauch"],["crunches","Crunches","bw","bauch","bauch_s"],["kabel-crunch","Kabel-Crunch","kg","bauch","bauch_s"],["russian-twist","Russian Twist","bw","bauch_s","bauch,hueftbeuger"],["ab-wheel","Ab Wheel Rollout","bw","bauch","bauch_s,latissimus,schulter_v,hueftbeuger"],["pallof","Pallof Press","kg","bauch_s","bauch"],["holzhacker","Holzhacker am Kabel","kg","bauch_s","bauch,schulter_v"],["burpees","Burpees","tr","quad_vl,quad_vm,brust_u,schulter_v,bauch","gluteus,trizeps_l,quad_rf,waden"],["mountain-climbers","Mountain Climbers","tr","bauch,hueftbeuger","schulter_v,brust_u,quad_rf"],["jumping-jacks","Jumping Jacks","tr","waden,schulter_s","gluteus_m,adduktoren,soleus"],["bear-crawl","Bear Crawl","tr","schulter_v,bauch","quad_vl,trizeps_l,brust_u"],["seilspringen","Seilspringen","time","waden,soleus","quad_vl,schulter_v,ua_beuger"],["kb-swings","Kettlebell Swings","kg","gluteus,hams_a,hams_i","ruecken_u,schulter_v,bauch"]];
 const TONE_HEX = { y: '#fff200', m: '#ec008c', c: '#00aeef' };
 const normName = s => String(s || '').toLowerCase().replace(/\(.*?\)/g, ' ').replace(/[^a-z0-9äöüß]+/g, ' ').trim();
 const LIB_BY_ID = Object.fromEntries(EX_LIB.map(e => [e[0], e]));
+const KOND = new Set(['burpees', 'mountain-climbers', 'jumping-jacks', 'bear-crawl', 'seilspringen', 'kb-swings']);   // Gruppe „Kondition“
+const TIMED_RANGE = { tr: [30, 45], time: [30, 60] };   // Vorgabe in Sekunden für neue Zeit-Übungen
+const inGroup = (e, g) => (g === 'Kondition' ? KOND.has(e[0]) : !!BODY.groups[g] && csvMus(e[3]).some(k => BODY.groups[g].includes(k)));
 const LIB_BY_NAME = Object.fromEntries(EX_LIB.map(e => [normName(e[1]), e]));
 const csvMus = v => String(v || '').split(',').filter(k => BODY.names[k]);
 // Muskeln aus der Bibliothek, passend zu Kennung oder Name der Übung
@@ -217,12 +224,12 @@ let sugGroup = '';
 function renderSug() {
   const box = $('#f-sug'), inp = $('#f-name'); if (!box || !inp) return;
   const q = normName(inp.value), toks = q.split(' ').filter(Boolean);
-  const chips = `<div class="chips sugchips" role="group" aria-label="Nach Muskelgruppe filtern">${['', ...Object.keys(BODY.groups)].map(g => `<button type="button" class="pchip" data-act="sug-g" data-v="${g}" aria-pressed="${sugGroup === g}">${g || 'Alle'}</button>`).join('')}</div>`;
+  const chips = `<div class="chips sugchips" role="group" aria-label="Nach Muskelgruppe filtern">${['', 'Kondition', ...Object.keys(BODY.groups)].map(g => `<button type="button" class="pchip" data-act="sug-g" data-v="${g}" aria-pressed="${sugGroup === g}">${g || 'Alle'}</button>`).join('')}</div>`;
   if (!toks.length && !sugGroup) { box.innerHTML = chips; return; }
   const hits = EX_LIB.filter(e => {
     const n = normName(e[1]) + ' ' + e[0].replace(/-/g, ' ');
     if (!toks.every(t => n.includes(t))) return false;
-    return !sugGroup || csvMus(e[3]).some(k => BODY.groups[sugGroup].includes(k));
+    return !sugGroup || inGroup(e, sugGroup);
   }).slice(0, 8);
   const tk = DAY_TONE[builder.day];
   const hl = name => { if (!toks.length) return esc(name); const re = new RegExp('(' + toks.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')', 'ig'); return esc(name).replace(re, '<u>$1</u>'); };
@@ -238,6 +245,7 @@ function pickSug(id) {
   $('#f-muscles').value = JSON.stringify(m);
   $('#f-libid').value = e[0];
   $('#f-mus-prev').innerHTML = musPreview(m, DAY_TONE[builder.day]);
+  if (TIMED_RANGE[e[2]]) { $('#f-min').value = TIMED_RANGE[e[2]][0]; $('#f-max').value = TIMED_RANGE[e[2]][1]; }
   if (e[2] === 'bw') { const l = $('#f-load'); if (l) { l.value = LOAD_DEFAULT[e[0]] ?? 100; l.dispatchEvent(new Event('input', { bubbles: true })); } }
   sugGroup = ''; $('#f-sug').innerHTML = ''; $('#f-sug').hidden = true;
 }
@@ -329,12 +337,13 @@ function viewDone(id) {
     : `<h1 class="display done-k t-${DAY_TONE[d]}">${esc(dl(d, p))}</h1>
        <div class="done-s">${esc(w.data.title)}</div>
        <div class="mono muted small done-l">${n < 3 ? `${n} von 3 diese Woche · noch ${n === 1 ? 'zwei' : 'eins'} bis zur Wochenflamme` : `${n}. Training diese Woche · Wochenflamme schon sicher`}</div>`;
+  const abTxt = w.abort ? `<div class="mono small done-ab">Abgebrochen · ${w.abort.done} von ${w.abort.plan} Sätzen</div>` : '';
   const slots = week.slice(0, 3).map(x => `<div class="done-slot"><div class="glass${x.id === id ? ' new' : ''}"><img src="${FLAME[x.data.day]}" alt="${esc(dl(x.data.day, p))}"></div><span class="eyebrow">${new Date(x.ts).toLocaleDateString('de-DE', { weekday: 'short' }).replace('.', '')}</span></div>`);
   while (slots.length < 3) slots.push('<div class="done-slot"><div class="empty-slot"></div><span class="eyebrow">·</span></div>');
   return `<div class="done">
     <div class="done-top"><span class="eyebrow">${esc(wd)} · KW ${isoWeek(w.ts)}</span><a class="iconbtn glass" href="#start" aria-label="Schließen">${ICON.x}</a></div>
     <img class="done-hero" src="${full ? FLAME_HERO.W : FLAME_HERO[d]}" alt="${full ? 'Wochenflamme' : 'Flamme für ' + esc(dl(d, p))}">
-    ${head}
+    ${head}${abTxt}
     <div class="done-bar">${slots.join('')}</div>
     <a class="btn primary done-go" href="#start">Weiter</a>
   </div>`;
@@ -352,6 +361,11 @@ function avatar(p, size = 32) {
 }
 
 const ICON = {
+  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+  play: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5v14l12-7z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>',
+  stop: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
+  moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>',
   bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',
   gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>',
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11"/></svg>',
@@ -414,7 +428,7 @@ function cleanEx(x) {
   const id = str(x.id, 64) || 'x-' + uid().slice(0, 8);
   const o = {
     id, name: str(x.name, 80) || 'Übung', type, sets: Math.min(10, int(x.sets) || 3), min, max: Math.max(min, int(x.max) || min),
-    step: type === 'time' ? 0 : Math.max(0, num(x.step)), cue: str(x.cue), video: safeUrl(x.video), image: safeUrl(x.image),
+    step: isTimed(type) ? 0 : Math.max(0, num(x.step)), cue: str(x.cue), video: safeUrl(x.video), image: safeUrl(x.image),
     warmup: type === 'kg' && (x.warmup === undefined ? WARMUP_DEFAULT.has(id) : !!x.warmup), personal: !!x.personal
   };
   if (type === 'bw') o.load = cleanLoad(x.load, id);
@@ -439,11 +453,14 @@ function cleanEntry(en) {
   const o = {
     exId: str(en.exId, 64), name: str(en.name, 80), type, note: str(en.note, 1000), feel: FEEL[en.feel] ? en.feel : '',
     sets: (Array.isArray(en.sets) ? en.sets : []).slice(0, 20).map(s => {
-      const o2 = type === 'time' ? { r: int(s && s.r) } : { w: num(s && s.w), r: int(s && s.r) };
+      const o2 = type === 'time' ? { r: int(s && s.r) } : type === 'tr' ? { t: int(s && s.t), r: int(s && s.r) } : { w: num(s && s.w), r: int(s && s.r) };
       if (s && SET_FEEL[s.f]) o2.f = s.f;
+      if (s && ADD_WHY[s.a]) o2.a = s.a;
       return o2;
     })
   };
+  if (Array.isArray(en.rm) && en.rm.length) o.rm = en.rm.slice(0, 10).map(r => (REM_WHY[r] ? r : ''));
+  if (type === 'tr' && int(en.tt)) o.tt = int(en.tt);
   if (type === 'bw' && en.load != null && en.load !== '') o.load = cleanLoad(en.load);
   return o;
 }
@@ -475,7 +492,7 @@ function buildState() {
   all.forEach((e, k) => {
     if (!PEOPLE.includes(e.person) || !e.id || !e.ts) return;
     const ed = e.type === 'workout' ? edits[e.id] : null;
-    if (ed && ed.person === e.person) {
+    if (ed && (ed.person === e.person || (ed.data && ed.data.as === e.person))) {
       if (ed.data.deleted) return;
       e = { ...e, data: { ...(e.data || {}), entries: ed.data.entries, edited: ed.ts } };
     }
@@ -487,15 +504,21 @@ function buildState() {
       d.deload = !!d.deload; d.deloadSkipped = !!d.deloadSkipped;
       if (isNaN(new Date(d.start))) d.start = e.ts;
       if (isNaN(new Date(d.end))) d.end = e.ts;
+      { // Abgebrochen: weniger Sätze als geplant. Neue Trainings speichern die geplante Zahl, alte rechnen mit dem Plan dieses Tages.
+        const pl = s.plans[e.person][d.day];
+        const planned = int(d.plan) || (pl ? pl.exercises.reduce((a, x) => a + (d.deload ? Math.ceil((+x.sets || 1) / 2) : (+x.sets || 0)), 0) : 0);
+        const doneN = d.entries.reduce((a, en) => a + en.sets.filter(st_ => int(st_.r) > 0).length, 0);
+        e.abort = planned > 0 && doneN < planned ? { done: doneN, plan: planned } : null;
+      }
       s.workouts.push(e); s.last[e.person] = { day: d.day, ts: e.ts, kind: 'workout' };
       d.entries.forEach(en => {
-        (s.hist[e.person][en.exId] = s.hist[e.person][en.exId] || []).push({ ts: e.ts, wid: e.id, sets: en.sets, note: en.note, feel: en.feel, type: en.type, name: en.name, day: d.day, person: e.person, deload: d.deload, load: en.load });
+        (s.hist[e.person][en.exId] = s.hist[e.person][en.exId] || []).push({ ts: e.ts, wid: e.id, sets: en.sets, rm: en.rm || [], tt: en.tt || 0, note: en.note, feel: en.feel, type: en.type, name: en.name, day: d.day, person: e.person, deload: d.deload, load: en.load });
         s.exInfo[en.exId] = { name: en.name, type: en.type };
       });
       s.feed.push(e);
     } else if (e.type === 'skip') {
       if (!DAYS.includes(d.day)) return;
-      s.last[e.person] = { day: d.day, ts: e.ts, kind: 'skip' }; s.skips.push(e); s.feed.push(e);
+      s.last[e.person] = { day: d.day, ts: e.ts, kind: 'skip' }; s.skips.push(e);
     } else if (e.type === 'plan_change') {
       if (!DAYS.includes(d.day)) return;
       const p = cleanPlan(d, d.day); d.title = p.title; d.short = p.short; d.exercises = p.exercises;
@@ -562,6 +585,7 @@ const totalLoad = (bodyKg, pct, w) => Math.round(((bodyKg || 0) * pct / 100 + (w
 function workW(sets) { const v = sets.filter(s => int(s.r) > 0).map(s => num(s.w)); return v.length ? Math.max(...v) : 0; }
 function score(type, sets) {
   if (type === 'time') return Math.max(0, ...sets.map(s => int(s.r)));
+  if (type === 'tr') { const t = Math.max(0, ...sets.filter(s => int(s.r) > 0).map(s => int(s.t))); return t * 1000 + Math.max(0, ...sets.filter(s => int(s.t) === t).map(s => int(s.r))); }
   const w = workW(sets);
   return w * 1000 + sum(sets.filter(s => num(s.w) === w).map(s => int(s.r)));
 }
@@ -570,6 +594,7 @@ function metricLabel(type, sets) {
   if (!sets || !sets.length) return '–';
   if (type === 'kg') return fmtN(workW(sets)) + ' kg';
   if (type === 'time') return Math.max(...sets.map(s => int(s.r))) + ' s';
+  if (type === 'tr') { const v = score(type, sets); return `${v % 1000} Wdh. in ${Math.floor(v / 1000)} s`; }
   const reps = sum(sets.map(s => int(s.r))); const w = workW(sets);
   return reps + ' Wdh.' + (w ? ' · ' + fmtSigned(w) : '');
 }
@@ -577,6 +602,7 @@ function fmtSets(type, sets) {
   if (!sets || !sets.length) return '–';
   if (type === 'kg') return sets.map(s => `${fmtN(num(s.w))}×${int(s.r)}`).join(' · ');
   if (type === 'time') return sets.map(s => int(s.r)).join(' · ') + ' s';
+  if (type === 'tr') return sets.map(s => `${int(s.t)} s × ${int(s.r)}`).join(' · ');
   if (sets.some(s => num(s.w) !== 0)) return sets.map(s => `${int(s.r)}${num(s.w) ? ` (${fmtSigned(num(s.w))})` : ''}`).join(' · ');
   return sets.map(s => int(s.r)).join(' · ') + ' Wdh.';
 }
@@ -609,6 +635,7 @@ function improvements(e) {
     if (cur <= score(last.type, last.sets)) return;
     let label;
     if (en.type === 'time') label = `+${Math.max(...en.sets.map(s => s.r)) - Math.max(...last.sets.map(s => s.r))} s`;
+    else if (en.type === 'tr') { const a = score('tr', en.sets), b = score('tr', last.sets), dt = Math.floor(a / 1000) - Math.floor(b / 1000); label = dt > 0 ? `+${dt} s` : `+${a % 1000 - b % 1000} Wdh.`; }
     else {
       const dW = Math.round((workW(en.sets) - workW(last.sets)) * 100) / 100;
       if (dW > 0) label = `+${fmtN(dW)} kg`;
@@ -650,9 +677,52 @@ function isPlateau(h, x, p) {
   return before > 0 && v.slice(-3).every(y => y <= before * 1.005);
 }
 // Vorschlag für das nächste Training: Hinweistext und Gewicht pro Satz (mit Markierung und Label am Gewichtsfeld)
+// Bewertungsgrundlage einer Einheit: Bonus-Sätze zählen nicht, ein wiederholter Satz ersetzt den davor
+function evalSess(sess) {
+  const sets = sess.sets.filter((st_, j) => st_.a !== 'b' && !(sess.sets[j + 1] && sess.sets[j + 1].a === 'r'));
+  return { ...sess, sets };
+}
+const rmOf = (sess, ...keys) => (sess.rm || []).filter(r => keys.includes(r)).length;
+/* Zeit + Wdh.: erst die Zeit in der Spanne steigern (+5 s, alle locker +10 s), oben angekommen mehr Wiederholungen.
+   Halten bei Stopp vor Ablauf, „Am Limit“, Erschöpfung oder Schmerzen; zweimal nicht geschafft: −5 s. */
+function planTr(x, h, n) {
+  const mk = (t, kind, hint, lab = '', m = '') => ({ kind, hint, base: t, tt: t, sets: Array.from({ length: n }, () => ({ w: t, mk: m, lab })) });
+  if (!h.length) return mk(x.min, 'new', `Erstes Mal: ${x.min} s pro Satz, so viele saubere Wiederholungen wie möglich.`);
+  const evalOf = sess => sess.sets.filter(st_ => int(st_.r) > 0);
+  const tOf = sess => int(sess.tt) || Math.max(0, ...evalOf(sess).map(st_ => int(st_.t)));
+  const okOf = sess => { const ss = evalOf(sess), t = tOf(sess); return ss.length > 0 && ss.every(st_ => int(st_.t) >= t); };
+  const last = h[h.length - 1], ls = evalOf(last);
+  if (!ls.length) return mk(x.min, 'new', `Ziel: ${x.min} s pro Satz.`);
+  const T = Math.min(Math.max(tOf(last), x.min), x.max);
+  const complete = ls.length >= x.sets - rmOf(last, 'zeit', 'geraet');
+  const feels = ls.map((st_, j) => setFeel({ ...last, sets: ls }, j));
+  const limit = feels.includes('limit') || rmOf(last, 'erschoepft') > 0;
+  const allLocker = feels.every(f => f === 'locker');
+  const minR = Math.min(...ls.map(st_ => int(st_.r)));
+  const prev = h.length > 1 ? h[h.length - 2] : null, ps = prev ? evalOf(prev) : [];
+  const dropped = !!prev && tOf(prev) === tOf(last) && ps.length > 0 && minR < Math.min(...ps.map(st_ => int(st_.r))) * 0.8;
+  const failNow = !okOf(last) || dropped, failPrev = !!prev && !okOf(prev);
+  const days = (Date.now() - new Date(last.ts)) / 864e5;
+  const down = t => mk(t, 'down', '', `↓ −${T - t} S`, 'down');
+  if (rmOf(last, 'schmerz')) return mk(T, 'hold', `Letztes Mal Schmerzen angegeben. Heute wieder ${T} s, vorsichtig starten und im Zweifel früher stoppen.`);
+  if (days >= PAUSE_DAYS && T > x.min) { const r = down(Math.max(x.min, T - 5)); r.hint = `Länger nicht trainiert. Heute ${r.base} s zum Wiedereinstieg.`; return r; }
+  if (failNow && failPrev && T > x.min) { const r = down(Math.max(x.min, T - 5)); r.hint = `Zweimal nicht ganz geschafft. Heute ${r.base} s und neu aufbauen.`; return r; }
+  if (failNow) return mk(T, 'hold', dropped ? `Die Wiederholungen sind letztes Mal eingebrochen. Heute wieder ${T} s.` : `Letztes Mal nicht ganz durchgehalten. Heute wieder ${T} s.`);
+  if (limit) return mk(T, 'hold', `Volle Zeit geschafft, aber am Limit. Heute wieder ${T} s, Ziel: mehr als ${minR} Wdh. im schwächsten Satz.`);
+  if (!complete) return mk(T, 'hold', `Nicht alle Sätze gemacht. Heute wieder ${T} s.`);
+  if (T < x.max) {
+    const t = Math.min(x.max, T + (allLocker ? 10 : 5));
+    return mk(t, 'up', allLocker ? `Alle Sätze locker durchgezogen. Heute ${t} s.` : `Alle Sätze voll durchgezogen. Heute ${t} s.`, `↑ +${t - T} S`, 'up');
+  }
+  const top = h.slice(-3).filter(sess => tOf(sess) >= x.max);
+  const stuck = top.length === 3 && evalOf(top[2]).length && Math.min(...evalOf(top[2]).map(st_ => int(st_.r))) <= Math.min(...evalOf(top[0]).map(st_ => int(st_.r)));
+  if (stuck && allLocker) return mk(T, 'hold', `Bei ${x.max} s und alle Sätze locker. Zeit für eine längere Spanne im Plan oder eine schwerere Variante.`);
+  return mk(T, 'hold', `Bei ${x.max} s angekommen. Ziel: ${minR + 1} Wdh. im schwächsten Satz.`);
+}
 function planFor(x, p = cfg.me) {
   const n = Math.max(1, +x.sets || 1);
-  const h = normalSessions(p, x.id, x.type);
+  if (x.type === 'tr') return planTr(x, normalSessions(p, x.id, x.type).map(evalSess), n);
+  const h = normalSessions(p, x.id, x.type).map(evalSess);
   const pct = loadOf(x), body = x.type === 'bw' && pct ? bwAt(p, new Date()) : null;
   const noBody = x.type === 'bw' && pct > 0 && body == null ? ' Kein Körpergewicht hinterlegt. Im Profil nachtragen.' : '';
   const blank = (hint, kind = 'new', base = null) => ({ kind, hint, base, sets: Array.from({ length: n }, () => ({ w: null })) });
@@ -674,7 +744,8 @@ function planFor(x, p = cfg.me) {
   const W = Math.max(...ls.map(s => num(s.w)));
   const main = ls.map((s, j) => j).filter(j => num(ls[j].w) === W);
   const back = ls.map((s, j) => j).filter(j => num(ls[j].w) < W);
-  const full = ls.length >= x.sets;
+  const full = ls.length >= x.sets - rmOf(last, 'zeit', 'geraet');
+  const tired = rmOf(last, 'erschoepft') > 0, pain = rmOf(last, 'schmerz') > 0;
   const allTop = full && main.every(j => reps(j) >= x.max);
   const allTop2 = full && main.every(j => reps(j) >= x.max + 2);
   const allLocker = main.every(j => fl(last, j) === 'locker');
@@ -691,7 +762,9 @@ function planFor(x, p = cfg.me) {
   const tw = Array.from({ length: n }, (v, j) => lw(j));
   let kind = 'hold', hint = '', backoffSet = -1, tenPct = false;
   const lessMore = d => (W > 0 ? `${fmtN(d)} kg weniger Zusatz` : `${fmtN(d)} kg mehr Abzug`);
-  if (days >= PAUSE_DAYS && (!bw || hasStep)) {
+  if (pain) {
+    hint = 'Letztes Mal Schmerzen angegeben. Gewicht halten, vorsichtig starten und im Zweifel leichter.';
+  } else if (days >= PAUSE_DAYS && (!bw || hasStep)) {
     for (let j = 0; j < n; j++) tw[j] = down(tw[j]);
     kind = 'down'; tenPct = !bw;
     hint = bw ? `Länger nicht trainiert. Heute ${lessMore(step)} zum Wiedereinstieg.` : 'Länger nicht trainiert. Heute −10 % zum Wiedereinstieg.';
@@ -715,6 +788,8 @@ function planFor(x, p = cfg.me) {
       hint = `Alle Sätze am oberen Ende. Zeit für ${bw ? 'Zusatzgewicht' : 'mehr Gewicht'} oder eine höhere Spanne im Plan.` + backTxt;
     } else if (allTop && limits.length) {
       hint = `Alle Sätze geschafft, Satz ${setRange(limits)} ${limits.length === 1 ? 'war' : 'waren'} am Limit. Gewicht halten.` + backTxt;
+    } else if (allTop && tired) {
+      hint = 'Alle Sätze geschafft, aber du hast wegen Erschöpfung einen Satz gestrichen. Gewicht halten.' + backTxt;
     } else if (allTop) {
       const dbl = allTop2 || allLocker;
       let nw = roundTo(W + (dbl ? 2 : 1) * inc, step);
@@ -760,7 +835,7 @@ function lastSides(p, x, j) {
   return { plus, minus };
 }
 function plateauCount(p) {
-  return DAYS.reduce((a, d) => a + st().plans[p][d].exercises.filter(x => x.type !== 'time' && isPlateau(normalSessions(p, x.id, x.type), x, p)).length, 0);
+  return DAYS.reduce((a, d) => a + st().plans[p][d].exercises.filter(x => !isTimed(x.type) && isPlateau(normalSessions(p, x.id, x.type), x, p)).length, 0);
 }
 
 /* ---------- Deload (für jede Person getrennt) ---------- */
@@ -784,12 +859,12 @@ function fieldChanges(a, b, sharedOnly) {
   if (a.name !== b.name) c.push('Name');
   if (a.type !== b.type) c.push(`Art ${TYPE_LABEL[a.type]} → ${TYPE_LABEL[b.type]}`);
   if (a.sets !== b.sets) c.push(`Sätze ${a.sets} → ${b.sets}`);
-  if (a.min !== b.min || a.max !== b.max) c.push(`${b.type === 'time' ? 'Sek.' : 'Wdh.'} ${a.min}–${a.max} → ${b.min}–${b.max}`);
+  if (a.min !== b.min || a.max !== b.max) c.push(`${isTimed(b.type) ? 'Sek.' : 'Wdh.'} ${a.min}–${a.max} → ${b.min}–${b.max}`);
   if (!!a.warmup !== !!b.warmup) c.push(b.warmup ? 'Aufwärmsatz an' : 'Aufwärmsatz aus');
   if (a.type === 'bw' && b.type === 'bw' && loadOf(a) !== loadOf(b)) c.push(`Lastanteil ${loadOf(a)} → ${loadOf(b)} %`);
   if (JSON.stringify(musOf(a)) !== JSON.stringify(musOf(b))) c.push('Muskeln');
   if (sharedOnly) return c;
-  if (b.type !== 'time' && (a.step || 0) !== (b.step || 0)) c.push(`Steigerung ${fmtN(a.step || 0)} → ${fmtN(b.step || 0)} kg`);
+  if (!isTimed(b.type) && (a.step || 0) !== (b.step || 0)) c.push(`Steigerung ${fmtN(a.step || 0)} → ${fmtN(b.step || 0)} kg`);
   if ((a.cue || '') !== (b.cue || '')) c.push('Ausführung');
   if ((a.video || '') !== (b.video || '')) c.push('Video');
   if ((a.image || '') !== (b.image || '')) c.push('Bild');
@@ -831,7 +906,7 @@ function mergePlan(mine, theirs) {
     if (!m) { const n = clone(x); delete n.replaces; return n; }
     const n = clone(m); SHARED_FIELDS.forEach(f => { n[f] = x[f]; }); n.personal = false; delete n.replaces;
     if (n.type !== 'bw') delete n.load;
-    if (n.type === 'time') n.step = 0;
+    if (isTimed(n.type)) n.step = 0;
     return n;
   });
   mine.exercises.forEach((x, i) => {
@@ -871,7 +946,47 @@ function bellItems() {
   });
   return out;
 }
-const openCount = () => (cfg.me ? bellItems().filter(x => x.status === 'open').length : 0);
+const openCount = () => (cfg.me ? bellItems().filter(x => x.status === 'open').length + notices().length : 0);
+/* ---------- Hinweise in der Glocke (nur für dich) ----------
+   Regeneration: mindestens REGEN_H Stunden zwischen zwei gleichen Trainingstagen; dreimal unterschritten in 4 Wochen = Hinweis.
+   Sätze: dreimal in Folge mehr bzw. weniger Sätze als im Plan = Vorschlag, den Plan anzupassen. */
+function regenGaps(p) {
+  const ws = st().workouts.filter(w => w.person === p).sort((a, b) => a.ts.localeCompare(b.ts)), out = [];
+  ws.forEach((w, k) => {
+    const prev = ws.slice(0, k).reverse().find(x => x.data.day === w.data.day);
+    if (!prev) return;
+    const h = (new Date(w.data.start || w.ts) - new Date(prev.ts)) / 36e5;
+    if (h < REGEN_H) out.push({ w, h });
+  });
+  return out;
+}
+function notices() {
+  if (!cfg.me) return [];
+  const me = cfg.me, s = st(), ack = LS.get('notice.ack', {}), out = [];
+  const since = Math.max(Date.now() - 28 * 864e5, +LS.get('regen.ack', 0));
+  const gaps = regenGaps(me).filter(g => new Date(g.w.ts) > since);
+  if (gaps.length >= 3) out.push({ id: 'regen', kind: 'regen', ts: gaps[gaps.length - 1].w.ts, title: 'Mehr auf Regeneration achten',
+    text: `Du hast in den letzten 4 Wochen ${gaps.length}-mal weniger als ${REGEN_H} h Pause zwischen zwei gleichen Trainings gemacht. Muskeln wachsen in der Pause. Plane mehr Regeneration ein, z. B. mit der Rotation ${DAYS.map(d => dl(d)).join(' → ')}.` });
+  DAYS.forEach(d => s.plans[me][d].exercises.forEach(x => {
+    const h = normalSessions(me, x.id, x.type).slice(-3);
+    if (h.length < 3) return;
+    const cnt = sess => sess.sets.filter(st_ => int(st_.r) > 0 && st_.a !== 'r').length;
+    const more = h.every(sess => cnt(sess) > x.sets), less = h.every(sess => rmOf(sess, 'zeit', 'erschoepft') > 0 && cnt(sess) < x.sets);
+    if (!more && !less) return;
+    const id = `sets-${x.id}-${h[2].wid}`;
+    if (ack[id]) return;
+    out.push({ id, kind: 'sets', ts: h[2].ts, day: d, title: `${x.name}: ${more ? 'öfter ein Satz mehr' : 'öfter ein Satz weniger'}`,
+      text: more ? `Du hast die letzten 3 Male mehr als ${x.sets} Sätze gemacht. Plan auf ${Math.min(10, x.sets + 1)} Sätze anpassen?` : `Du hast die letzten 3 Male wegen Zeit oder Erschöpfung Sätze gestrichen. Plan auf ${Math.max(1, x.sets - 1)} ${x.sets - 1 === 1 ? 'Satz' : 'Sätze'} anpassen?` });
+  }));
+  return out;
+}
+function noticeCard(n) {
+  return `<section class="card notice n-${n.kind}" style="gap:10px">
+    <div style="display:flex;align-items:center;gap:10px"><span class="nic" aria-hidden="true">${n.kind === 'regen' ? ICON.moon : ICON.list}</span><div style="flex:1;display:flex;flex-direction:column"><b>${esc(n.title)}</b><span class="mono muted small">${fmtDate(n.ts)} · nur für dich</span></div></div>
+    <span class="small">${esc(n.text)}</span>
+    <div class="btnrow">${n.kind === 'sets' ? `<a class="btn small primary" href="#plan">Im Plan ändern</a>` : ''}<button class="btn small ghost" data-act="notice-ok" data-id="${esc(n.id)}">${n.kind === 'regen' ? 'Verstanden' : 'Ausblenden'}</button></div>
+  </section>`;
+}
 
 /* ---------- Synchronisation mit der Google-Tabelle ---------- */
 const loader = {
@@ -1803,7 +1918,7 @@ async function deleteSpot(id, back = '#profil') {
 
 /* ---------- Oberfläche ---------- */
 let otherDayAsk = false;
-let view = '', verlaufTab = 'aktiv', notesFilter = 'Alle', skipAsk = false, builder = null, resetAsk = false, pendingRender = false;
+let view = '', verlaufTab = 'aktiv', notesFilter = 'Alle', builder = null, resetAsk = false, pendingRender = false;
 const cal = { y: new Date().getFullYear(), m: new Date().getMonth(), sel: todayStr() };
 
 function toast(msg) {
@@ -1934,7 +2049,7 @@ function render() {
   const h = decodeURIComponent(location.hash.slice(1)) || 'start';
   const [name, arg] = h.includes(':') ? [h.slice(0, h.indexOf(':')), h.slice(h.indexOf(':') + 1)] : [h, ''];
   if (name !== view) {
-    skipAsk = resetAsk = otherDayAsk = false; if (view.startsWith('vault') && !name.startsWith('vault')) lockVault();
+    resetAsk = otherDayAsk = false; if (view.startsWith('vault') && !name.startsWith('vault')) lockVault();
     if (view === 'kamera') stopCamera();
     if (view === 'spot' && name !== 'spot') closeEditor();
     if (view === 'spots' && name !== 'spots' && SPOT.view) { cancelAnimationFrame(SPOT.view.raf); SPOT.view = null; }
@@ -1970,6 +2085,7 @@ function render() {
   pendingRender = false;
   onScroll();
   if (name === 'vault') fillVaultImages();
+  if (name === 'training' && TIMER) tmrTick();
   if (name === 'kamera') { const v = $('#cam-v'); if (SPOT.stream && v) { v.srcObject = SPOT.stream; v.classList.toggle('mirror', SPOT.facing === 'user'); v.play().catch(() => {}); } else startCamera(); }
   if (name === 'spot') layoutEditor();
   if (name === 'spots') viewerShow();
@@ -2029,6 +2145,7 @@ function viewStart() {
     main = `<div class="eyebrow">${dl_.active ? `Deload · Teil ${dl_.part} von 3` : `Als Nächstes · ${wd}`}</div>
       <h1 class="kurz">${esc(dl(nd))}</h1><div class="title">${esc(plan.title)}</div>
       <div class="mono muted small">${plan.exercises.length} Übungen · ${dl_.active ? `${plan.exercises.reduce((a, x) => a + Math.ceil((+x.sets || 1) / 2), 0)} Sätze (halbiert)` : `${nSets} Sätze`}${lastDone ? ` · zuletzt ${relDay(lastDone.ts)}` : ''}</div>
+      ${regenHint(nd)}
       ${dl_.active ? `<div class="deload"><b>Deload-Woche</b><span class="muted">${esc(dl_.reason)}. Gewicht −10 %, halbe Sätze, Wiederholungen am unteren Ende. Danach geht es mit deinen bisherigen Gewichten weiter.</span></div>` : ''}
       <div class="btnrow" style="padding-top:8px">
         <button class="btn primary" data-act="start">${dl_.active ? 'Deload starten' : 'Training starten'}</button>
@@ -2037,6 +2154,7 @@ function viewStart() {
       ${otherDayAsk ? `<div class="confirm"><div><b>Welchen Tag trainierst du heute?</b><br><span class="small muted">Deine Rotation geht danach ab diesem Tag weiter.</span></div>
         <div class="excwarn">${ICON.warn}<span>Nur als Ausnahme: Häufiges Auslassen stört die Rotation und fördert muskuläres Ungleichgewicht.</span></div>
         <div class="pick">${DAYS.filter(d => d !== nd).map(d => `<button data-act="start-day" data-v="${d}">${esc(dl(d))}</button>`).join('')}</div>
+        ${DAYS.filter(d => d !== nd).map(d => regenHint(d, true)).join('')}
         <button class="btn small ghost" data-act="other-no">Abbrechen</button></div>` : ''}
       ${otherDayAsk ? '' : `<button class="lnk" data-act="other-day" style="align-self:flex-start">Anderen Tag trainieren</button>`}`;
   }
@@ -2051,6 +2169,16 @@ function viewStart() {
     <div class="sec-title"><h2>Neuigkeiten</h2>${s.feed.length ? '<a href="#verlauf">Alle</a>' : ''}</div>
     <section class="card" style="padding:4px 16px">${feed.length ? `<div class="feed">${feed.map(feedItem).join('')}</div>` : (s.feed.length ? '<div class="empty">Diese Woche noch nichts Neues. Alles Ältere findest du im Verlauf.</div>' : '<div class="empty">Hier erscheinen eure Trainings, Steigerungen und Skips.</div>')}</section>`;
 }
+// Hinweis, wenn derselbe Trainingstag noch keine REGEN_H Stunden her ist (ändert nichts an den Flammen)
+function regenHint(d, small) {
+  const l = st().workouts.filter(w => w.person === cfg.me && w.data.day === d).pop();
+  if (!l) return '';
+  const h = (Date.now() - new Date(l.ts)) / 36e5;
+  if (h >= REGEN_H) return '';
+  const at = new Date(new Date(l.ts).getTime() + REGEN_H * 36e5);
+  const when = `${at.toLocaleDateString('de-DE', { weekday: 'short' })} ${fmtTime(at.toISOString())}`;
+  return `<div class="regen ${small ? 'small' : ''}"><span class="nic" aria-hidden="true">${ICON.moon}</span><span>${esc(dl(d))} war vor ${Math.max(1, Math.round(h))} h. Empfohlen sind mindestens ${REGEN_H} h Regeneration, also ab ${esc(when)}.</span></div>`;
+}
 function feedItem(e) {
   const d = e.data || {}, p = e.person, me = p === cfg.me;
   const wait = isPending(e.id) ? '<span class="chip wait">noch nicht synchronisiert</span>' : '';
@@ -2059,15 +2187,14 @@ function feedItem(e) {
   if (e.type === 'workout') {
     const n = (d.entries || []).reduce((a, en) => a + en.sets.length, 0);
     const imp = improvements(e);
-    t = `${dayChip(d.day, p)}<span>${who} ${me ? 'hast' : 'hat'} abgeschlossen</span>`;
-    m += ` · ${duration(d.start, d.end)} · ${n} ${n === 1 ? 'Satz' : 'Sätze'}`;
+    const ab = e.abort;
+    t = `${dayChip(d.day, p)}<span>${who} ${me ? 'hast' : 'hat'} ${ab ? 'abgebrochen' : 'abgeschlossen'}</span>`;
+    m += ` · ${duration(d.start, d.end)} · ${ab ? `${ab.done} von ${ab.plan} Sätzen` : `${n} ${n === 1 ? 'Satz' : 'Sätze'}`}`;
     const notes = (d.entries || []).filter(en => en.note).length;
-    extra = (d.deload ? '<span class="chip dl">Deload</span>' : '')
+    extra = (ab ? '<span class="chip">Training abgebrochen</span>' : '') + (d.deload ? '<span class="chip dl">Deload</span>' : '')
       + imp.map(i => `<span class="chip ${i.pr ? 'pr' : ''}">${esc(i.name.replace(/\s*\(.*\)$/, ''))} ${esc(i.label)}${i.pr ? ' · Rekord' : ''}</span>`).join('')
       + (notes ? `<span class="chip">${notes} ${notes === 1 ? 'Notiz' : 'Notizen'}</span>` : '');
     href = '#training-log:' + encodeURIComponent(e.id);
-  } else if (e.type === 'skip') {
-    t = `${dayChip(d.day, p, 'skip')}<span>${who} ${me ? 'hast' : 'hat'} übersprungen</span>`;
   } else if (e.type === 'swap') {
     t = `${dayChip(d.day, p)}<span>${who} ${me ? 'hast' : 'hat'} heute ${esc(d.fromName)} durch ${esc(d.to.name)} getauscht</span>`;
     extra = '<span class="chip">für beide</span>';
@@ -2081,9 +2208,13 @@ function feedItem(e) {
 function normalizeDraft(d) {
   if (!d || !Array.isArray(d.items)) return null;
   d.swapIgnored = d.swapIgnored || [];
+  const tm = d.tmr;
+  TIMER = tm && d.items[tm.i] && d.items[tm.i].sets[tm.j] && tm.total > 0 ? { i: tm.i, j: tm.j, f: tm.f === 'r' ? 'r' : 'w', total: +tm.total, start: +tm.start, acc: +tm.acc || 0, paused: !!tm.paused } : null;
   d.items.forEach(it => {
     it.ex = cleanEx(it.ex); it.note = it.note || ''; it.feel = it.feel || ''; it.wu = it.wu || [];
-    it.sets = (it.sets || []).map(s => ({ w: s.w ?? '', neg: !!s.neg, alt: s.alt ?? '', r: s.r ?? '', done: !!s.done, f: SET_FEEL[s.f] ? s.f : '', mk: s.mk || '', lab: s.lab || '', man: !!s.man }));
+    it.sets = (it.sets || []).map(s => ({ w: s.w ?? '', neg: !!s.neg, alt: s.alt ?? '', r: s.r ?? '', done: !!s.done, f: SET_FEEL[s.f] ? s.f : '', mk: s.mk || '', lab: s.lab || '', man: !!s.man, add: !!s.add, a: ADD_WHY[s.a] ? s.a : '' }));
+    it.rm = Array.isArray(it.rm) ? it.rm.map(r => (REM_WHY[r] ? r : '')) : [];
+    it.tt = int(it.tt) || (it.ex.type === 'tr' ? it.ex.min : 0);
     if (it.hint === undefined) { try { const pl = planFor(it.ex); it.hint = d.deload ? DELOAD_HINT : pl.hint; it.kind = d.deload ? 'deload' : pl.kind; } catch (e) { it.hint = ''; it.kind = ''; } }
   });
   return d;
@@ -2096,7 +2227,7 @@ function newItem(x, deload) {
   let n = Math.max(1, +x.sets || 1), plan = pl.sets.slice(0, n), hint = pl.hint, kind = pl.kind;
   if (deload) {
     n = Math.max(1, Math.ceil(n / 2));
-    const w = pl.base == null ? null : roundTo(deloadW(pl.base), stepOf(x));
+    const w = x.type === 'tr' ? x.min : pl.base == null ? null : roundTo(deloadW(pl.base), stepOf(x));
     plan = Array.from({ length: n }, () => ({ w, mk: w == null ? '' : 'deload', lab: w == null ? '' : 'DELOAD' }));
     hint = DELOAD_HINT; kind = 'deload';
   }
@@ -2109,7 +2240,7 @@ function newItem(x, deload) {
     }
     return s;
   });
-  return { ex: x, note: '', feel: '', wu: [], swappedFrom: null, swapBy: null, removed: false, hint, kind, sets };
+  return { ex: x, note: '', feel: '', wu: [], swappedFrom: null, swapBy: null, removed: false, hint, kind, sets, tt: x.type === 'tr' ? (deload ? x.min : pl.tt || x.min) : 0, rm: [] };
 }
 function partnerSwapsToday(day) {
   const other = partner(), latest = {};
@@ -2140,6 +2271,7 @@ function viewTraining() {
       <div class="bar"><i id="tp-bar" style="width:${tot ? done / tot * 100 : 0}%"></i></div>
     </header>
     <main class="view notab">${draft.items.map((it, i) => exCard(it, i)).join('')}</main>
+    ${timerBar()}
     <div class="trainbar"><button class="btn primary" data-act="finish-ask">Training abschließen</button><button class="btn x" data-act="discard-ask" aria-label="Training verwerfen">${ICON.x}</button></div>`;
 }
 function pendingSwapFor(it) {
@@ -2157,24 +2289,32 @@ function warmupLabel(it) {
 function exCard(it, i) {
   const x = it.ex, me = cfg.me;
   const mine = lastAny(me, x.id);
-  const unit = x.type === 'time' ? ' s' : '';
+  const unit = isTimed(x.type) ? ' s' : '';
   const hint = it.hint || '';
   const sw = pendingSwapFor(it);
   const pct = loadOf(x), body = x.type === 'bw' && pct ? bwAt(me, new Date()) : null;
-  const lastReps = j => (draft.deload ? x.min : mine && mine.type === x.type && mine.sets[j] ? mine.sets[j].r : x.max);
+  const lastReps = j => x.type === 'tr' ? (mine && mine.type === 'tr' && mine.sets[j] ? mine.sets[j].r : '–') : (draft.deload ? x.min : mine && mine.type === x.type && mine.sets[j] ? mine.sets[j].r : x.max);
+  const tField = (s, j, f) => {
+    const tm = TIMER && TIMER.i === i && TIMER.j === j ? TIMER : null;
+    const left = tm ? tmrLeft() : 0;
+    const ph = f === 'r' ? lastReps(j) : (it.tt || x.min);
+    return `<div class="field kgf tf ${tm ? (tm.paused ? 'pause' : 'run') : ''}" id="tf-${i}-${j}" ${tm ? `style="--p:${Math.round((1 - left / tm.total) * 100)}%"` : ''}><button class="sign" data-act="tmr" data-i="${i}" data-j="${j}" ${s.done ? 'disabled' : ''} aria-label="${tm ? (tm.paused ? 'Timer fortsetzen' : 'Timer pausieren') : `Timer Satz ${j + 1} starten`}">${tm && !tm.paused ? ICON.pause : ICON.play}</button><input id="${f}-${i}-${j}" data-i="${i}" data-j="${j}" data-f="${f}" inputmode="numeric" autocomplete="off" aria-label="Sekunden Satz ${j + 1}" value="${tm ? fmtClock(left) : esc(s[f])}" placeholder="${ph}" ${tm ? 'readonly' : ''}><span>s</span></div>`;
+  };
   const wField = (s, j) => {
+    if (x.type === 'tr') return tField(s, j, 'w');
     if (x.type === 'kg') return `<label class="field ${s.mk ? 'mk-' + s.mk : ''}"><input id="w-${i}-${j}" data-i="${i}" data-j="${j}" data-f="w" inputmode="decimal" autocomplete="off" aria-label="Gewicht Satz ${j + 1}" value="${esc(s.w)}" placeholder="–"><span>kg</span></label>`;
     if (x.type !== 'bw') return '';
     const st_ = num(s.w) > 0 ? (s.neg ? 'minus' : 'plus') : '';
     return `<div class="field kgf ${st_}" id="wf-${i}-${j}"><button class="sign" data-act="sign" data-i="${i}" data-j="${j}" ${s.done ? 'disabled' : ''} aria-label="${s.neg ? 'Abzug' : 'Zusatzgewicht'}${s.done ? ', gesperrt solange abgehakt' : `, tippen für ${s.neg ? 'Zusatzgewicht' : 'Abzug'}`}">${s.neg ? '−' : '+'}</button><input id="w-${i}-${j}" data-i="${i}" data-j="${j}" data-f="w" inputmode="decimal" autocomplete="off" aria-label="${s.neg ? 'Abzug' : 'Zusatzgewicht'} Satz ${j + 1}" value="${esc(s.w)}" placeholder="0"><span>kg</span></div>`;
   };
-  const feelRow = (s, j) => s.done && x.type !== 'time' ? `<div class="sfeel" role="group" aria-label="Wie war Satz ${j + 1}?">${Object.entries(SET_FEEL).map(([k, v]) => `<button data-act="sfeel" data-i="${i}" data-j="${j}" data-v="${k}" aria-pressed="${s.f === k}">${v}</button>`).join('')}</div>` : '';
+  const feelRow = (s, j) => s.done ? `<div class="sfeel" role="group" aria-label="Wie war Satz ${j + 1}?">${Object.entries(SET_FEEL).map(([k, v]) => `<button data-act="sfeel" data-i="${i}" data-j="${j}" data-v="${k}" aria-pressed="${s.f === k}">${v}</button>`).join('')}</div>` : '';
   const rows = it.sets.map((s, j) => `<div class="set ${s.done ? 'ok' : ''}">
       <span class="n">${j + 1}</span>${wField(s, j)}
-      <label class="field"><input id="r-${i}-${j}" data-i="${i}" data-j="${j}" data-f="r" inputmode="numeric" autocomplete="off" aria-label="${x.type === 'time' ? 'Sekunden' : 'Wiederholungen'} Satz ${j + 1}" value="${esc(s.r)}" placeholder="${lastReps(j)}"><span>${x.type === 'time' ? 's' : '×'}</span></label>
+      ${x.type === 'time' ? tField(s, j, 'r') : `<label class="field"><input id="r-${i}-${j}" data-i="${i}" data-j="${j}" data-f="r" inputmode="numeric" autocomplete="off" aria-label="Wiederholungen Satz ${j + 1}" value="${esc(s.r)}" placeholder="${lastReps(j)}"><span>×</span></label>`}
       <button class="check" data-act="check" data-i="${i}" data-j="${j}" aria-label="Satz ${j + 1} erledigt" aria-pressed="${s.done}">${ICON.check}</button>
     </div>${s.lab && x.type !== 'time' ? `<div class="setlab" id="sl-${i}-${j}"><span></span><span class="${s.mk === 'deload' ? 'dl' : ''}">${esc(s.lab)}</span></div>` : ''}${feelRow(s, j)}`).join('');
   const cols = x.type === 'time' ? `<div class="cols"><span></span><span class="r">Sekunden</span><span></span></div>`
+    : x.type === 'tr' ? `<div class="cols"><span></span><span class="r">Zeit</span><span class="r">Wdh.</span><span></span></div>`
     : `<div class="cols"><span></span><span class="r">${x.type === 'bw' ? '± kg' : 'kg'}</span><span class="r">Wdh.</span><span></span></div>`;
   const warm = hasWarmup(it) ? `<div class="wsets"><div class="wset ${it.wu[0] ? 'ok' : ''}"><span class="n">W</span><span class="wv" id="wu-${i}">${warmupLabel(it)}</span><button class="check" data-act="wu" data-i="${i}" aria-label="Aufwärmsatz erledigt" aria-pressed="${!!it.wu[0]}">${ICON.check}</button></div></div>` : '';
   const kgTag = x.type === 'bw' && pct ? `<span class="tag kgtag">${body != null ? `KG ${fmtN(body)} · ${pct} %` : `KG fehlt · ${pct} %`}</span>` : '';
@@ -2194,9 +2334,90 @@ function exCard(it, i) {
     <details class="how mus" data-ex="${esc(x.id)}" ${musOpen.has(x.id) ? 'open' : ''}><summary>Muskeln</summary><div class="body">${musBlock(x, DAY_TONE[draft.day])}</div></details></div>
     <div class="sets ${x.type}">${cols}${warm}${rows}</div>
     <div class="cardacts"><button class="addset" data-act="addset" data-i="${i}">+ Satz</button><button class="addset" data-act="delset" data-i="${i}" ${it.sets.length <= 1 ? 'disabled' : ''}>− Satz</button><span class="sp"></span>${it.removed ? '' : `<button class="addset" data-act="swap-open" data-i="${i}">${ICON.swap} Heute tauschen</button>`}</div>
+    ${whyRow(it, i)}
     <label class="note"><span>Notiz</span><textarea id="note-${i}" data-note="${i}" rows="2" placeholder="z. B. Schulter zwickt, nächstes Mal enger greifen">${esc(it.note)}</textarea></label>
   </article>`;
 }
+// Grund für + / − Satz: kleine Chips, optional. Ohne Auswahl gilt neutral.
+function whyRow(it, i) {
+  const out = [];
+  if (it.rm && it.rm.length) out.push(`<div class="why" role="group" aria-label="Warum weniger Sätze?"><span class="eyebrow">${it.rm.length} ${it.rm.length === 1 ? 'Satz' : 'Sätze'} weniger · warum?</span><div class="chips">${Object.entries(REM_WHY).map(([k, v]) => `<button class="pchip" data-act="why-rm" data-i="${i}" data-v="${k}" aria-pressed="${it.rm[it.rm.length - 1] === k}">${v}</button>`).join('')}</div></div>`);
+  const added = it.sets.filter(s => s.add);
+  if (added.length) { const la = added[added.length - 1]; out.push(`<div class="why" role="group" aria-label="Warum mehr Sätze?"><span class="eyebrow">${added.length} ${added.length === 1 ? 'Satz' : 'Sätze'} mehr · warum?</span><div class="chips">${Object.entries(ADD_WHY).map(([k, v]) => `<button class="pchip" data-act="why-add" data-i="${i}" data-v="${k}" aria-pressed="${la.a === k}">${v}</button>`).join('')}</div></div>`); }
+  return out.join('');
+}
+/* ---------- Timer für Zeit-Übungen ----------
+   Die Restzeit wird aus dem Startzeitpunkt berechnet. Sie stimmt also auch nach gesperrtem Bildschirm,
+   einem Sync oder einem Neuladen der App (der Timer steht im gespeicherten Training). */
+let TIMER = null, tmrTO = 0, audioCtx = null;
+const tmrFieldOf = it => (it.ex.type === 'time' ? 'r' : 'w');
+function tmrLeft() { if (!TIMER) return 0; return Math.max(0, TIMER.total - TIMER.acc - (TIMER.paused ? 0 : (Date.now() - TIMER.start) / 1000)); }
+function fmtClock(sec) { const v = Math.max(0, Math.ceil(sec)); return Math.floor(v / 60) + ':' + String(v % 60).padStart(2, '0'); }
+function tmrSave() { if (draft) { draft.tmr = TIMER ? { ...TIMER } : null; saveDraft(); } }
+function audioOn() { try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch (e) { audioCtx = null; } }
+function beep() {
+  try {
+    audioOn(); if (!audioCtx) throw 0;
+    const t0 = audioCtx.currentTime;
+    [0, 0.25, 0.5].forEach(o => { const os = audioCtx.createOscillator(), g = audioCtx.createGain(); os.frequency.value = 880; g.gain.setValueAtTime(0.0001, t0 + o); g.gain.exponentialRampToValueAtTime(0.35, t0 + o + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + o + 0.2); os.connect(g); g.connect(audioCtx.destination); os.start(t0 + o); os.stop(t0 + o + 0.22); });
+  } catch (e) {}
+  try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (e) {}
+}
+function tmrStart(i, j) {
+  const it = draft.items[i], f = tmrFieldOf(it);
+  if (TIMER) tmrStop();
+  it.sets.forEach((st_, k) => readSetInputs(i, k));
+  const ph = document.getElementById(`${f}-${i}-${j}`);
+  const total = int(it.sets[j][f]) || (f === 'w' ? int(it.tt) : 0) || int(ph && ph.placeholder) || it.ex.min;
+  audioOn();
+  TIMER = { i, j, f, total, start: Date.now(), acc: 0, paused: false };
+  tmrSave(); rerenderCard(i); tmrBar(); tmrTick();
+}
+function tmrPause() {
+  if (!TIMER) return;
+  if (TIMER.paused) { TIMER.start = Date.now(); TIMER.paused = false; audioOn(); }
+  else { TIMER.acc += (Date.now() - TIMER.start) / 1000; TIMER.paused = true; }
+  tmrSave(); rerenderCard(TIMER.i); tmrBar(); tmrTick();
+}
+// Timer beenden; sec = einzutragende Zeit (null = Satz bleibt leer)
+function tmrEnd(sec) {
+  if (!TIMER) return;
+  const { i, j, f } = TIMER, it = draft.items[i];
+  TIMER = null; clearTimeout(tmrTO);
+  if (it && it.sets[j] && sec != null) {
+    it.sets[j][f] = String(Math.max(1, Math.round(sec)));
+    if (it.ex.type === 'time') it.sets[j].done = true;   // reine Zeit-Übung: Satz ist damit erledigt
+  }
+  tmrSave();
+  if (it) rerenderCard(i);
+  tmrBar();
+  if (it && sec != null && it.ex.type === 'tr') {
+    const r = document.getElementById(`r-${i}-${j}`);
+    if (r) { r.closest('.field').classList.add('focus'); r.focus({ preventScroll: true }); }
+  }
+}
+function tmrStop() { if (!TIMER) return; const el = TIMER.total - tmrLeft(); tmrEnd(el >= 1 ? el : null); }
+function tmrTick() {
+  clearTimeout(tmrTO); if (!TIMER) return;
+  const left = tmrLeft(), pc = Math.round((1 - left / TIMER.total) * 100) + '%';
+  if (left <= 0) { tmrEnd(TIMER.total); beep(); toast('Zeit um'); return; }
+  const inp = document.getElementById(`${TIMER.f}-${TIMER.i}-${TIMER.j}`); if (inp) inp.value = fmtClock(left);
+  const fld = document.getElementById(`tf-${TIMER.i}-${TIMER.j}`); if (fld) fld.style.setProperty('--p', pc);
+  const b = $('#tmr-t'); if (b) b.textContent = fmtClock(left);
+  const pr = $('#tmr-p'); if (pr) pr.style.width = pc;
+  if (!TIMER.paused) tmrTO = setTimeout(tmrTick, 200);
+}
+function timerBar() {
+  if (!TIMER || !draft || !draft.items[TIMER.i]) return '<div id="tmrbar" hidden></div>';
+  const it = draft.items[TIMER.i], left = tmrLeft(), pz = TIMER.paused;
+  return `<div class="timerbar glass ${pz ? 'paused' : ''}" id="tmrbar" role="timer" aria-label="${esc(it.ex.name)}, Satz ${TIMER.j + 1}">
+    <div class="tt"><span class="eyebrow">${pz ? 'Pausiert · ' : ''}${esc(it.ex.name)} · Satz ${TIMER.j + 1} von ${it.sets.length}</span><b id="tmr-t">${fmtClock(left)}</b></div>
+    ${pz ? `<button class="tb" data-act="tmr-x" aria-label="Timer verwerfen, der Satz bleibt leer">${ICON.x}</button>` : ''}
+    <button class="tb" data-act="tmr-stop" aria-label="Stoppen und gelaufene Zeit eintragen">${ICON.stop}</button>
+    <button class="tb main" data-act="tmr-pause" aria-label="${pz ? 'Fortsetzen' : 'Pausieren'}">${pz ? ICON.play : ICON.pause}</button>
+    <i class="prog" id="tmr-p" style="width:${Math.round((1 - left / TIMER.total) * 100)}%"></i></div>`;
+}
+function tmrBar() { const el = $('#tmrbar'); if (el) el.outerHTML = timerBar(); }
 function rerenderCard(i) {
   const el = document.querySelector(`[data-card="${i}"]`);
   if (el) { const d = el.querySelector('details.how'); const open = d && d.open; el.outerHTML = exCard(draft.items[i], i); if (open) document.querySelector(`[data-card="${i}"] details.how`).open = true; }
@@ -2214,7 +2435,7 @@ function refreshTraining() {
   if (document.querySelectorAll('[data-card]').length !== draft.items.length) { if (!document.activeElement || !$('#app').contains(document.activeElement)) render(); return; }
   document.querySelectorAll('[data-card]').forEach(el => {
     const i = +el.dataset.card, sw = pendingSwapFor(draft.items[i]);
-    if ((el.dataset.swaphint || '') !== (sw ? sw.id : '') && !el.contains(document.activeElement)) rerenderCard(i);
+    if ((el.dataset.swaphint || '') !== (sw ? sw.id : '') && !el.contains(document.activeElement) && !(TIMER && TIMER.i === i)) rerenderCard(i);
   });
   updateTrainHead();
 }
@@ -2222,13 +2443,17 @@ function collectEntries() {
   return draft.items.map(it => {
     const x = it.ex;
     const sets = it.sets.filter(s => s.done || int(s.r) > 0).map(s => {
-      if (x.type === 'time') return { r: int(s.r) };
+      const a = s.add && ADD_WHY[s.a] ? { a: s.a } : {};
+      if (x.type === 'time') return { r: int(s.r), ...(s.done && SET_FEEL[s.f] ? { f: s.f } : {}), ...a };
+      if (x.type === 'tr') return { t: int(s.w) || it.tt, r: int(s.r), ...(s.done && SET_FEEL[s.f] ? { f: s.f } : {}), ...a };
       const w = Math.abs(num(s.w)) * (x.type === 'bw' && s.neg ? -1 : 1);
       const o = { w: x.type === 'kg' ? num(s.w) : w, r: int(s.r) };
       if (s.done && SET_FEEL[s.f]) o.f = s.f;
-      return o;
+      return { ...o, ...a };
     }).filter(s => s.r > 0);
     const en = { exId: x.id, name: x.name, type: x.type, sets, note: (it.note || '').trim(), feel: '' };
+    if (it.rm && it.rm.length) en.rm = it.rm.slice();
+    if (x.type === 'tr') en.tt = it.tt;
     if (x.type === 'bw') en.load = loadOf(x);
     return en;
   }).filter(en => en.sets.length || en.note);
@@ -2239,9 +2464,12 @@ function finishSheet() {
   const sets = entries.reduce((a, en) => a + en.sets.length, 0);
   const vol = entries.filter(en => en.type === 'kg').reduce((a, en) => a + en.sets.reduce((b, s) => b + s.w * s.r, 0), 0);
   const empty = draft.items.filter(it => !it.removed && !entries.some(en => en.exId === it.ex.id)).map(it => it.ex.name);
-  sheet(`<h2>Training abschließen?</h2>
-    <dl class="kv"><dt>Sätze</dt><dd>${sets}</dd><dt>Volumen</dt><dd>${fmtN(Math.round(vol))} kg</dd><dt>Dauer</dt><dd>${duration(draft.start, new Date().toISOString())}</dd></dl>
-    ${empty.length ? `<div class="small muted">Ohne Eintrag: ${esc(empty.join(', '))}</div>` : ''}
+  const { plan } = plannedSets(), open = draft.items.filter(it => !(it.removed && !hasEntries(it))).map(it => ({ name: it.ex.name, done: it.sets.filter(x => x.done || int(x.r) > 0).length, n: it.sets.length })).filter(o => o.done < o.n);
+  const abort = sets < plan;
+  sheet(`<h2>${abort ? 'Training beenden?' : 'Training abschließen?'}</h2>
+    <dl class="kv"><dt>Sätze</dt><dd class="${abort ? 'warn' : ''}">${abort ? `${sets} von ${plan}` : sets}</dd><dt>Volumen</dt><dd>${fmtN(Math.round(vol))} kg</dd><dt>Dauer</dt><dd>${duration(draft.start, new Date().toISOString())}</dd></dl>
+    ${abort ? `<div class="abortbox"><span class="eyebrow">Noch ${plan - sets} ${plan - sets === 1 ? 'Satz' : 'Sätze'} offen</span><div class="openlist">${open.map(o => `<div><span>${esc(o.name)}</span><span>${o.done} von ${o.n}</span></div>`).join('')}</div></div>
+      <div class="small muted">Wird als abgebrochen gespeichert. Für deine Flammen zählt es ganz normal. Offene Übungen rechnen beim nächsten Mal mit dem letzten vollständigen Training weiter.</div>` : (empty.length ? `<div class="small muted">Ohne Eintrag: ${esc(empty.join(', '))}</div>` : '')}
     ${sets ? '' : '<div class="err">Trage mindestens einen Satz ein.</div>'}
     <div class="btnrow"><button class="btn primary" data-act="finish-yes" ${sets ? '' : 'disabled'}>Speichern</button><button class="btn ghost" data-act="mclose">Weiter trainieren</button></div>`);
 }
@@ -2249,14 +2477,22 @@ function discardSheet() {
   sheet(`<h2>Training verwerfen?</h2><p class="muted" style="margin:0">Alle Einträge dieses Trainings gehen verloren. Deine Rotation bleibt unverändert.</p>
     <div class="btnrow"><button class="btn danger" data-act="discard-yes">Verwerfen</button><button class="btn ghost" data-act="mclose">Abbrechen</button></div>`);
 }
+// Geplante Sätze dieses Trainings (mit + / − Satz angepasst). Weniger erledigte Sätze = abgebrochen.
+function plannedSets() {
+  let plan = 0, done = 0;
+  draft.items.forEach(it => { if (it.removed && !hasEntries(it)) return; plan += it.sets.length; done += it.sets.filter(x => x.done || int(x.r) > 0).length; });
+  return { plan, done };
+}
 function finishTraining() {
+  if (TIMER) tmrStop();
   const entries = collectEntries();
   if (!entries.some(en => en.sets.length)) return;
   const end = new Date().toISOString();
   const n = entries.reduce((a, en) => a + en.sets.length, 0);
   const swaps = draft.items.filter(it => it.swappedFrom).map(it => ({ fromId: it.swappedFrom.id, fromName: it.swappedFrom.name, toId: it.ex.id, toName: it.ex.name }));
   const summary = `${dl(draft.day)} ${draft.title}${draft.deload ? ' (Deload)' : ''} · ${n} Sätze · ` + entries.map(en => `${en.name}: ${fmtSets(en.type, en.sets)}${feelText(en) ? ` [${feelText(en)}]` : ''}${en.note ? ` (Notiz: ${en.note})` : ''}`).join(' | ');
-  const e = addEvent('workout', { day: draft.day, title: draft.title, start: draft.start, end, deload: !!draft.deload, deloadSkipped: !!draft.deloadSkipped, swaps, entries }, summary);
+  const { plan } = plannedSets();
+  const e = addEvent('workout', { day: draft.day, title: draft.title, start: draft.start, end, deload: !!draft.deload, deloadSkipped: !!draft.deloadSkipped, swaps, entries, plan }, summary + (n < plan ? ` · abgebrochen (${n} von ${plan} Sätzen)` : ''));
   draft = null; saveDraft(); $('#modal').innerHTML = '';
   const imp = improvements(e);
   if (imp.length) toast(`${imp.length} ${imp.length === 1 ? 'Steigerung' : 'Steigerungen'} gespeichert`);
@@ -2291,12 +2527,13 @@ function knownExercises() {
 }
 function swapForm(i) {
   const it = draft.items[i], x = it.ex;
-  const names = [...knownExercises().values()].map(v => v.name).filter(n => n !== x.name).sort((a, b) => a.localeCompare(b, 'de'));
   $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet full form" id="swapform" data-i="${i}" novalidate>
     ${sheetHead(`${esc(dl(draft.day))} · ${esc(x.name)}`, 'Heute tauschen')}
     <h2>Heute tauschen</h2>
     <p class="help" style="margin:0">Ersetzt <b>${esc(x.name)}</b> nur in diesem Training. Dein Plan bleibt unverändert, die Ersatzübung bekommt ihren eigenen Verlauf.</p>
-    <label>Ersatzübung<input class="inp" id="sw-name" name="name" list="sw-list" maxlength="60" autocomplete="off" required placeholder="z. B. Brustpresse Maschine"><datalist id="sw-list">${names.map(n => `<option value="${esc(n)}"></option>`).join('')}</datalist></label>
+    <label>Ersatzübung suchen<span class="swsearch">${ICON.search}<input class="inp" id="sw-name" name="name" maxlength="60" autocomplete="off" required placeholder="z. B. Beinpresse, Burpees"></span></label>
+    <input type="hidden" id="sw-lib" name="libid" value="">
+    <div id="sw-sug" class="sug"></div>
     <label>Art<select id="sw-type" name="type">${Object.entries(TYPE_LABEL).map(([k, v]) => `<option value="${k}" ${x.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
     <div class="grid3"><label>Sätze<input class="inp" id="sw-sets" name="sets" inputmode="numeric" value="${x.sets}"></label><label>von<input class="inp" id="sw-min" name="min" inputmode="numeric" value="${x.min}"></label><label>bis<input class="inp" id="sw-max" name="max" inputmode="numeric" value="${x.max}"></label></div>
     <fieldset class="radios"><legend>Für wen?</legend>
@@ -2306,9 +2543,45 @@ function swapForm(i) {
     <div class="err" id="sw-err" hidden></div>
     <div class="sbar"><button class="btn primary" type="submit">Tauschen</button></div>
   </form></div>`;
-  setTimeout(() => { const n = $('#sw-name'); if (n) n.focus(); }, 50);
+  swGroup = 'Passend'; renderSwSug();
+}
+/* Suche in der Bibliothek beim Tauschen: ohne Suchbegriff zuerst Übungen mit denselben Hauptmuskeln */
+let swGroup = 'Passend';
+function swMatches(x) {
+  const m = x.muscles && x.muscles.p.length ? x.muscles : libMuscles(x.id, x.name), P = new Set(m.p);
+  return EX_LIB.filter(e => e[0] !== x.id && normName(e[1]) !== normName(x.name)).map(e => ({ e, sc: csvMus(e[3]).filter(k => P.has(k)).length })).filter(o => o.sc > 0).sort((a, b) => b.sc - a.sc).map(o => o.e);
+}
+function renderSwSug() {
+  const box = $('#sw-sug'), inp = $('#sw-name'), form = $('#swapform'); if (!box || !inp || !form) return;
+  const it = draft.items[+form.dataset.i], x = it.ex, tk = DAY_TONE[draft.day];
+  const lib = $('#sw-lib').value;
+  const item = (e, sel) => { const m = { p: csvMus(e[3]), s: csvMus(e[4]) }; return `<button type="button" role="option" class="sugitem ${sel ? 'sel' : ''}" data-act="${sel ? 'sw-clear' : 'sw-pick'}" data-id="${e[0]}" aria-selected="${!!sel}">${bodyFig(bestView(m), tk, m, { w: 22, nums: false })}<span class="sgt"><b>${esc(e[1])}</b><span>${esc(m.p.map(k => BODY.names[k][0]).join(', '))}</span></span><span class="tp">${sel ? 'Ändern' : TYPE_LABEL[e[2]]}</span></button>`; };
+  if (lib && LIB_BY_ID[lib]) { box.innerHTML = `<div class="suglist">${item(LIB_BY_ID[lib], true)}</div>`; return; }
+  const q = normName(inp.value), toks = q.split(' ').filter(Boolean);
+  const groups = ['Passend', 'Alle', 'Kondition', ...Object.keys(BODY.groups)];
+  const chips = `<div class="chips scroll" role="group" aria-label="Nach Muskelgruppe filtern">${groups.map(g => `<button type="button" class="pchip ${g === swGroup ? 'tonep' : ''}" data-act="sw-g" data-v="${g}" aria-pressed="${g === swGroup}">${g}</button>`).join('')}</div>`;
+  let hits, label;
+  const match = e => { const n = normName(e[1]) + ' ' + e[0].replace(/-/g, ' '); return toks.every(t => n.includes(t)); };
+  if (swGroup === 'Passend') { hits = swMatches(x).filter(match); label = `Gleiche Hauptmuskeln wie ${x.name}`; }
+  else if (swGroup === 'Alle') { hits = EX_LIB.filter(match).sort((a, b) => a[1].localeCompare(b[1], 'de')); label = 'Alle Übungen'; }
+  else { hits = EX_LIB.filter(e => match(e) && inGroup(e, swGroup)); label = swGroup === 'Kondition' ? 'Ganzkörper / Kondition' : swGroup; }
+  if (toks.length && !hits.length && swGroup === 'Passend') { hits = EX_LIB.filter(match); label = 'Treffer in der Bibliothek'; }
+  hits = hits.filter(e => e[0] !== x.id).slice(0, 30);
+  box.innerHTML = chips + `<div class="eyebrow" style="margin:4px 2px 0">${esc(label)} · ${hits.length}</div>
+    <div class="suglist" role="listbox" aria-label="${esc(label)}">${hits.map(e => item(e)).join('')}
+    ${inp.value.trim() ? `<div class="sugitem new"><span class="plus">+</span><span class="sgt"><b>„${esc(inp.value.trim())}“ als neue Übung</b><span>Art und Spanne unten einstellen</span></span></div>` : ''}</div>`;
+  const on = box.querySelector('.chips.scroll .pchip[aria-pressed="true"]'); if (on) on.parentElement.scrollLeft = Math.max(0, on.offsetLeft - 16);
+}
+function pickSw(id) {
+  const e = LIB_BY_ID[id]; if (!e) return;
+  $('#sw-lib').value = id; $('#sw-name').value = e[1];
+  const ty = $('#sw-type'); ty.value = e[2];
+  if (TIMED_RANGE[e[2]]) { $('#sw-min').value = TIMED_RANGE[e[2]][0]; $('#sw-max').value = TIMED_RANGE[e[2]][1]; }
+  else { const x = draft.items[+$('#swapform').dataset.i].ex; if (isTimed(x.type)) { $('#sw-min').value = 8; $('#sw-max').value = 12; } }
+  renderSwSug();
 }
 function doSwap(i, x, from, by, shared) {
+  if (TIMER) tmrStop();
   const it = draft.items[i];
   const ni = newItem(x, draft.deload); ni.swappedFrom = from; ni.swapBy = by;
   if (hasEntries(it)) draft.items.splice(i + 1, 0, ni); else draft.items.splice(i, 1, ni);
@@ -2323,12 +2596,13 @@ function submitSwap(form) {
   if (!name) return err('Bitte gib die Ersatzübung ein.');
   if (!sets || sets > 10 || !min || !max || min > max) return err('Bitte prüfe Sätze und Spanne.');
   const known = knownExercises().get(name.toLowerCase());
+  const libE = LIB_BY_ID[String(f.get('libid') || '')];
   const type = known ? known.type : f.get('type');
-  const id = known ? known.id : 's-' + slug(name);
+  const id = known ? known.id : libE && libE[1] === name ? libE[0] : 's-' + slug(name);
   const from = it.swappedFrom || { id: it.ex.id, name: it.ex.name };
   if (id === it.ex.id || id === from.id) return err('Das ist dieselbe Übung.');
   const def = PEOPLE.flatMap(p => DAYS.flatMap(d => st().plans[p][d].exercises)).find(y => y.id === id);
-  const x = cleanEx({ id, name: known ? known.name : name, type, sets, min, max, step: type === 'time' ? 0 : 2.5, warmup: false, load: def ? def.load : undefined });
+  const x = cleanEx({ id, name: known ? known.name : name, type, sets, min, max, step: isTimed(type) ? 0 : 2.5, warmup: false, load: def ? def.load : undefined });
   $('#modal').innerHTML = '';
   doSwap(i, x, from, cfg.me, f.get('who') === 'both');
   render();
@@ -2356,8 +2630,7 @@ function viewVerlauf() {
 function viewCalendar() {
   const s = st(), first = new Date(cal.y, cal.m, 1), offset = (first.getDay() + 6) % 7, daysIn = new Date(cal.y, cal.m + 1, 0).getDate();
   const map = {}; const add = (k, o) => (map[k] = map[k] || []).push(o);
-  s.workouts.forEach(w => add(dateKey(w.ts), { p: w.person, day: w.data.day, kind: w.data.deload ? 'deload' : 'workout', e: w }));
-  s.skips.forEach(e => add(dateKey(e.ts), { p: e.person, day: e.data.day, kind: 'skip', e }));
+  s.workouts.forEach(w => add(dateKey(w.ts), { p: w.person, day: w.data.day, kind: w.data.deload ? 'deload' : w.abort ? 'abort' : 'workout', e: w }));
   const today = todayStr();
   let cells = '';
   for (let i = 0; i < offset; i++) cells += '<div class="cd empty"></div>';
@@ -2371,7 +2644,7 @@ function viewCalendar() {
   return `<section class="card cal">
       <div class="calnav"><button class="iconbtn" data-act="calmove" data-v="-1" aria-label="Voriger Monat">${ICON.left}</button><b>${title}</b><button class="iconbtn" data-act="calmove" data-v="1" aria-label="Nächster Monat">${ICON.right}</button></div>
       <div class="calgrid">${['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map(w => `<span class="wd">${w}</span>`).join('')}${cells}</div>
-      <div class="legend">${DAYS.map(d => `<span class="ln"><i class="cm t-${DAY_TONE[d]}">M</i>${esc(dl(d))}</span>`).join('')}<span class="ln"><i class="cm t-y skip">R</i>übersprungen</span><span class="ln"><i class="cm t-y deload">M</i>Deload</span></div>
+      <div class="legend">${DAYS.map(d => `<span class="ln"><i class="cm t-${DAY_TONE[d]}">M</i>${esc(dl(d))}</span>`).join('')}<span class="ln"><i class="cm t-y abort">M</i>abgebrochen</span><span class="ln"><i class="cm t-y deload">M</i>Deload</span></div>
     </section>
     <div class="sec-title"><h2>${new Date(cal.sel + 'T12:00').toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}</h2></div>
     <section class="card" style="padding:4px 16px">${sel.length ? `<div class="feed">${sel.map(feedItem).join('')}</div>` : '<div class="empty">An diesem Tag hat niemand trainiert.</div>'}</section>`;
@@ -2417,8 +2690,8 @@ function viewExercise(id) {
   const total = type === 'bw' && pct > 0;
   const hTotal = h => { const b = bwAt(h.person, h.ts); return b == null ? null : Math.max(...h.sets.map(x => totalLoad(b, h.load ?? pct, num(x.w)))); };
   const weighted = type === 'kg' || (type === 'bw' && [me, other].some(p => sessionsOf(p).some(h => usesWeight(h.type, h.sets))));
-  const value = h => type === 'time' ? Math.max(...h.sets.map(x => x.r)) : total ? hTotal(h) : weighted ? workW(h.sets) : sum(h.sets.map(x => x.r));
-  const label = type === 'time' ? 'Längster Satz (Sek.)' : type === 'kg' ? 'Schwerster Satz (kg)' : total ? 'Gesamtlast, schwerster Satz (kg)' : weighted ? 'Zusatzgewicht (kg)' : 'Wiederholungen gesamt';
+  const value = h => type === 'tr' ? score('tr', h.sets) % 1000 : type === 'time' ? Math.max(...h.sets.map(x => x.r)) : total ? hTotal(h) : weighted ? workW(h.sets) : sum(h.sets.map(x => x.r));
+  const label = type === 'tr' ? 'Wiederholungen, bester Satz' : type === 'time' ? 'Längster Satz (Sek.)' : type === 'kg' ? 'Schwerster Satz (kg)' : total ? 'Gesamtlast, schwerster Satz (kg)' : weighted ? 'Zusatzgewicht (kg)' : 'Wiederholungen gesamt';
   const series = [me, other].map(p => ({ p, color: p === me ? '#fff' : 'rgba(255,255,255,.75)', dash: p !== me, points: sessionsOf(p).filter(h => h.sets.length).map(h => ({ t: +new Date(h.ts), v: value(h) })).filter(pt => pt.v != null) }));
   const noBody = total ? [me, other].filter(p => sessionsOf(p).length && !s.bw[p].length) : [];
   const best = p => {
@@ -2429,7 +2702,7 @@ function viewExercise(id) {
   const sessLine = h => { const l = bwLines(h, h.person, h.ts, def); const ft = feelText(h); return `<div class="v">${l ? l.main : fmtSets(h.type, h.sets)}</div>${l ? `<div class="mono muted small">${esc(l.sub)}</div>` : ''}${ft ? `<div class="small muted">${esc(ft)}</div>` : ''}`; };
   const sessions = [...(s.hist[me][id] || []), ...(s.hist[other][id] || [])].sort((a, b) => b.ts.localeCompare(a.ts));
   return `<div style="display:flex;flex-direction:column;gap:8px">
-      <div style="display:flex;gap:8px;align-items:center">${day ? dayChip(day, me, 'lg') : '<span class="tag" style="margin:0">Archiv</span>'}<span class="mono muted small">${TYPE_LABEL[type]}${def ? ` · ${def.sets}×${def.min}–${def.max}${type === 'time' ? ' s' : ''}` : ''}</span></div>
+      <div style="display:flex;gap:8px;align-items:center">${day ? dayChip(day, me, 'lg') : '<span class="tag" style="margin:0">Archiv</span>'}<span class="mono muted small">${TYPE_LABEL[type]}${def ? ` · ${def.sets}×${def.min}–${def.max}${isTimed(type) ? ' s' : ''}` : ''}</span></div>
       <h1 style="margin:0;font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.1">${esc((def && def.name) || info.name)}</h1>
       ${def && def.cue ? `<span class="muted" style="font-size:14px">${esc(def.cue)}</span>` : ''}
       ${def && def.image ? `<img src="${esc(def.image)}" alt="${esc(def.name)}" loading="lazy" style="border-radius:14px">` : ''}
@@ -2453,6 +2726,7 @@ function viewWorkout(id) {
   return `<div style="display:flex;flex-direction:column;gap:8px"><span class="who">${avatar(e.person, 28)}${e.person === cfg.me ? 'Du' : esc(e.person)}</span>
       <h1 class="kurz" style="font-size:64px">${esc(dl(d.day, e.person))}</h1><div style="font-size:18px;font-weight:600">${esc(d.title)}</div>
       <div class="mono muted small">${fmtDate(e.ts)}, ${fmtTime(d.start)}–${fmtTime(d.end)} · ${duration(d.start, d.end)}${d.deload ? ' · Deload' : ''}</div>
+      ${e.abort ? `<span class="chip" style="align-self:flex-start">Abgebrochen · ${e.abort.done} von ${e.abort.plan} Sätzen</span>` : ''}
       ${imp.length ? `<div class="chips">${imp.map(i => `<span class="chip ${i.pr ? 'pr' : ''}">${esc(i.name)} ${esc(i.label)}${i.pr ? ' · Rekord' : ''}</span>`).join('')}</div>` : ''}</div>
     ${d.edited ? `<span class="small muted">Nachträglich bearbeitet am ${fmtDate(d.edited)}, ${fmtTime(d.edited)}</span>` : ''}
     <section class="card">${d.entries.map(en => `<a class="sess" href="#uebung:${encodeURIComponent(en.exId)}"><div class="top"><b style="color:var(--fg)">${esc(en.name)}</b><span class="mono">${en.sets.length} ${en.sets.length === 1 ? 'Satz' : 'Sätze'}</span></div>
@@ -2467,13 +2741,13 @@ function workoutForm() {
   const w = st().workouts.find(x => x.id === wedit.id); if (!w) return;
   const wfmt = (type, v) => typeof v === 'string' ? esc(v) : type === 'kg' ? fmtIn(v) : v ? (v < 0 ? '-' : '') + fmtIn(v) : '';
   $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet full form" id="wform" novalidate>
-    ${sheetHead(`${esc(dl(w.data.day))} · ${fmtDate(w.ts)}`, 'Training bearbeiten')}
+    ${sheetHead(`${w.person !== cfg.me ? esc(w.person) + ' · ' : ''}${esc(dl(w.data.day))} · ${fmtDate(w.ts)}`, 'Training bearbeiten')}
     <h2>Training bearbeiten</h2>
     <p class="help" style="margin:0">Änderungen gelten auch für Steigerung und Statistik. ${esc(partner())} sieht das korrigierte Training.</p>
     ${wedit.entries.map((en, i) => `<section class="card wed">
-      <div class="rowbetween"><b>${esc(en.name)}</b><span class="mono muted small">${en.type === 'time' ? 'Sekunden' : en.type === 'bw' ? '± kg · Wdh.' : 'kg · Wdh.'}</span></div>
+      <div class="rowbetween"><b>${esc(en.name)}</b><span class="mono muted small">${en.type === 'time' ? 'Sekunden' : en.type === 'tr' ? 'Sek. · Wdh.' : en.type === 'bw' ? '± kg · Wdh.' : 'kg · Wdh.'}</span></div>
       ${en.sets.map((st2, j) => `<div class="wrow"><span class="n mono">${j + 1}</span>
-        ${en.type === 'time' ? '' : `<input class="inp mono" data-we="w" data-i="${i}" data-j="${j}" inputmode="${en.type === 'bw' ? 'text' : 'decimal'}" value="${wfmt(en.type, st2.w)}" placeholder="${en.type === 'bw' ? '0' : 'kg'}" aria-label="${esc(en.name)} Satz ${j + 1} Gewicht">`}
+        ${en.type === 'time' ? '' : en.type === 'tr' ? `<input class="inp mono" data-we="w" data-i="${i}" data-j="${j}" inputmode="numeric" value="${esc(st2.w ?? st2.t ?? '')}" placeholder="Sek." aria-label="${esc(en.name)} Satz ${j + 1} Sekunden">` : `<input class="inp mono" data-we="w" data-i="${i}" data-j="${j}" inputmode="${en.type === 'bw' ? 'text' : 'decimal'}" value="${wfmt(en.type, st2.w)}" placeholder="${en.type === 'bw' ? '0' : 'kg'}" aria-label="${esc(en.name)} Satz ${j + 1} Gewicht">`}
         <input class="inp mono" data-we="r" data-i="${i}" data-j="${j}" inputmode="numeric" value="${st2.r || ''}" placeholder="${en.type === 'time' ? 'Sek.' : 'Wdh.'}" aria-label="${esc(en.name)} Satz ${j + 1} ${en.type === 'time' ? 'Sekunden' : 'Wiederholungen'}"></div>`).join('')}
       <div class="btnrow" style="gap:18px"><button type="button" class="addset" data-act="we-add" data-i="${i}">+ Satz</button><button type="button" class="addset" data-act="we-del" data-i="${i}">− Satz</button></div>
       <label>Notiz<textarea data-we="note" data-i="${i}" rows="2" maxlength="500">${esc(en.note || '')}</textarea></label>
@@ -2497,12 +2771,13 @@ function saveWorkoutEdit() {
   const entries = wedit.entries.map(en => ({
     exId: en.exId, name: en.name, type: en.type, feel: en.feel || '', note: String(en.note || '').trim().slice(0, 500),
     ...(en.type === 'bw' && en.load != null ? { load: en.load } : {}),
-    sets: en.sets.map(x => { const o = en.type === 'time' ? { r: int(x.r) } : { w: en.type === 'kg' ? Math.abs(num(String(x.w).replace('−', '-'))) : num(String(x.w).replace('−', '-')), r: int(x.r) }; if (SET_FEEL[x.f]) o.f = x.f; return o; }).filter(x => x.r > 0)
+    ...(en.rm && en.rm.length ? { rm: en.rm } : {}), ...(en.tt ? { tt: en.tt } : {}),
+    sets: en.sets.map(x => { const o = en.type === 'time' ? { r: int(x.r) } : en.type === 'tr' ? { t: int(x.w ?? x.t), r: int(x.r) } : { w: en.type === 'kg' ? Math.abs(num(String(x.w).replace('−', '-'))) : num(String(x.w).replace('−', '-')), r: int(x.r) }; if (SET_FEEL[x.f]) o.f = x.f; if (ADD_WHY[x.a]) o.a = x.a; return o; }).filter(x => x.r > 0)
   })).filter(en => en.sets.length || en.note);
   if (!entries.some(en => en.sets.length)) { const e = $('#we-err'); e.textContent = 'Mindestens ein Satz muss bleiben. Zum Entfernen des ganzen Trainings nutze „Löschen“.'; e.hidden = false; return; }
   const before = JSON.stringify(w.data.entries.map(en => [en.exId, en.sets, en.note || ''])), after = JSON.stringify(entries.map(en => [en.exId, en.sets, en.note]));
   if (before === after) { $('#modal').innerHTML = ''; wedit = null; return; }
-  addEvent('workout_edit', { ref: w.id, entries }, `${dl(w.data.day)} vom ${fmtDate(w.ts)} bearbeitet · ` + entries.map(en => `${en.name}: ${fmtSets(en.type, en.sets)}${en.note ? ` (Notiz: ${en.note})` : ''}`).join(' | '));
+  addEvent('workout_edit', { ref: w.id, entries, ...(w.person !== cfg.me ? { as: w.person } : {}) }, `${w.person !== cfg.me ? `Training von ${w.person}: ` : ''}${dl(w.data.day)} vom ${fmtDate(w.ts)} bearbeitet · ` + entries.map(en => `${en.name}: ${fmtSets(en.type, en.sets)}${en.note ? ` (Notiz: ${en.note})` : ''}`).join(' | '));
   $('#modal').innerHTML = ''; wedit = null; toast('Training geändert'); render();
 }
 
@@ -2675,7 +2950,8 @@ function viewBell() {
     const same = !sharedDiff(s.plans[other][c.data.day], s.plans[cfg.me][c.data.day]).length;
     return `<div class="sess"><div class="top"><span style="display:flex;gap:8px;align-items:center;color:var(--fg)">${dayChip(c.data.day)}<b>${esc(c.data.title)}</b></span><span class="pill ${same ? 'accepted' : ''}">${same ? `bei ${esc(other)} gleich` : `bei ${esc(other)} offen`}</span></div><span class="mono muted small">zuletzt gespeichert ${fmtDate(c.ts)}, ${fmtTime(c.ts)}</span></div>`;
   }).join('');
-  return `<h1 class="display" style="font-size:30px">Plan&shy;änderungen</h1>
+  const nts = notices();
+  return `${nts.length ? `<h1 class="display" style="font-size:30px">Hinweise</h1>${nts.map(noticeCard).join('')}` : ''}<h1 class="display" style="font-size:30px">Plan&shy;änderungen</h1>
     <p class="muted small" style="margin:0">Wenn ${esc(other)} gemeinsame Übungen ändert, siehst du es hier. Abweichende Übungen und persönliche Werte lösen keine Meldung aus.</p>
     ${recent.join('') || `<section class="card"><div class="empty">${older.length ? 'Nichts Neues.' : 'Keine Unterschiede. Eure gemeinsamen Übungen sind gleich.'}</div></section>`}
     ${older.length ? `<details class="older"><summary>Ältere (${older.length})</summary><div style="display:flex;flex-direction:column;gap:12px;padding-top:12px">${older.join('')}</div></details>` : ''}
@@ -2708,7 +2984,7 @@ function viewPlan() {
   const b = builder, d = b.day, w = b.work[d], other = partner();
   const seg = `<div class="seg" role="group" aria-label="Trainingstag">${DAYS.map(k => `<button data-act="bday" data-v="${k}" aria-pressed="${k === d}"><i class="dot t-${DAY_TONE[k]}" style="width:9px;height:9px;margin-right:6px;vertical-align:1px"></i>${esc(b.work[k].short || DAY_SHORT[k])}${b.dirty[k] ? '<i class="mark"></i>' : ''}</button>`).join('')}</div>`;
   const rows = w.exercises.map((x, i) => `<div class="prow">
-      <div class="n"><b>${esc(x.name)}</b><span class="small muted">${TYPE_LABEL[x.type]} · ${x.sets}×${x.min}–${x.max}${x.type === 'time' ? ' s' : ''}${x.type === 'bw' ? ` · KG ${loadOf(x)} %` : ''}${x.type !== 'time' && x.step ? ` · +${fmtN(x.step)} kg` : ''}</span>
+      <div class="n"><b>${esc(x.name)}</b><span class="small muted">${TYPE_LABEL[x.type]} · ${x.sets}×${x.min}–${x.max}${isTimed(x.type) ? ' s' : ''}${x.type === 'bw' ? ` · KG ${loadOf(x)} %` : ''}${x.type !== 'time' && x.step ? ` · +${fmtN(x.step)} kg` : ''}</span>
         ${x.personal || x.warmup ? `<span class="tags">${x.personal ? '<span class="tag">Nur ich</span>' : ''}${x.warmup ? '<span class="tag">Aufwärmsatz</span>' : ''}</span>` : ''}</div>
       <div class="tools"><button class="tool" data-act="bmove" data-i="${i}" data-v="-1" aria-label="Nach oben" ${i === 0 ? 'disabled' : ''}>${ICON.up}</button><button class="tool" data-act="bmove" data-i="${i}" data-v="1" aria-label="Nach unten" ${i === w.exercises.length - 1 ? 'disabled' : ''}>${ICON.down}</button></div>
       <div class="acts"><button data-act="bedit" data-i="${i}">Bearbeiten</button><button data-act="breplace" data-i="${i}">Austauschen</button><button class="del" data-act="bremove" data-i="${i}">Entfernen</button></div>
@@ -2742,7 +3018,7 @@ function exerciseForm(mode, i) {
     <label>${mode === 'edit' ? 'Name' : 'Name oder Suche'}<input class="inp" id="f-name" name="name" value="${esc(x.name)}" maxlength="60" required autocomplete="off"></label>
     ${mode === 'edit' ? '' : '<div id="f-sug" class="sug"></div>'}
     <input type="hidden" id="f-libid" name="libid" value="">
-    <label>Art<select id="f-type" name="type">${Object.entries(TYPE_LABEL).map(([k, v]) => `<option value="${k}" ${x.type === k ? 'selected' : ''}>${v}${k === 'bw' ? ' (Wdh., optional ± kg)' : k === 'time' ? ' (Sekunden)' : ' (kg + Wdh.)'}</option>`).join('')}</select></label>
+    <label>Art<select id="f-type" name="type">${Object.entries(TYPE_LABEL).map(([k, v]) => `<option value="${k}" ${x.type === k ? 'selected' : ''}>${v}${k === 'bw' ? ' (Wdh., optional ± kg)' : k === 'time' ? ' (Sekunden)' : k === 'tr' ? ' (Sekunden mit Timer, Wdh. zählen)' : ' (kg + Wdh.)'}</option>`).join('')}</select></label>
     <div id="f-load-l" class="loadbox" ${x.type === 'bw' ? '' : 'hidden'}>
       <label>Lastanteil Körpergewicht<span class="field pctf"><input id="f-load" name="load" inputmode="numeric" autocomplete="off" value="${curLoad}" aria-label="Lastanteil Körpergewicht in Prozent"><span>%</span></span>
         <span class="help">Anteil, der in die Gesamtlast eingeht. Eigene Zahl eintragen oder Vorlage wählen. Wird mit ${esc(partner())} abgeglichen.</span></label>
@@ -2753,12 +3029,12 @@ function exerciseForm(mode, i) {
       <input type="hidden" id="f-muscles" name="muscles" value="${esc(JSON.stringify(musOf(x)))}">
       <button type="button" class="btn small" data-act="mus-edit">Muskeln bearbeiten</button></div>
     <div class="grid3"><label>Sätze<input class="inp" id="f-sets" name="sets" inputmode="numeric" value="${x.sets}"></label>
-      <label><span id="f-unit-min">${x.type === 'time' ? 'Sek. von' : 'Wdh. von'}</span><input class="inp" id="f-min" name="min" inputmode="numeric" value="${x.min}"></label>
+      <label><span id="f-unit-min">${isTimed(x.type) ? 'Sek. von' : 'Wdh. von'}</span><input class="inp" id="f-min" name="min" inputmode="numeric" value="${x.min}"></label>
       <label>bis<input class="inp" id="f-max" name="max" inputmode="numeric" value="${x.max}"></label></div>
     <label class="chk" id="f-warm-l" ${x.type === 'kg' ? '' : 'hidden'}><input type="checkbox" id="f-warmup" name="warmup" ${x.warmup ? 'checked' : ''}><span>Aufwärmsatz<small>Ein Satz mit 60 % × 6 vor den Arbeitssätzen. Wird mit ${esc(partner())} abgeglichen.</small></span></label>
     <label class="chk"><input type="checkbox" id="f-personal" name="personal" ${x.personal ? 'checked' : ''}><span>Abweichende Übung (nur ich)<small>Gehört nicht zum gemeinsamen Training und löst bei ${esc(partner())} nie eine Meldung aus.</small></span></label>
     <div class="persbox"><div class="eyebrow">Persönlich · wird nicht abgeglichen</div>
-      <label id="f-step-l" ${x.type === 'time' ? 'hidden' : ''}><span id="f-step-t">${x.type === 'bw' ? 'Steigerung Zusatzgewicht in kg (0 = keine)' : 'Steigerung in kg'}</span><input class="inp" id="f-step" name="step" inputmode="decimal" value="${fmtIn(x.step || 0)}"><span class="help">Wird vorgeschlagen, wenn alle Sätze die obere Wdh.-Zahl erreichen.</span></label>
+      <label id="f-step-l" ${isTimed(x.type) ? 'hidden' : ''}><span id="f-step-t">${x.type === 'bw' ? 'Steigerung Zusatzgewicht in kg (0 = keine)' : 'Steigerung in kg'}</span><input class="inp" id="f-step" name="step" inputmode="decimal" value="${fmtIn(x.step || 0)}"><span class="help">Wird vorgeschlagen, wenn alle Sätze die obere Wdh.-Zahl erreichen.</span></label>
       <label>Ausführung<textarea id="f-cue" name="cue" rows="3" maxlength="500">${esc(x.cue)}</textarea></label>
       <label>Video-Link (optional)<input class="inp" id="f-video" name="video" type="url" inputmode="url" value="${esc(x.video)}" placeholder="https://youtube.com/shorts/…"><span class="help">Leer lassen: Die App sucht passende YouTube Shorts zur Ausführung.</span></label>
       <label>Bild-Link (optional)<input class="inp" id="f-image" name="image" type="url" inputmode="url" value="${esc(x.image)}" placeholder="https://…/bild.jpg"></label>
@@ -2780,7 +3056,7 @@ function submitExercise(form) {
   if (!sets || sets > 10) return err('Sätze: bitte eine Zahl von 1 bis 10.');
   if (!min || !max || min > max) return err('Bitte gib eine gültige Spanne an, z. B. 8 bis 12.');
   const url = v => { v = String(v || '').trim(); return /^https?:\/\//i.test(v) ? v : ''; };
-  const data = { name, type, sets, min, max, step: type === 'time' ? 0 : Math.max(0, num(f.get('step'))), cue: String(f.get('cue') || '').trim(), video: url(f.get('video')), image: url(f.get('image')), warmup: type === 'kg' && f.get('warmup') === 'on', personal: f.get('personal') === 'on' };
+  const data = { name, type, sets, min, max, step: isTimed(type) ? 0 : Math.max(0, num(f.get('step'))), cue: String(f.get('cue') || '').trim(), video: url(f.get('video')), image: url(f.get('image')), warmup: type === 'kg' && f.get('warmup') === 'on', personal: f.get('personal') === 'on' };
   try { data.muscles = cleanMuscles(JSON.parse(f.get('muscles') || 'null')) || { p: [], s: [] }; } catch (e) { data.muscles = { p: [], s: [] }; }
   const libId = String(f.get('libid') || '');
   const used = id => DAYS.some(d => builder.work[d].exercises.some(y => y.id === id));
@@ -2843,7 +3119,9 @@ function viewSettings() {
     <section class="card form" style="gap:12px">
       <label class="tgl"><span>Entwickleroptionen</span><input type="checkbox" role="switch" id="dev-tgl" ${LS.get('dev', false) ? 'checked' : ''}><i aria-hidden="true"></i></label>
       ${LS.get('dev', false) ? `<b>Person wechseln</b><span class="small muted">Nur nötig, wenn diese App auf dem falschen Handy eingerichtet wurde. Ein laufendes Training wird dabei verworfen, der Vault gesperrt.</span>
-      <div class="pick">${PEOPLE.map(p => `<button data-act="s-me" data-v="${p}" aria-pressed="${cfg.me === p}">${p}</button>`).join('')}</div>` : ''}
+      <div class="pick">${PEOPLE.map(p => `<button data-act="s-me" data-v="${p}" aria-pressed="${cfg.me === p}">${p}</button>`).join('')}</div>
+      <b style="margin-top:6px">Trainings von ${esc(partner())} bearbeiten</b><span class="small muted">Zum Korrigieren falscher Einträge. ${esc(partner())} sieht die Änderung, Steigerung und Statistik rechnen damit.</span>
+      <div class="devlist">${st().workouts.filter(w => w.person === partner()).slice(-8).reverse().map(w => `<div class="devrow">${dayChip(w.data.day, w.person)}<span class="mono small" style="flex:1">${fmtDate(w.ts)} · ${w.data.entries.reduce((a2, en) => a2 + en.sets.length, 0)} Sätze</span><button class="btn small" type="button" data-act="w-edit" data-id="${esc(w.id)}">Bearbeiten</button></div>`).join('') || `<span class="small muted">Noch keine Trainings von ${esc(partner())}.</span>`}</div>` : ''}
     </section>
     <section class="card"><b>Daten auf diesem Handy zurücksetzen</b>
       <span class="small muted">Löscht nur die Kopie des Trainingslogs auf diesem Handy. Beim nächsten Sync wird alles aus der Tabelle neu geladen. Der Vault bleibt erhalten.${waiting ? ` <b>${waiting} noch nicht gesendete Einträge gehen dabei verloren.</b>` : ''}</span>
@@ -2921,7 +3199,7 @@ async function testAndSave(url, key, errEl) {
 /* ---------- Ereignisse ---------- */
 const readSetInputs = (i, j) => {
   const s = draft.items[i].sets[j], rIn = document.getElementById(`r-${i}-${j}`), wIn = document.getElementById(`w-${i}-${j}`);
-  if (wIn) s.w = wIn.value; if (rIn) s.r = rIn.value; return s;
+  if (wIn && !wIn.readOnly) s.w = wIn.value; if (rIn && !rIn.readOnly) s.r = rIn.value; return s;   // laufender Timer zeigt die Restzeit, nicht den Wert
 };
 // Körpergewichtsübungen: Seite (+/−) und Wert gehen an die Sätze darunter, die noch leer, nicht abgehakt und nicht selbst geändert sind
 function propagateDown(i, j) {
@@ -2936,15 +3214,24 @@ function propagateDown(i, j) {
 const actions = {
   start: () => startTraining(false),
   'start-normal': () => startTraining(true),
-  'skip-ask': () => { skipAsk = true; otherDayAsk = false; render(); },
-  'other-day': () => { otherDayAsk = true; skipAsk = false; render(); },
+  'other-day': () => { otherDayAsk = true; render(); },
   'other-no': () => { otherDayAsk = false; render(); },
   'start-day': t => { otherDayAsk = false; startTraining(false, t.dataset.v); },
-  'skip-no': () => { skipAsk = false; render(); },
-  'skip-yes': () => { const d = nextDay(cfg.me); addEvent('skip', { day: d }, `${dl(d)} übersprungen`); skipAsk = false; toast(`${dl(d)} übersprungen`); render(); },
   sync: () => sync({ overlay: true }),
+  tmr: t => { const i = +t.dataset.i, j = +t.dataset.j; if (TIMER && TIMER.i === i && TIMER.j === j) tmrPause(); else tmrStart(i, j); },
+  'tmr-pause': () => tmrPause(),
+  'tmr-stop': () => tmrStop(),
+  'tmr-x': () => tmrEnd(null),
+  'why-rm': t => { const it = draft.items[+t.dataset.i], k = it.rm.length - 1; if (k < 0) return; it.rm[k] = it.rm[k] === t.dataset.v ? '' : t.dataset.v; saveDraft(); rerenderCard(+t.dataset.i); },
+  'why-add': t => { const it = draft.items[+t.dataset.i], l = [...it.sets].reverse().find(x => x.add); if (!l) return; l.a = l.a === t.dataset.v ? '' : t.dataset.v; saveDraft(); rerenderCard(+t.dataset.i); },
   check: t => {
-    const i = +t.dataset.i, j = +t.dataset.j, x = draft.items[i].ex, s = readSetInputs(i, j);
+    const i = +t.dataset.i, j = +t.dataset.j, x = draft.items[i].ex;
+    if (TIMER && TIMER.i === i && TIMER.j === j) tmrStop();
+    const s = readSetInputs(i, j);
+    if (!s.done && x.type === 'tr') {
+      if (!int(s.w)) s.w = String(draft.items[i].tt || x.min);
+      if (!int(s.r)) { toast('Trag zuerst die Wiederholungen ein.'); const r = document.getElementById(`r-${i}-${j}`); if (r) r.focus(); return; }
+    }
     if (!s.done && x.type === 'kg' && !num(s.w)) { toast('Trag zuerst das Gewicht ein.'); const w = document.getElementById(`w-${i}-${j}`); if (w) w.focus(); return; }
     if (!s.done && !int(s.r)) { const mine = lastAny(cfg.me, x.id); s.r = String(draft.deload ? x.min : mine && mine.type === x.type && mine.sets[j] ? mine.sets[j].r : x.max); }
     s.done = !s.done; saveDraft(); rerenderCard(i);
@@ -2971,8 +3258,20 @@ const actions = {
     it.kind = 'hold'; it.hint = x.type === 'kg' ? 'Seit 3 Trainings kein Fortschritt. Heute −10 %.' : `Seit 3 Trainings kein Fortschritt. Heute ${fmtN(step)} kg leichter.`;
     saveDraft(); rerenderCard(i); toast(x.type === 'kg' ? 'Gewicht für heute um 10 % reduziert' : 'Gewicht für heute reduziert');
   },
-  addset: t => { const i = +t.dataset.i, it = draft.items[i]; it.sets.forEach((s, j) => readSetInputs(i, j)); const l = it.sets[it.sets.length - 1]; it.sets.push(blankSet(null, { w: l ? l.w : '', neg: l ? l.neg : false, alt: l ? l.alt : '', mk: l ? l.mk : '', lab: l ? l.lab : '' })); saveDraft(); rerenderCard(i); },
-  delset: t => { const i = +t.dataset.i, it = draft.items[i]; if (it.sets.length <= 1) return; it.sets.forEach((s, j) => readSetInputs(i, j)); it.sets.pop(); saveDraft(); rerenderCard(i); },
+  // + Satz holt zuerst einen gestrichenen Satz zurück, sonst ist es ein zusätzlicher Satz (Grund optional)
+  addset: t => {
+    const i = +t.dataset.i, it = draft.items[i]; it.sets.forEach((s, j) => readSetInputs(i, j)); const l = it.sets[it.sets.length - 1];
+    const back = it.rm.length > 0; if (back) it.rm.pop();
+    it.sets.push(blankSet(null, { w: l ? (it.ex.type === 'tr' ? String(it.tt || l.w) : l.w) : '', neg: l ? l.neg : false, alt: l ? l.alt : '', mk: l && !l.add ? l.mk : '', lab: l && !l.add ? l.lab : '', add: !back }));
+    saveDraft(); rerenderCard(i);
+  },
+  // − Satz: ein zusätzlicher Satz verschwindet einfach, ein geplanter wird gestrichen (Grund optional)
+  delset: t => {
+    const i = +t.dataset.i, it = draft.items[i]; if (it.sets.length <= 1) return; it.sets.forEach((s, j) => readSetInputs(i, j));
+    if (TIMER && TIMER.i === i && TIMER.j === it.sets.length - 1) tmrEnd(null);
+    const l = it.sets.pop(); if (!l.add) it.rm.push('');
+    saveDraft(); rerenderCard(i);
+  },
   'swap-open': t => swapForm(+t.dataset.i),
   'mus-full': t => { const x = exById(t.dataset.ex); if (x) openMusFull(x, t.dataset.tone); },
   'mf-side': t => { const f = $('#mf-flip'); if (!f) return; f.classList.toggle('turned', t.dataset.v === 'b'); document.querySelectorAll('[data-act="mf-side"]').forEach(b => b.setAttribute('aria-pressed', String(b === t))); },
@@ -2982,6 +3281,9 @@ const actions = {
   'me-done': () => { $('#f-muscles').value = JSON.stringify(musEd.m); $('#f-mus-prev').innerHTML = musPreview(musEd.m, musEd.tk); const o = $('#museditor'); if (o) o.remove(); musEd = null; },
   'sug-g': t => { sugGroup = t.dataset.v; renderSug(); },
   'sug-pick': t => pickSug(t.dataset.id),
+  'sw-g': t => { swGroup = t.dataset.v; renderSwSug(); },
+  'sw-pick': t => pickSw(t.dataset.id),
+  'sw-clear': () => { $('#sw-lib').value = ''; $('#sw-name').value = ''; renderSwSug(); $('#sw-name').focus(); },
   'sug-close': () => { sugGroup = ''; $('#f-sug').innerHTML = ''; },
   fload: t => { const el = $('#f-load'); if (el) el.value = t.dataset.v; document.querySelectorAll('.loadchips .pchip[data-v]').forEach(b => b.setAttribute('aria-pressed', String(b === t))); },
   'swap-follow': t => {
@@ -2992,7 +3294,7 @@ const actions = {
   'finish-ask': () => finishSheet(),
   'finish-yes': () => finishTraining(),
   'discard-ask': () => discardSheet(),
-  'discard-yes': () => { draft = null; saveDraft(); $('#modal').innerHTML = ''; toast('Training verworfen'); location.hash = '#start'; },
+  'discard-yes': () => { TIMER = null; clearTimeout(tmrTO); draft = null; saveDraft(); $('#modal').innerHTML = ''; toast('Training verworfen'); location.hash = '#start'; },
   'bw-save': () => {
     const el = $('#bw-in'), v = num(el && el.value), fe = $('#bw-from');
     let from = fe && /^\d{4}-\d{2}-\d{2}$/.test(fe.value) ? fe.value : todayStr();
@@ -3009,6 +3311,7 @@ const actions = {
   accept: t => acceptChange(t.dataset.id, false),
   'accept-draft': t => acceptChange(t.dataset.id, true),
   dismiss: t => dismissChange(t.dataset.id),
+  'notice-ok': t => { const id = t.dataset.id; if (id === 'regen') LS.set('regen.ack', Date.now()); else { const a = LS.get('notice.ack', {}); a[id] = 1; LS.set('notice.ack', a); } render(); },
   bday: t => { builder.day = t.dataset.v; render(); },
   bmove: t => { const a = builder.work[builder.day].exercises, i = +t.dataset.i, j = i + +t.dataset.v; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; markDirty(); render(); },
   bedit: t => exerciseForm('edit', +t.dataset.i),
@@ -3022,7 +3325,7 @@ const actions = {
   'pre-save': () => savePresets(),
   bdiscard: () => { builder.work[builder.day] = clone(st().plans[cfg.me][builder.day]); builder.dirty[builder.day] = false; render(); },
   bsave: () => savePlan(),
-  'w-edit': t => { const w = st().workouts.find(x => x.id === t.dataset.id); if (!w || w.person !== cfg.me) return; wedit = { id: w.id, entries: clone(w.data.entries) }; workoutForm(); },
+  'w-edit': t => { const w = st().workouts.find(x => x.id === t.dataset.id); if (!w || (w.person !== cfg.me && !LS.get('dev', false))) return; wedit = { id: w.id, entries: clone(w.data.entries) }; workoutForm(); },
   'we-add': t => { readWorkoutForm(); const en = wedit.entries[+t.dataset.i], l = en.sets[en.sets.length - 1]; en.sets.push({ w: l ? l.w : '', r: '' }); workoutForm(); },
   'we-del': t => { readWorkoutForm(); const en = wedit.entries[+t.dataset.i]; if (en.sets.length) en.sets.pop(); workoutForm(); },
   'w-del': t => { wDelAsk = t.dataset.id; render(); },
@@ -3155,14 +3458,16 @@ document.addEventListener('input', e => {
     if (was !== !!presetsDirty()) { const id = t.id, pos = t.selectionStart; render(); const n = document.getElementById(id); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} } }
   } else if (t.id === 'f-name' && $('#f-sug')) {
     $('#f-libid').value = ''; renderSug();
+  } else if (t.id === 'sw-name' && $('#sw-sug')) {
+    $('#sw-lib').value = ''; renderSwSug();
   } else if (t.id === 'f-load') {
     document.querySelectorAll('.loadchips .pchip[data-v]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === t.value.trim())));
   } else if (t.id === 'f-type') {
-    $('#f-step-l').hidden = t.value === 'time';
+    $('#f-step-l').hidden = isTimed(t.value);
     $('#f-warm-l').hidden = t.value !== 'kg';
     $('#f-load-l').hidden = t.value !== 'bw';
     $('#f-step-t').textContent = t.value === 'bw' ? 'Steigerung Zusatzgewicht in kg (0 = keine)' : 'Steigerung in kg';
-    $('#f-unit-min').textContent = t.value === 'time' ? 'Sek. von' : 'Wdh. von';
+    $('#f-unit-min').textContent = isTimed(t.value) ? 'Sek. von' : 'Wdh. von';
   } else if (t.id === 'sw-name') {
     const k = knownExercises().get(t.value.trim().toLowerCase());
     if (k) { const sel = $('#sw-type'); if (sel) sel.value = k.type; }
@@ -3186,6 +3491,7 @@ function checkUpdate() {
 }
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') stopCamera(); else if (view === 'kamera') startCamera();
+  if (document.visibilityState === 'visible' && TIMER) tmrTick();
   if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); if (draft) saveDraft(); if ((VAULT.key || VAULT.photo) && Date.now() - VAULT.picking > 180000) { lockVault(); if (view.startsWith('vault')) location.hash = '#profil'; } return; }
   checkUpdate();
   const away = Date.now() - hiddenAt;
