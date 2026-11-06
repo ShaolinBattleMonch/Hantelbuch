@@ -1,10 +1,10 @@
 'use strict';
-/* Hantelbuch – Trainings-App für Manu & Rob.
+/* BUILT (früher Hantelbuch) – Trainings-App für Manu & Rob.
    Alles, was passiert (Training, Skip, Planänderung, Tausch, Körpergewicht, Profilbild), wird als Eintrag in einem Log gespeichert:
    zuerst auf dem Handy, beim Sync in der Google-Tabelle. Der aktuelle Stand wird immer aus dem Log berechnet.
    Ausnahme: der Vault. Seine Bilder bleiben verschlüsselt nur auf diesem Handy und werden nie synchronisiert. */
 
-const APP_VERSION = '1.9.0';
+const APP_VERSION = '2.0.0';
 const SCRIPT_MIN = 2;            // benötigte Version des Google-Skripts
 const PEOPLE = ['Manu', 'Rob'];
 const DAYS = ['A', 'B', 'C'];    // interne Kennung der Trainingstage, angezeigt werden die Kürzel
@@ -20,8 +20,8 @@ const WARMUP = [0.6, 6];         // ein Aufwärmsatz: 60 % × 6
 const FEEL = { leicht: 'Leicht', passt: 'Passt', schwer: 'Schwer' };   // alte Bewertung pro Übung (bis 1.5)
 const SET_FEEL = { locker: 'Locker', passt: 'Passt', limit: 'Am Limit' };  // Bewertung pro Satz (ab 1.6)
 const RIR = { locker: 3, passt: 1.5, limit: 0 };  // geschätzte Wiederholungen im Tank, für die Maximalkraft-Schätzung
-const LOAD_DEFAULT = { dips: 100, klimmzuege: 100, beinheben: 35 };  // Lastanteil Körpergewicht in %
-const DEFAULT_PRESETS = [{ name: 'Dips, Klimmzüge', pct: 100 }, { name: 'Liegestütze', pct: 65 }, { name: 'Knie-Liegestütze', pct: 50 }, { name: 'Beinheben', pct: 35 }, { name: 'Nur Wiederholungen', pct: 0 }];
+const LIB_MIN_SCRIPT = 5;          // ab dieser Skript-Version liegt die Bibliothek als Blatt in der Tabelle
+const OLD_PRESETS = [{ name: 'Dips, Klimmzüge', pct: 100 }, { name: 'Liegestütze', pct: 65 }, { name: 'Knie-Liegestütze', pct: 50 }, { name: 'Beinheben', pct: 35 }, { name: 'Nur Wiederholungen', pct: 0 }];
 const PAUSE_DAYS = 21;
 const DELOAD_WEEKS = 8;
 const DELOAD_WEEKS_PLATEAU = 4;
@@ -62,10 +62,23 @@ const BODY = {"sil":"M91.0,50.0C87.8,53.0 92.2,63.8 90.0,68.0C87.8,72.2 82.7,73.
 const EX_LIB = [["bankdruecken","Bankdrücken (Langhantel)","kg","brust_u,brust_o","schulter_v,trizeps_s,trizeps_l"],["kh-bankdruecken","Bankdrücken (Kurzhantel)","kg","brust_u","brust_o,schulter_v,trizeps_s,trizeps_l"],["schraegbank","Schrägbankdrücken (Kurzhantel, 30°)","kg","brust_o","brust_u,schulter_v,trizeps_s"],["lh-schraegbank","Schrägbankdrücken (Langhantel)","kg","brust_o","brust_u,schulter_v,trizeps_s,trizeps_l"],["negativbank","Negativbankdrücken","kg","brust_u","trizeps_s,trizeps_l,schulter_v"],["brustpresse","Brustpresse (Maschine)","kg","brust_u","brust_o,schulter_v,trizeps_s"],["dips","Dips (Brust-Fokus)","bw","brust_u,trizeps_l,trizeps_s","brust_o,schulter_v"],["liegestuetze","Liegestütze","bw","brust_u","brust_o,schulter_v,trizeps_s,trizeps_l,serratus,bauch"],["kabelflys","Kabelzug-Flys","kg","brust_u,brust_o","schulter_v"],["butterfly","Butterfly (Maschine)","kg","brust_u","brust_o,schulter_v"],["kh-flys","Kurzhantel-Flys","kg","brust_u","brust_o,schulter_v"],["pullover","Pullover (Kurzhantel)","kg","latissimus,brust_u","teres,trizeps_l,serratus"],["ueberkopf-trizeps","Überkopf-Trizepsstrecken am Kabel","kg","trizeps_l","trizeps_s"],["trizeps-seil","Trizepsdrücken am Kabel (Seil)","kg","trizeps_s,trizeps_l",""],["trizeps-stange","Trizepsdrücken am Kabel (Stange)","kg","trizeps_s","trizeps_l"],["french-press","French Press (SZ-Stange)","kg","trizeps_l,trizeps_s",""],["enges-bankdruecken","Enges Bankdrücken","kg","trizeps_s,trizeps_l","brust_u,schulter_v"],["bankdips","Bankdips","bw","trizeps_s,trizeps_l","schulter_v,brust_u"],["kickbacks","Trizeps-Kickbacks","kg","trizeps_l,trizeps_s","schulter_h"],["schulterdruecken","Schulterdrücken (Kurzhantel)","kg","schulter_v","schulter_s,trizeps_s,trizeps_l,nacken"],["military-press","Schulterdrücken stehend (Langhantel)","kg","schulter_v","schulter_s,trizeps_s,brust_o,nacken,bauch"],["seitheben","Seitheben (Kurzhantel)","kg","schulter_s","schulter_v,nacken"],["seitheben-kabel","Seitheben am Kabel","kg","schulter_s","schulter_v,nacken"],["frontheben","Frontheben","kg","schulter_v","brust_o,schulter_s"],["reverse-flys","Reverse Flys","kg","schulter_h","rhomboiden,trapez_mu,rotatoren"],["facepulls","Face Pulls am Kabel","kg","schulter_h,rotatoren","rhomboiden,trapez_mu,nacken"],["aufrechtes-rudern","Aufrechtes Rudern","kg","schulter_s,nacken","schulter_v,bizeps"],["shrugs","Shrugs (Kurzhantel)","kg","nacken","trapez_mu,ua_beuger"],["klimmzuege","Klimmzüge","bw","latissimus,teres","rhomboiden,trapez_mu,schulter_h,bizeps,brachialis,ua_beuger"],["klimmzuege-eng","Klimmzüge eng (Untergriff)","bw","latissimus,bizeps","teres,brachialis,rhomboiden,trapez_mu"],["latzug","Latzug (breiter Griff)","kg","latissimus,teres","rhomboiden,trapez_mu,schulter_h,bizeps,brachialis"],["latzug-eng","Latzug eng (neutraler Griff)","kg","latissimus","teres,bizeps,brachialis,rhomboiden"],["lh-rudern","Langhantelrudern vorgebeugt","kg","latissimus,rhomboiden,trapez_mu","teres,schulter_h,bizeps,brachialis,ruecken_u,hams_a"],["kh-rudern","Kurzhantelrudern einarmig","kg","latissimus,rhomboiden","teres,trapez_mu,schulter_h,bizeps,brachialis"],["kabelrudern","Kabelrudern sitzend (enger Griff)","kg","latissimus,rhomboiden,trapez_mu","teres,schulter_h,bizeps,brachialis,ruecken_u"],["t-bar-rudern","T-Bar-Rudern","kg","rhomboiden,trapez_mu,latissimus","teres,schulter_h,bizeps,ruecken_u"],["maschinenrudern","Rudern an der Maschine","kg","rhomboiden,trapez_mu,latissimus","teres,schulter_h,bizeps"],["kabel-pullover","Kabel-Pullover (gestreckte Arme)","kg","latissimus","teres,trizeps_l"],["kreuzheben","Kreuzheben","kg","gluteus,ruecken_u,hams_a,hams_i","quad_vl,quad_vm,quad_rf,adduktoren,nacken,trapez_mu,ua_beuger"],["hyperextensions","Hyperextensions","bw","ruecken_u","gluteus,hams_a,hams_i"],["sz-curls","Langhantel-Curls (SZ-Stange)","kg","bizeps","brachialis,brachiorad"],["kh-curls","Kurzhantel-Curls","kg","bizeps","brachialis,brachiorad"],["hammer-curls","Hammer-Curls (Kurzhantel)","kg","brachialis,brachiorad","bizeps"],["schraegbank-curls","Schrägbank-Curls","kg","bizeps","brachialis"],["konzentrationscurls","Konzentrationscurls","kg","bizeps","brachialis"],["kabel-curls","Bizeps-Curls am Kabel","kg","bizeps","brachialis,brachiorad"],["scott-curls","Scott-Curls (Preacher)","kg","bizeps,brachialis","brachiorad"],["reverse-curls","Reverse Curls","kg","brachiorad,brachialis","ua_strecker,bizeps"],["handgelenk-curls","Handgelenk-Curls","kg","ua_beuger",""],["kniebeugen","Kniebeugen (Langhantel)","kg","quad_rf,quad_vl,quad_vm,gluteus","adduktoren,hams_a,hams_i,ruecken_u,soleus"],["frontkniebeugen","Frontkniebeugen","kg","quad_vl,quad_vm,quad_rf","gluteus,adduktoren,ruecken_u,bauch"],["goblet-squat","Goblet Squat","kg","quad_vl,quad_vm,quad_rf,gluteus","adduktoren,bauch"],["beinpresse","Beinpresse","kg","quad_vl,quad_vm,quad_rf,gluteus","adduktoren,hams_a,soleus"],["hackenschmidt","Hackenschmidt-Kniebeugen","kg","quad_vl,quad_vm,quad_rf","gluteus,adduktoren"],["ausfallschritte","Ausfallschritte","kg","quad_vl,quad_vm,quad_rf,gluteus","adduktoren,gluteus_m,hams_a,soleus"],["bulgarian","Bulgarische Split Squats","kg","quad_vl,quad_vm,gluteus","quad_rf,adduktoren,gluteus_m,hams_a"],["step-ups","Step-ups","kg","quad_vl,quad_vm,gluteus","quad_rf,gluteus_m,hams_a"],["beinstrecker","Beinstrecker","kg","quad_rf,quad_vl,quad_vm",""],["rdl","Rumänisches Kreuzheben","kg","hams_a,hams_i,gluteus","ruecken_u,adduktoren,ua_beuger,nacken"],["beinbeuger","Beinbeuger","kg","hams_a,hams_i","waden"],["beinbeuger-sitzend","Beinbeuger sitzend","kg","hams_a,hams_i","waden"],["hip-thrust","Hip Thrust","kg","gluteus","hams_a,hams_i,quad_vl,gluteus_m,adduktoren"],["abduktoren","Abduktoren (Maschine)","kg","gluteus_m","gluteus"],["adduktoren","Adduktoren (Maschine)","kg","adduktoren",""],["wadenheben","Wadenheben stehend","kg","waden","soleus"],["wadenheben-sitzend","Wadenheben sitzend","kg","soleus","waden"],["beinheben","Hängendes Beinheben","bw","hueftbeuger,bauch","bauch_s,quad_rf,ua_beuger"],["knieheben","Hängendes Knieheben","bw","hueftbeuger,bauch","bauch_s"],["plank","Plank","time","bauch","bauch_s,schulter_v,gluteus,quad_rf"],["seitstuetz","Seitstütz","time","bauch_s","gluteus_m,bauch"],["crunches","Crunches","bw","bauch","bauch_s"],["kabel-crunch","Kabel-Crunch","kg","bauch","bauch_s"],["russian-twist","Russian Twist","bw","bauch_s","bauch,hueftbeuger"],["ab-wheel","Ab Wheel Rollout","bw","bauch","bauch_s,latissimus,schulter_v,hueftbeuger"],["pallof","Pallof Press","kg","bauch_s","bauch"],["holzhacker","Holzhacker am Kabel","kg","bauch_s","bauch,schulter_v"],["burpees","Burpees","tr","quad_vl,quad_vm,brust_u,schulter_v,bauch","gluteus,trizeps_l,quad_rf,waden"],["mountain-climbers","Mountain Climbers","tr","bauch,hueftbeuger","schulter_v,brust_u,quad_rf"],["jumping-jacks","Jumping Jacks","tr","waden,schulter_s","gluteus_m,adduktoren,soleus"],["bear-crawl","Bear Crawl","tr","schulter_v,bauch","quad_vl,trizeps_l,brust_u"],["seilspringen","Seilspringen","time","waden,soleus","quad_vl,schulter_v,ua_beuger"],["kb-swings","Kettlebell Swings","kg","gluteus,hams_a,hams_i","ruecken_u,schulter_v,bauch"]];
 const TONE_HEX = { y: '#fff200', m: '#ec008c', c: '#00aeef' };
 const normName = s => String(s || '').toLowerCase().replace(/\(.*?\)/g, ' ').replace(/[^a-z0-9äöüß]+/g, ' ').trim();
+EX_LIB.push(
+  ['beinheben-stuetz', 'Beinheben im Stütz', 'bw', 'hueftbeuger,bauch', 'bauch_s,quad_rf,trizeps_l'],
+  ['knieheben-stuetz', 'Knieheben im Stütz', 'bw', 'hueftbeuger,bauch', 'bauch_s,trizeps_l'],
+  ['l-sit', 'L-Sit an der Dipstation', 'time', 'hueftbeuger,bauch', 'quad_rf,bauch_s,trizeps_l,latissimus,trapez_mu'],
+  ['knie-liegestuetze', 'Knie-Liegestütze', 'bw', 'brust_u', 'brust_o,schulter_v,trizeps_s,trizeps_l'],
+  ['schraege-liegestuetze', 'Schräge Liegestütze (Hände erhöht)', 'bw', 'brust_u', 'brust_o,schulter_v,trizeps_s'],
+  ['erhoehte-liegestuetze', 'Liegestütze mit erhöhten Füßen', 'bw', 'brust_o', 'brust_u,schulter_v,trizeps_s,trizeps_l'],
+  ['diamant-liegestuetze', 'Diamant-Liegestütze', 'bw', 'trizeps_s,trizeps_l', 'brust_u,schulter_v'],
+  ['pike-liegestuetze', 'Pike-Liegestütze', 'bw', 'schulter_v', 'trizeps_s,trizeps_l,schulter_s,brust_o'],
+  ['rudern-koerper', 'Rudern am Körper (Australian Pull-ups)', 'bw', 'latissimus,rhomboiden', 'trapez_mu,schulter_h,bizeps,brachialis'],
+  ['kniebeuge-bw', 'Kniebeuge ohne Gewicht', 'bw', 'quad_vl,quad_vm', 'gluteus,adduktoren'],
+  ['sprungkniebeugen', 'Sprungkniebeugen', 'bw', 'quad_vl,quad_vm,gluteus', 'waden,quad_rf'],
+  ['glute-bridge', 'Glute Bridge', 'bw', 'gluteus', 'hams_a,hams_i,ruecken_u']
+);
 const LIB_BY_ID = Object.fromEntries(EX_LIB.map(e => [e[0], e]));
 const KOND = new Set(['burpees', 'mountain-climbers', 'jumping-jacks', 'bear-crawl', 'seilspringen', 'kb-swings']);   // Gruppe „Kondition“
 const TIMED_RANGE = { tr: [30, 45], time: [30, 60] };   // Vorgabe in Sekunden für neue Zeit-Übungen
-const inGroup = (e, g) => (g === 'Kondition' ? KOND.has(e[0]) : !!BODY.groups[g] && csvMus(e[3]).some(k => BODY.groups[g].includes(k)));
 const LIB_BY_NAME = Object.fromEntries(EX_LIB.map(e => [normName(e[1]), e]));
 const csvMus = v => String(v || '').split(',').filter(k => BODY.names[k]);
 // Muskeln aus der Bibliothek, passend zu Kennung oder Name der Übung
@@ -73,6 +86,76 @@ function libMuscles(id, name) {
   const e = LIB_BY_ID[id] || LIB_BY_NAME[normName(name)];
   return e ? { p: csvMus(e[3]), s: csvMus(e[4]) } : { p: [], s: [] };
 }
+/* ---------- Bibliothek ----------
+   Alle Übungen, gemeinsam für beide. Startbestand aus der App, danach gilt das Blatt „Bibliothek“ der Tabelle
+   und jede Änderung aus der App (Log-Eintrag „lib“). Pro Übung gewinnt der neueste Stand. */
+// Standard-Sätze und -Spanne für Muskelaufbau (max. 15 Wdh., außer Bauch und Zeit)
+const LIB_BIG = new Set(['bankdruecken', 'lh-schraegbank', 'military-press', 'klimmzuege', 'klimmzuege-eng', 'lh-rudern', 't-bar-rudern', 'kreuzheben', 'kniebeugen', 'frontkniebeugen']);
+const LIB_MULTI = new Set(['kh-bankdruecken', 'schraegbank', 'negativbank', 'brustpresse', 'dips', 'enges-bankdruecken', 'schulterdruecken', 'latzug', 'latzug-eng', 'kh-rudern', 'kabelrudern', 'maschinenrudern', 'hackenschmidt', 'goblet-squat', 'beinpresse', 'ausfallschritte', 'bulgarian', 'step-ups', 'rdl', 'hip-thrust', 'hyperextensions', 'liegestuetze', 'bankdips', 'aufrechtes-rudern', 'kb-swings', 'knie-liegestuetze', 'schraege-liegestuetze', 'erhoehte-liegestuetze', 'diamant-liegestuetze', 'pike-liegestuetze', 'rudern-koerper', 'kniebeuge-bw', 'glute-bridge', 'sprungkniebeugen']);
+const LIB_CORE = new Set(['beinheben', 'knieheben', 'crunches', 'kabel-crunch', 'russian-twist', 'ab-wheel', 'pallof', 'holzhacker', 'beinheben-stuetz', 'knieheben-stuetz']);
+const LIB_SYN = { bankdruecken: 'Bench Press', kniebeugen: 'Squat', kreuzheben: 'Deadlift', klimmzuege: 'Pull-ups', 'klimmzuege-eng': 'Chin-ups', latzug: 'Lat Pulldown', 'beinheben-stuetz': "Captain's Chair", 'rudern-koerper': 'Inverted Row', rdl: 'RDL', 'military-press': 'Overhead Press', 'hip-thrust': 'Glute', 'l-sit': 'L-Sitz', burpees: 'Kondition', 'kb-swings': 'Kettlebell' };
+function seedRange(id, type) {
+  if (type === 'tr') return [3, 30, 45];
+  if (type === 'time') return id === 'l-sit' ? [3, 15, 30] : [3, 30, 60];
+  if (LIB_BIG.has(id)) return [4, 6, 10];
+  if (LIB_MULTI.has(id)) return [3, 8, 12];
+  if (LIB_CORE.has(id)) return [3, 10, 20];
+  return [3, 10, 15];
+}
+const LIB_FIELDS = ['name', 'type', 'p', 's', 'kond', 'sets', 'min', 'max', 'cue', 'video', 'syn', 'hidden', 'del', 'into'];
+const LIB_SEED = (() => {
+  const cue = {};
+  Object.values(DEFAULT_PLAN).forEach(d => d.exercises.forEach(x => { cue[x.id] = x.cue; }));
+  const o = {};
+  EX_LIB.forEach(e => { const [sets, min, max] = seedRange(e[0], e[2]); o[e[0]] = { id: e[0], name: e[1], type: e[2], p: csvMus(e[3]), s: csvMus(e[4]).filter(k => !csvMus(e[3]).includes(k)), kond: KOND.has(e[0]), sets, min, max, cue: cue[e[0]] || '', video: '', syn: LIB_SYN[e[0]] || '', hidden: false, del: false, into: '', ts: '', by: '', seed: true }; });
+  return o;
+})();
+const TYPE_BY_LABEL = Object.fromEntries(Object.entries(TYPE_LABEL).map(([k, v]) => [normName(v), k]));
+// Muskelnamen aus dem Blatt (deutsch, lateinisch oder Kennung) → Kennung
+const MUS_BY_NAME = (() => { const o = {}; Object.entries(BODY.names).forEach(([k, [de, la]]) => { o[k] = k; o[de.toLowerCase()] = k; o[la.toLowerCase()] = k; }); return o; })();
+function cleanLib(x, base) {
+  const b = base || {};
+  const type = TYPE_LABEL[x.type] ? x.type : (TYPE_LABEL[b.type] ? b.type : 'kg');
+  const p = [...new Set((Array.isArray(x.p) ? x.p : b.p || []).filter(k => BODY.names[k]))];
+  const sx = [...new Set((Array.isArray(x.s) ? x.s : b.s || []).filter(k => BODY.names[k] && !p.includes(k)))];
+  const [ds, dmin, dmax] = seedRange(str(x.id, 64), type);
+  const min = int(x.min) || int(b.min) || dmin;
+  return {
+    id: str(x.id || b.id, 64), name: str(x.name, 80).trim() || b.name || 'Übung', type, p, s: sx, kond: !!(x.kond ?? b.kond),
+    sets: Math.min(10, int(x.sets) || int(b.sets) || ds), min, max: Math.max(min, int(x.max) || int(b.max) || dmax),
+    cue: str(x.cue ?? b.cue ?? '', 1500), video: safeUrl(x.video ?? b.video), syn: str(x.syn ?? b.syn ?? '', 200),
+    hidden: !!(x.hidden ?? b.hidden), del: !!(x.del ?? b.del), into: str(x.into ?? b.into ?? '', 64), ts: str(x.ts || '', 40), by: str(x.by || '', 20), seed: !!LIB_SEED[x.id || b.id]
+  };
+}
+// Zeile aus dem Blatt → Eintrag. Unbekannte Muskelnamen werden übersprungen und als Hinweis gesammelt.
+function libFromRow(r, warn) {
+  if (!r || typeof r !== 'object') return null;
+  const id = str(r.id, 64).trim(); if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return null;
+  // Namen mit Semikolon (oder Komma) getrennt. „Trizeps, langer Kopf“ enthält selbst ein Komma: dann zwei Teile zusammennehmen.
+  const mus = (v, col) => {
+    const tk = String(v || '').split(/[,;\n]+/).map(t => t.trim()).filter(Boolean), out = [];
+    for (let i = 0; i < tk.length; i++) {
+      const two = i + 1 < tk.length && MUS_BY_NAME[(tk[i] + ', ' + tk[i + 1]).toLowerCase()];
+      if (two) { out.push(two); i++; continue; }
+      const k = MUS_BY_NAME[tk[i].toLowerCase()]; if (k) out.push(k); else warn.push(`${r.name || id}: „${tk[i]}“ (${col})`);
+    }
+    return out;
+  };
+  const art = TYPE_BY_LABEL[normName(r.art)] || (TYPE_LABEL[r.art] ? r.art : '');
+  if (r.art && !art) warn.push(`${r.name || id}: Art „${r.art}“ unbekannt`);
+  const yes = v => v === true || /^(ja|x|true|wahr|1)$/i.test(String(v || '').trim());
+  const into = str(r.zusammen, 80).trim();
+  return { id, name: str(r.name, 80).trim(), type: art || undefined, p: mus(r.haupt, 'Hauptmuskeln'), s: mus(r.neben, 'Nebenmuskeln'), kond: /kondition/i.test(String(r.gruppe || '')),
+    sets: int(r.saetze), min: int(r.von), max: int(r.bis), cue: String(r.ausfuehrung || ''), video: String(r.video || ''), syn: String(r.suche || ''), hidden: yes(r.ausgeblendet), into,
+    ts: r.geaendert ? new Date(r.geaendert).toISOString() : '', by: str(r.vonPerson || '', 20) };
+}
+// Eintrag → lesbare Zeile fürs Blatt (gleiche Reihenfolge wie die Spalten in Code.gs)
+function libRow(L) {
+  return [L.id, L.name, TYPE_LABEL[L.type], L.kond ? 'Kondition' : '', L.p.map(k => BODY.names[k][0]).join('; '), L.s.map(k => BODY.names[k][0]).join('; '),
+    L.sets, L.min, L.max, L.cue || '', L.video || '', L.syn || '', !!L.hidden, L.into || ''];
+}
+let libSheet = (() => { try { return JSON.parse(localStorage.getItem('hb.lib.sheet') || 'null'); } catch (e) { return null; } })();
+const libTarget = (lib, id) => { let k = id, n = 0; while (lib[k] && lib[k].into && lib[lib[k].into] && n++ < 6) k = lib[k].into; return k; };
 function cleanMuscles(m) {
   if (!m || typeof m !== 'object' || (!Array.isArray(m.p) && !Array.isArray(m.s))) return null;
   const p = [...new Set((Array.isArray(m.p) ? m.p : []).filter(k => BODY.names[k]))];
@@ -84,7 +167,11 @@ function cleanMuscles(m) {
 /* ---------- Muskeln: Darstellung ---------- */
 const mixHex = (a, b, t) => { const h = x => [1, 3, 5].map(i => parseInt(x.slice(i, i + 2), 16)); const A = h(a), B2 = h(b); return '#' + A.map((v, i) => Math.round(v * t + B2[i] * (1 - t)).toString(16).padStart(2, '0')).join(''); };
 const MUS_BASE = '#505057';
-const musOf = x => (x && x.muscles) || (x ? libMuscles(x.id, x.name) : { p: [], s: [] });
+const musOf = x => {
+  const lib = _st && _st.lib, L = x && lib && lib[libTarget(lib, x.id)];
+  if (L && !L.del) return { p: L.p.slice(), s: L.s.slice() };
+  return (x && x.muscles) || (x ? libMuscles(x.id, x.name) : { p: [], s: [] });
+};
 const musOrder = m => m.p.concat(m.s);
 const musSoft = tk => mixHex(TONE_HEX[tk] || '#ffffff', MUS_BASE, 0.45);
 // Körper als SVG; Nummern als runde Marken darüber (in % positioniert, skalieren mit)
@@ -112,7 +199,7 @@ function musLegend(m, tk) {
 const musSwatches = tk => `<div class="msw"><span><i style="background:${TONE_HEX[tk] || '#fff'}"></i>Hauptmuskel</span><span><i style="background:${musSoft(tk)}"></i>Nebenmuskel</span></div>`;
 function musBlock(x, tk) {
   const m = musOf(x);
-  if (!musOrder(m).length) return `<div class="small muted">Für diese Übung sind noch keine Muskeln hinterlegt. Im Plan unter „Bearbeiten“ antippen.</div>`;
+  if (!musOrder(m).length) return `<div class="small muted">Für diese Übung sind noch keine Muskeln hinterlegt. Ergänzen unter Plan → Bibliothek.</div>`;
   return `<div class="musbox"><button type="button" class="musfigs" data-act="mus-full" data-ex="${esc(x.id)}" data-tone="${tk}" aria-label="Muskeln im Vollbild öffnen">
       <span class="mcol">${bodyFig('front', tk, m)}<span class="eyebrow">Vorne</span></span>
       <span class="mcol">${bodyFig('back', tk, m)}<span class="eyebrow">Hinten</span></span>
@@ -187,67 +274,57 @@ function openMusFull(x, tk) {
 /* Muskel-Editor im Plan-Builder: 1× tippen Haupt, 2× Neben, 3× aus */
 let musEd = null;
 function openMusEditor() {
-  const inp = $('#f-muscles'); if (!inp) return;
+  const inp = $('#f-muscles'), host = $('#libform') || $('#exform'); if (!inp || !host) return;
   let m; try { m = cleanMuscles(JSON.parse(inp.value)); } catch (e) { m = null; }
-  musEd = { m: m || { p: [], s: [] }, view: 'front', tk: DAY_TONE[builder.day] };
+  musEd = { m: m || { p: [], s: [] }, view: bestView(m || { p: [], s: [] }), tk: (LF && LF.tk) || (builder && DAY_TONE[builder.day]) || 'y', q: '' };
   const ov = document.createElement('div');
   ov.className = 'museditor'; ov.id = 'museditor';
-  ov.innerHTML = `<div class="me-top"><button type="button" class="linkbtn" data-act="me-cancel">Abbrechen</button><div class="mf-t"><b>Muskeln wählen</b><span class="eyebrow" style="color:${TONE_HEX[musEd.tk]}">${esc(($('#f-name') || {}).value || 'Neue Übung')}</span></div><button type="button" class="btn small primary" data-act="me-done">Fertig</button></div>
+  ov.innerHTML = `<div class="me-top"><button type="button" class="linkbtn" data-act="me-cancel">Abbrechen</button><div class="mf-t"><b>Muskeln wählen</b><span class="eyebrow" style="color:${TONE_HEX[musEd.tk]}">${esc(($('#lf-name') || {}).value || 'Neue Übung')}</span></div><button type="button" class="btn small primary" data-act="me-done">Fertig</button></div>
     <div class="mf-ctl"><div class="seg2" role="group" aria-label="Ansicht"><button type="button" data-act="me-side" data-v="front" aria-pressed="true">Vorne</button><button type="button" data-act="me-side" data-v="back" aria-pressed="false">Hinten</button></div><span class="zpill" id="me-z">1,0×</span></div>
     <div class="zstage me-stage" id="me-stage"><div class="zwrap" id="me-wrap"></div></div>
     <div class="msw me-hint"><span><i style="background:${TONE_HEX[musEd.tk]}"></i>1× Haupt</span><span><i style="background:${musSoft(musEd.tk)}"></i>2× Neben</span><span><i style="background:${MUS_BASE}"></i>3× aus</span></div>
+    <div class="me-search"><span class="swsearch">${ICON.search}<input class="inp" id="me-q" autocomplete="off" placeholder="Muskel suchen, z. B. Lat, Trizeps, Po" aria-label="Muskel suchen"></span><div id="me-hits" class="chips"></div></div>
     <div id="me-leg" class="me-leg"></div>`;
-  $('#exform').appendChild(ov);
+  ($('#modal') || host).appendChild(ov);
   musEdRender();
   attachZoom($('#me-stage'), $('#me-wrap'), $('#me-z'), el => {
     const k = el && el.closest && el.closest('[data-m]') && el.closest('[data-m]').dataset.m;
-    if (!k) return;
-    const m2 = musEd.m;
-    if (m2.p.includes(k)) { m2.p = m2.p.filter(y => y !== k); m2.s.push(k); }
-    else if (m2.s.includes(k)) m2.s = m2.s.filter(y => y !== k);
-    else m2.p.push(k);
-    musEdRender();
+    if (k) musCycle(k);
   });
 }
-function musEdRender() {
+function musCycle(k) {
+  const m2 = musEd.m;
+  if (m2.p.includes(k)) { m2.p = m2.p.filter(y => y !== k); m2.s.push(k); }
+  else if (m2.s.includes(k)) m2.s = m2.s.filter(y => y !== k);
+  else m2.p.push(k);
+  musEdRender();
+}
+// Muskelsuche: deutsch, lateinisch, Umgangssprache und Gruppen
+const MUS_SYN = { lat: ['latissimus'], 'breiter rücken': ['latissimus'], po: ['gluteus', 'gluteus_m'], gesäß: ['gluteus', 'gluteus_m'], hintern: ['gluteus'], sixpack: ['bauch'], 'seitlicher bauch': ['bauch_s'], seite: ['bauch_s', 'serratus'], waden: ['waden', 'soleus'], wade: ['waden', 'soleus'], trizeps: ['trizeps_l', 'trizeps_s'], bizeps: ['bizeps', 'brachialis'], delta: ['schulter_v', 'schulter_s', 'schulter_h'], quadrizeps: ['quad_rf', 'quad_vl', 'quad_vm'], quads: ['quad_rf', 'quad_vl', 'quad_vm'], oberschenkel: ['quad_rf', 'quad_vl', 'quad_vm', 'hams_a', 'hams_i', 'adduktoren'], hamstrings: ['hams_a', 'hams_i'], beinbizeps: ['hams_a', 'hams_i'], unterarm: ['ua_beuger', 'ua_strecker', 'brachiorad'], trapez: ['nacken', 'trapez_mu'], 'unterer rücken': ['ruecken_u'], 'oberer rücken': ['trapez_mu', 'rhomboiden', 'teres'], hüfte: ['hueftbeuger', 'gluteus_m'], abduktoren: ['gluteus_m'], innenschenkel: ['adduktoren'], schienbein: ['schienbein'] };
+function musFind(q) {
+  q = q.trim().toLowerCase(); if (!q) return [];
+  const out = new Set();
+  Object.entries(MUS_SYN).forEach(([w, ks]) => { if (w.includes(q) || (q.length >= 3 && q.includes(w))) ks.forEach(k => out.add(k)); });
+  Object.entries(BODY.groups).forEach(([g, ks]) => { if (g.toLowerCase().startsWith(q)) ks.forEach(k => out.add(k)); });
+  Object.entries(BODY.names).forEach(([k, [de, la]]) => { if (de.toLowerCase().includes(q) || la.toLowerCase().includes(q) || k.includes(q)) out.add(k); });
+  return [...out].slice(0, 14);
+}
+function musHits() {
+  const box = $('#me-hits'); if (!box || !musEd) return;
+  const ks = musFind(musEd.q || '');
+  box.innerHTML = musEd.q && !ks.length ? '<span class="small muted">Kein Muskel gefunden.</span>' : ks.map(k => { const st_ = musEd.m.p.includes(k) ? 'Haupt' : musEd.m.s.includes(k) ? 'Neben' : ''; return `<button type="button" class="pchip ${st_ ? 'mon' : ''}" data-act="me-pick" data-m="${k}" aria-pressed="${!!st_}" style="${st_ === 'Haupt' ? `background:${TONE_HEX[musEd.tk]};color:${musEd.tk === 'm' ? '#fff' : '#000'};border-color:transparent` : st_ === 'Neben' ? `background:${musSoft(musEd.tk)};color:#fff;border-color:transparent` : ''}">${esc(BODY.names[k][0])}${st_ ? ` · ${st_}` : ''}</button>`; }).join('');
+}
+function musEdRender(flash) {
   $('#me-wrap').innerHTML = `<div class="me-fig">${bodyFig(musEd.view, musEd.tk, musEd.m, { w: 260, lr: 7, allLabels: true })}</div>`;
   $('#me-leg').innerHTML = musLegend(musEd.m, musEd.tk);
   document.querySelectorAll('[data-act="me-side"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === musEd.view)));
+  if (flash) document.querySelectorAll(`#me-wrap [data-m="${flash}"]`).forEach(el => el.classList.add('flash'));
+  musHits();
 }
 function musPreview(m, tk) {
   const order = musOrder(m);
   return `<div class="mprev">${bodyFig('front', tk, m, { w: 64, nums: false })}${bodyFig('back', tk, m, { w: 64, nums: false })}
     <span class="mptxt">${order.length ? `<b>Haupt:</b> ${esc(m.p.map(k => BODY.names[k][0]).join(', ') || '–')}<br><b>Neben:</b> ${esc(m.s.map(k => BODY.names[k][0]).join(', ') || '–')}` : '<span class="muted">Noch keine Muskeln. Tippe auf „Muskeln bearbeiten“.</span>'}</span></div>`;
-}
-/* Suche in der Bibliothek beim Anlegen einer Übung */
-let sugGroup = '';
-function renderSug() {
-  const box = $('#f-sug'), inp = $('#f-name'); if (!box || !inp) return;
-  const q = normName(inp.value), toks = q.split(' ').filter(Boolean);
-  const chips = `<div class="chips sugchips" role="group" aria-label="Nach Muskelgruppe filtern">${['', 'Kondition', ...Object.keys(BODY.groups)].map(g => `<button type="button" class="pchip" data-act="sug-g" data-v="${g}" aria-pressed="${sugGroup === g}">${g || 'Alle'}</button>`).join('')}</div>`;
-  if (!toks.length && !sugGroup) { box.innerHTML = chips; return; }
-  const hits = EX_LIB.filter(e => {
-    const n = normName(e[1]) + ' ' + e[0].replace(/-/g, ' ');
-    if (!toks.every(t => n.includes(t))) return false;
-    return !sugGroup || inGroup(e, sugGroup);
-  }).slice(0, 8);
-  const tk = DAY_TONE[builder.day];
-  const hl = name => { if (!toks.length) return esc(name); const re = new RegExp('(' + toks.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')', 'ig'); return esc(name).replace(re, '<u>$1</u>'); };
-  box.innerHTML = chips + `<div class="eyebrow" style="margin:4px 2px 0">${hits.length} ${hits.length === 1 ? 'Treffer' : 'Treffer'} in der Bibliothek</div>
-    <div class="suglist" role="listbox" aria-label="Passende Übungen">${hits.map(e => { const m = { p: csvMus(e[3]), s: csvMus(e[4]) }; return `<button type="button" role="option" class="sugitem" data-act="sug-pick" data-id="${e[0]}">${bodyFig(bestView(m), tk, m, { w: 22, nums: false })}<span class="sgt"><b>${hl(e[1])}</b><span>${TYPE_LABEL[e[2]]} · ${esc(m.p.map(k => BODY.names[k][0]).join(', '))}</span></span>${ICON.right}</button>`; }).join('')}
-    ${inp.value.trim() ? `<button type="button" class="sugitem new" data-act="sug-close"><span class="plus">+</span><span class="sgt"><b>„${esc(inp.value.trim())}“ als neue Übung anlegen</b><span>Muskeln danach selbst antippen</span></span></button>` : ''}</div>`;
-}
-function pickSug(id) {
-  const e = LIB_BY_ID[id]; if (!e) return;
-  const m = { p: csvMus(e[3]), s: csvMus(e[4]) };
-  $('#f-name').value = e[1];
-  const ty = $('#f-type'); ty.value = e[2]; ty.dispatchEvent(new Event('input', { bubbles: true }));
-  $('#f-muscles').value = JSON.stringify(m);
-  $('#f-libid').value = e[0];
-  $('#f-mus-prev').innerHTML = musPreview(m, DAY_TONE[builder.day]);
-  if (TIMED_RANGE[e[2]]) { $('#f-min').value = TIMED_RANGE[e[2]][0]; $('#f-max').value = TIMED_RANGE[e[2]][1]; }
-  if (e[2] === 'bw') { const l = $('#f-load'); if (l) { l.value = LOAD_DEFAULT[e[0]] ?? 100; l.dispatchEvent(new Event('input', { bubbles: true })); } }
-  sugGroup = ''; $('#f-sug').innerHTML = ''; $('#f-sug').hidden = true;
 }
 
 /* ---------- Hilfsfunktionen ---------- */
@@ -410,7 +487,7 @@ let draft = LS.get('draft', null);   // laufendes Training (wird unten beim Star
 let seenIds = new Set(events.map(e => e.id));
 
 function saveLog() { LS.set('events', events); LS.set('pending', pending); LS.set('lastSeq', lastSeq); }
-function saveDraft() { LS.set('draft', draft); }
+function saveDraft() { if (draft && draft.edit) { LS.set('edraft', draft); return; } LS.set('draft', draft); }
 function addEvent(type, data, summary) {
   const e = { id: uid(), ts: new Date().toISOString(), person: cfg.me, type, data, summary };
   pending.push(e); saveLog(); invalidate();
@@ -431,18 +508,10 @@ function cleanEx(x) {
     step: isTimed(type) ? 0 : Math.max(0, num(x.step)), cue: str(x.cue), video: safeUrl(x.video), image: safeUrl(x.image),
     warmup: type === 'kg' && (x.warmup === undefined ? WARMUP_DEFAULT.has(id) : !!x.warmup), personal: !!x.personal
   };
-  if (type === 'bw') o.load = cleanLoad(x.load, id);
   o.muscles = cleanMuscles(x.muscles) || libMuscles(id, o.name);
   if (x.replaces) o.replaces = str(x.replaces, 64);
   return o;
 }
-// Lastanteil Körpergewicht in % (0 = nur Wiederholungen)
-function cleanLoad(v, id) {
-  if (v === undefined || v === null || v === '') return LOAD_DEFAULT[id] ?? 100;
-  const n = Math.round(num(v));
-  return Math.max(0, Math.min(200, n));
-}
-const loadOf = x => (x && x.type === 'bw' ? cleanLoad(x.load, x.id) : 0);
 function cleanPlan(p, day) {
   return { title: str(p && p.title, 40) || DEFAULT_PLAN[day].title, short: str(p && p.short, 6).trim() || DAY_SHORT[day],
     exercises: (Array.isArray(p && p.exercises) ? p.exercises : []).slice(0, 25).map(cleanEx) };
@@ -461,7 +530,6 @@ function cleanEntry(en) {
   };
   if (Array.isArray(en.rm) && en.rm.length) o.rm = en.rm.slice(0, 10).map(r => (REM_WHY[r] ? r : ''));
   if (type === 'tr' && int(en.tt)) o.tt = int(en.tt);
-  if (type === 'bw' && en.load != null && en.load !== '') o.load = cleanLoad(en.load);
   if (en.from && typeof en.from === 'object' && en.from.id) o.from = { id: str(en.from.id, 64), name: str(en.from.name, 80) };
   return o;
 }
@@ -483,10 +551,10 @@ function st() { return _st || (_st = buildState()); }
 function buildState() {
   const all = events.slice().sort((a, b) => a.seq - b.seq)
     .concat(pending.filter(p => !seenIds.has(p.id)).sort((a, b) => a.ts.localeCompare(b.ts)));
-  const s = { spotSeen: {}, spotMyReact: {}, plans: {}, last: {}, workouts: [], skips: [], swaps: [], feed: [], changes: {}, lastChange: {}, lastShared: {}, decisions: {}, lastAction: {}, hist: {}, wedits: [], exInfo: {}, bw: {}, avatars: {}, first: {}, presets: clone(DEFAULT_PRESETS) };
+  const s = { spotSeen: {}, spotMyReact: {}, plans: {}, last: {}, workouts: [], skips: [], swaps: [], feed: [], changes: {}, lastChange: {}, lastShared: {}, decisions: {}, lastAction: {}, hist: {}, wedits: [], exInfo: {}, bw: {}, avatars: {}, first: {}, lib: null, libWarn: [], libHist: {} };
   _st = s; // für dl() während des Aufbaus
   // Nachträgliche Änderungen an abgeschlossenen Trainings: es gilt die jeweils letzte, nur von derselben Person
-  const edits = {};
+  const edits = {}, libEv = [], planHints = {};
   all.forEach(e => { if (e.type === 'workout_edit' && e.data && typeof e.data.ref === 'string') edits[e.data.ref] = e; });
   PEOPLE.forEach(p => { s.plans[p] = clone(DEFAULT_PLAN); s.hist[p] = {}; s.last[p] = null; s.bw[p] = []; });
   DAYS.forEach(d => DEFAULT_PLAN[d].exercises.forEach(x => { s.exInfo[x.id] = { name: x.name, type: x.type }; }));
@@ -528,6 +596,17 @@ function buildState() {
       s.last[e.person] = { day: d.day, ts: e.ts, kind: 'skip' }; s.skips.push(e);
     } else if (e.type === 'plan_change') {
       if (!DAYS.includes(d.day)) return;
+      // Pläne vor 2.0 trugen Muskeln, Ausführung und Video selbst: einmalig als Stand für die Bibliothek übernehmen
+      if (!d.v2) (Array.isArray(d.exercises) ? d.exercises : []).forEach(rx => {
+        if (!rx || typeof rx.id !== 'string' || !rx.id) return;
+        const seed = LIB_SEED[rx.id], h = planHints[rx.id] = planHints[rx.id] || { id: rx.id };
+        h.name = str(rx.name, 80).trim() || h.name; if (TYPE_LABEL[rx.type]) h.type = rx.type; h.ts = e.ts; h.by = e.person;
+        const m = cleanMuscles(rx.muscles);
+        if (m && (m.p.length || m.s.length) && (!seed || JSON.stringify(m) !== JSON.stringify({ p: seed.p, s: seed.s }))) { h.p = m.p; h.s = m.s; }
+        if (rx.cue && (!seed || rx.cue !== seed.cue)) h.cue = str(rx.cue, 1500);
+        if (safeUrl(rx.video)) h.video = safeUrl(rx.video);
+        if (int(rx.sets) && int(rx.min) && !seed) { h.sets = int(rx.sets); h.min = int(rx.min); h.max = int(rx.max); }
+      });
       const p = cleanPlan(d, d.day); d.title = p.title; d.short = p.short; d.exercises = p.exercises;
       if (sharedDiff(s.plans[e.person][d.day], p).length) s.lastShared[e.person + '|' + d.day] = e;
       s.plans[e.person][d.day] = clone(p);
@@ -555,9 +634,8 @@ function buildState() {
         list.push({ ts: e.ts, kg, from });
         list.sort((a, b) => a.from.localeCompare(b.from));
       }
-    } else if (e.type === 'load_presets') {
-      const list = (Array.isArray(d.list) ? d.list : []).slice(0, 20).map(x => ({ name: str(x && x.name, 40).trim(), pct: cleanLoad(x && x.pct) })).filter(x => x.name);
-      if (list.length || d.reset) s.presets = list.length ? list : clone(DEFAULT_PRESETS);
+    } else if (e.type === 'lib') {
+      if (typeof d.id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(d.id)) { libEv.push(e); (s.libHist[d.id] = s.libHist[d.id] || []).push(e); }
     } else if (e.type === 'spot_seen') {
       if (typeof d.spot === 'string') (s.spotSeen[d.spot] = s.spotSeen[d.spot] || new Set()).add(e.person);
     } else if (e.type === 'spot_react') {
@@ -571,7 +649,55 @@ function buildState() {
     }
   });
   s.feed.reverse();
+  buildLib(s, libEv, planHints);
   return s;
+}
+// Bibliothek zusammensetzen und auf Pläne, Verlauf und Trainings anwenden (Namen, Muskeln, Ausführung, Zusammenführen)
+function buildLib(s, libEv, planHints) {
+  const lib = {}, warn = [];
+  Object.values(LIB_SEED).forEach(L => { lib[L.id] = { ...L, p: L.p.slice(), s: L.s.slice() }; });
+  const recs = [];
+  Object.entries(s.exInfo).forEach(([id, v]) => { if (!lib[id] && !planHints[id]) { const m = libMuscles(id, v.name); recs.push({ id, name: v.name, type: v.type, p: m.p, s: m.s, ts: '0' }); } });
+  Object.values(planHints).forEach(h => recs.push({ ...h, ts: h.ts || '0' }));
+  (Array.isArray(libSheet) ? libSheet : []).forEach(r => { const x = libFromRow(r, warn); if (x) recs.push(x); });
+  libEv.forEach(e => recs.push({ ...e.data, ts: e.ts, by: e.person }));
+  recs.sort((a, b) => String(a.ts || '').localeCompare(String(b.ts || '')));
+  recs.forEach(r => {
+    const base = lib[r.id];
+    if (base && r.ts && base.ts && base.ts > r.ts) return;
+    const L = cleanLib(r, base);
+    if (!L.ts && base) L.ts = base.ts;
+    if (r.into && !lib[r.into] && !recs.some(x => x.id === r.into)) { L.into = ''; }
+    lib[r.id] = L;
+  });
+  // Name im Feld „Zusammengeführt in“ aus dem Blatt → Kennung
+  Object.values(lib).forEach(L => { if (L.into && !lib[L.into]) { const t = Object.values(lib).find(y => normName(y.name) === normName(L.into)); L.into = t && t.id !== L.id ? t.id : ''; } if (L.into === L.id) L.into = ''; });
+  s.lib = lib; s.libWarn = warn;
+  const T = id => libTarget(lib, id);
+  PEOPLE.forEach(p => Object.keys(s.hist[p]).forEach(id => {
+    const t = T(id); if (t === id) return;
+    s.hist[p][t] = (s.hist[p][t] || []).concat(s.hist[p][id]).sort((a, b) => a.ts.localeCompare(b.ts)); delete s.hist[p][id];
+  }));
+  PEOPLE.forEach(p => DAYS.forEach(d => {
+    const pl = s.plans[p][d], seen = new Set();
+    pl.exercises = pl.exercises.filter(x => {
+      x.id = T(x.id); if (seen.has(x.id)) return false; seen.add(x.id);
+      const L = lib[x.id];
+      if (L && !L.del) { x.name = L.name; x.type = L.type; x.muscles = { p: L.p.slice(), s: L.s.slice() }; x.cue = L.cue; x.video = L.video; if (isTimed(x.type)) x.step = 0; if (x.type !== 'kg') x.warmup = false; }
+      return true;
+    });
+  }));
+  // Trainings nur als Kopie anpassen: die Einträge im Log bleiben unverändert (Zusammenführen lässt sich trennen)
+  const swapW = new Map();
+  s.workouts = s.workouts.map(w => {
+    const ents = w.data.entries.map(en => { const t = T(en.exId), L = lib[t]; return t !== en.exId || (L && L.name !== en.name) ? { ...en, exId: t, name: L ? L.name : en.name } : en; });
+    if (ents.every((en, i) => en === w.data.entries[i])) return w;
+    const nw = { ...w, data: { ...w.data, entries: ents } }; swapW.set(w, nw); return nw;
+  });
+  if (swapW.size) s.feed = s.feed.map(e => swapW.get(e) || e);
+  PEOPLE.forEach(p => Object.entries(s.hist[p]).forEach(([id, list]) => { const L = lib[id]; if (L) list.forEach(h => { h.name = L.name; }); }));
+  Object.keys(s.exInfo).forEach(id => { const L = lib[T(id)]; if (L) s.exInfo[id] = { name: L.name, type: L.type }; });
+  Object.values(lib).forEach(L => { if (!s.exInfo[L.id]) s.exInfo[L.id] = { name: L.name, type: L.type }; });
 }
 
 function nextDay(p) { const l = st().last[p]; return l ? DAYS[(DAYS.indexOf(l.day) + 1) % 3] : 'A'; }
@@ -585,8 +711,6 @@ function bwAt(p, when) {
   for (const b of list) { if (b.from <= k) cur = b; else break; }
   return cur.kg;
 }
-// Gesamtlast eines Satzes bei Körpergewichtsübungen: Körpergewicht × Lastanteil + Zusatz (− Abzug)
-const totalLoad = (bodyKg, pct, w) => Math.round(((bodyKg || 0) * pct / 100 + (w || 0)) * 100) / 100;
 
 /* ---------- Kennzahlen ---------- */
 function workW(sets) { const v = sets.filter(s => int(s.r) > 0).map(s => num(s.w)); return v.length ? Math.max(...v) : 0; }
@@ -610,22 +734,13 @@ function fmtSets(type, sets) {
   if (type === 'kg') return sets.map(s => `${fmtN(num(s.w))}×${int(s.r)}`).join(' · ');
   if (type === 'time') return sets.map(s => int(s.r)).join(' · ') + ' s';
   if (type === 'tr') return sets.map(s => `${int(s.t)} s × ${int(s.r)}`).join(' · ');
-  if (sets.some(s => num(s.w) !== 0)) return sets.map(s => `${int(s.r)}${num(s.w) ? ` (${fmtSigned(num(s.w))})` : ''}`).join(' · ');
+  if (sets.some(s => num(s.w) !== 0)) return sets.map(s => `${int(s.r)}${num(s.w) ? ` × ${fmtSigned(num(s.w))}` : ''}`).join(' · ');
   return sets.map(s => int(s.r)).join(' · ') + ' Wdh.';
 }
 // Bewertungen pro Satz als Text („Passt · Am Limit · –“); alte Einträge haben eine Bewertung pro Übung
 function feelText(en) {
   if (en.sets && en.sets.some(s => s.f)) return en.sets.map(s => SET_FEEL[s.f] || '–').join(' · ');
   return en.feel ? FEEL[en.feel] : '';
-}
-// Satzliste mit Gesamtlast bei Körpergewichtsübungen: „92,4×12 · 82,4×9“ und darunter „KG 82,4 · +10 · –“
-function bwLines(en, person, ts, x) {
-  const pct = en.load ?? loadOf(x || { type: 'bw', id: en.exId }), body = pct ? bwAt(person, ts) : null;
-  if (en.type !== 'bw' || !pct || body == null) return null;
-  return {
-    main: en.sets.map(s => `${fmtN(totalLoad(body, pct, num(s.w)))}×${int(s.r)}`).join(' · '),
-    sub: `KG ${fmtN(body)}${pct !== 100 ? ` × ${pct} %` : ''} · ` + en.sets.map(s => num(s.w) ? (num(s.w) > 0 ? '+' : '−') + fmtN(Math.abs(num(s.w))) : '–').join(' · ')
-  };
 }
 const normalSessions =(p, id, type) => (st().hist[p][id] || []).filter(h => !h.deload && (!type || h.type === type));
 const lastAny = (p, id) => { const h = st().hist[p][id]; return h && h.length ? h[h.length - 1] : null; };
@@ -665,15 +780,16 @@ function setRange(list) {
   return cont ? `${n[0]}–${n[n.length - 1]}` : n.slice(0, -1).join(', ') + ' und ' + n[n.length - 1];
 }
 // Geschätzte Maximalkraft einer Einheit (Epley mit geschätzten Wiederholungen im Tank)
-function sessionStrength(h, x, p) {
+// Körpergewichtsübungen: mit einem festen Bezugsgewicht (nicht angezeigt), damit Zu- oder Abnehmen nichts verfälscht
+const bwRef = (p, when) => bwAt(p, when || new Date()) ?? 80;
+function sessionStrength(h, x, p, ref) {
   const idx = h.sets.map((s, j) => j).filter(j => int(h.sets[j].r) > 0);
   if (!idx.length) return 0;
   if (h.type === 'time') return Math.max(...idx.map(j => int(h.sets[j].r)));
-  const pct = h.type === 'bw' ? (h.load ?? loadOf(x)) : 0;
-  const body = h.type === 'bw' && pct ? bwAt(p || h.person, h.ts) : null;
-  if (h.type === 'bw' && !(pct && body != null) && !idx.some(j => num(h.sets[j].w))) return sum(idx.map(j => int(h.sets[j].r)));
+  if (h.type === 'tr') return Math.max(...idx.map(j => int(h.sets[j].t) ? int(h.sets[j].r) / int(h.sets[j].t) * 60 : 0));
+  const body = h.type === 'bw' ? (ref ?? bwRef(p || h.person)) : 0;
   return Math.max(...idx.map(j => {
-    const s = h.sets[j], load = h.type === 'bw' ? totalLoad(body, pct, num(s.w)) : num(s.w);
+    const s = h.sets[j], load = h.type === 'bw' ? body + num(s.w) : num(s.w);
     return load * (1 + (int(s.r) + (RIR[setFeel(h, j)] ?? RIR.passt)) / 30);
   }));
 }
@@ -730,8 +846,7 @@ function planFor(x, p = cfg.me) {
   const n = Math.max(1, +x.sets || 1);
   if (x.type === 'tr') return planTr(x, normalSessions(p, x.id, x.type).map(evalSess), n);
   const h = normalSessions(p, x.id, x.type).map(evalSess);
-  const pct = loadOf(x), body = x.type === 'bw' && pct ? bwAt(p, new Date()) : null;
-  const noBody = x.type === 'bw' && pct > 0 && body == null ? ' Kein Körpergewicht hinterlegt. Im Profil nachtragen.' : '';
+  const noBody = '';
   const blank = (hint, kind = 'new', base = null) => ({ kind, hint, base, sets: Array.from({ length: n }, () => ({ w: null })) });
   if (!h.length) {
     if (x.type === 'time') return blank(`Erstes Mal: Ziel ${x.min}–${x.max} Sekunden pro Satz.`);
@@ -764,7 +879,7 @@ function planFor(x, p = cfg.me) {
   const days = (Date.now() - new Date(last.ts)) / 864e5;
   const fmtW = v => !bw ? fmtN(v) + ' kg' : v === 0 ? 'Körpergewicht' : v > 0 ? `+${fmtN(v)} kg` : `${fmtN(-v)} kg Abzug`;
   const down = v => (bw ? (hasStep ? roundTo(v - step, step) : v) : roundTo(v * 0.9, step));
-  const total = bw ? totalLoad(body, pct, W) : W;
+  const total = bw ? 0 : W;
   const inc = hasStep ? Math.max(step, roundTo(Math.abs(total) * 0.025, step)) : 0;
   const tw = Array.from({ length: n }, (v, j) => lw(j));
   let kind = 'hold', hint = '', backoffSet = -1, tenPct = false;
@@ -814,7 +929,7 @@ function planFor(x, p = cfg.me) {
       hint = `Satz ${setRange(backOk)} hat die Spanne wieder geschafft. Heute wieder ${fmtW(W)} in allen Sätzen.`;
     } else if (isPlateau(h, x, p)) {
       kind = 'plateau'; hint = 'Seit 3 Trainings kein Fortschritt.';
-    } else if (bw && !pct && W === 0) {
+    } else if (bw && W === 0) {
       hint = `Ziel: mehr als ${sum(ls.map(s => int(s.r)))} Wiederholungen insgesamt.`;
     } else {
       hint = 'In der Spanne. Gewicht halten, Ziel: mehr Wiederholungen als letztes Mal.';
@@ -860,7 +975,7 @@ function deloadState(p) {
 const deloadW = W => (W > 0 ? W * 0.9 : W < 0 ? W * 1.1 : 0);
 
 /* ---------- Plan-Abgleich ---------- */
-const SHARED_FIELDS = ['name', 'type', 'sets', 'min', 'max', 'warmup', 'load', 'muscles'];
+const SHARED_FIELDS = ['name', 'type', 'sets', 'min', 'max', 'warmup'];
 function fieldChanges(a, b, sharedOnly) {
   const c = [];
   if (a.name !== b.name) c.push('Name');
@@ -868,8 +983,6 @@ function fieldChanges(a, b, sharedOnly) {
   if (a.sets !== b.sets) c.push(`Sätze ${a.sets} → ${b.sets}`);
   if (a.min !== b.min || a.max !== b.max) c.push(`${isTimed(b.type) ? 'Sek.' : 'Wdh.'} ${a.min}–${a.max} → ${b.min}–${b.max}`);
   if (!!a.warmup !== !!b.warmup) c.push(b.warmup ? 'Aufwärmsatz an' : 'Aufwärmsatz aus');
-  if (a.type === 'bw' && b.type === 'bw' && loadOf(a) !== loadOf(b)) c.push(`Lastanteil ${loadOf(a)} → ${loadOf(b)} %`);
-  if (JSON.stringify(musOf(a)) !== JSON.stringify(musOf(b))) c.push('Muskeln');
   if (sharedOnly) return c;
   if (!isTimed(b.type) && (a.step || 0) !== (b.step || 0)) c.push(`Steigerung ${fmtN(a.step || 0)} → ${fmtN(b.step || 0)} kg`);
   if ((a.cue || '') !== (b.cue || '')) c.push('Ausführung');
@@ -912,7 +1025,6 @@ function mergePlan(mine, theirs) {
     const m = own.get(x.id);
     if (!m) { const n = clone(x); delete n.replaces; return n; }
     const n = clone(m); SHARED_FIELDS.forEach(f => { n[f] = x[f]; }); n.personal = false; delete n.replaces;
-    if (n.type !== 'bw') delete n.load;
     if (isTimed(n.type)) n.step = 0;
     return n;
   });
@@ -1006,14 +1118,17 @@ function noticeCard(n) {
 const loader = {
   el: () => $('#loader'),
   show() { const l = this.el(); l.hidden = false; l.className = 'loader busy'; this.set(0, 'Verbinde …', ''); },
+  // Balkenfarbe springt mit dem Fortschritt um: Gelb, ab 34 % Magenta, ab 67 % Cyan
   set(p, text, sub) {
     p = Math.max(0, Math.min(100, Math.round(p)));
-    $('#ld-bar').style.strokeDashoffset = String(326.73 * (1 - p / 100));
+    const l = this.el(), c = p < 34 ? ['#fff200', '#fff200'] : p < 67 ? ['#ec008c', '#ff4fb5'] : ['#00aeef', '#00aeef'];
+    l.style.setProperty('--ldc', c[0]); l.style.setProperty('--ldt', c[1]);
+    $('#ld-bar').style.width = p + '%'; $('#ld-track').setAttribute('aria-valuenow', p);
     $('#ld-pct').textContent = p + ' %';
     if (text != null) $('#ld-text').textContent = text;
     if (sub != null) $('#ld-sub').textContent = sub;
   },
-  async error(text, sub) { this.el().className = 'loader error'; $('#ld-text').textContent = text; $('#ld-sub').textContent = sub || ''; await sleep(2200); },
+  async error(text, sub) { const l = this.el(); l.className = 'loader error'; l.style.removeProperty('--ldc'); l.style.removeProperty('--ldt'); $('#ld-text').textContent = text; $('#ld-sub').textContent = sub || ''; await sleep(2200); },
   hide() { this.el().hidden = true; }
 };
 const mini = {
@@ -1102,6 +1217,19 @@ function sync({ overlay = false, quiet = false } = {}) {
       }
       pending = pending.filter(p => !seenIds.has(p.id));
       saveLog();
+      // Bibliothek aus dem Blatt (ab Skript Version 5). Ist das Blatt noch leer, trägt die App den Startbestand ein.
+      if (scriptVersion >= LIB_MIN_SCRIPT) {
+        ui.set(97, 'Lade Bibliothek …', '');
+        try {
+          let r = await call({ action: 'lib_get' });
+          if (Array.isArray(r.rows) && !r.rows.length) {
+            invalidate();
+            const grp = k => Object.keys(BODY.groups).find(g => BODY.groups[g].includes(k)) || '';
+            r = await call({ action: 'lib_seed', rows: Object.values(st().lib).filter(L => !L.del).map(libRow), muscles: Object.entries(BODY.names).map(([k, n]) => [n[0], n[1], grp(k)]) }, 45000);
+          }
+          if (Array.isArray(r.rows)) { libSheet = r.rows; LS.set('lib.sheet', libSheet); invalidate(); }
+        } catch (e) { /* Bibliothek bleibt beim letzten Stand */ }
+      }
       lastSync = new Date().toISOString(); LS.set('lastSync', lastSync); syncError = null;
       ui.set(100, 'Fertig', '');
       if (overlay) await sleep(400);
@@ -1348,7 +1476,7 @@ async function exportVault() {
   const name = `hantelbuch-vault-${cfg.me.toLowerCase()}-${todayStr()}.json`;
   const file = new File([JSON.stringify(data)], name, { type: 'application/json' });
   try {
-    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Hantelbuch Vault-Backup' }); return; }
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'BUILT Vault-Backup' }); return; }
   } catch (e) { if (e && e.name === 'AbortError') return; }
   const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name; document.body.appendChild(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
@@ -1375,7 +1503,7 @@ async function readBackupFile(file) {
     VAULT.importData = data;
     if (!VAULT.key) { toast('Gib den Code ein, mit dem das Backup erstellt wurde.'); VAULT.mode = 'unlock'; location.hash = '#vault'; render(); return; }
     VAULT.mode = 'import'; location.hash = '#vault'; render();
-  } catch (e) { toast('Diese Datei ist kein Hantelbuch-Backup.'); }
+  } catch (e) { toast('Diese Datei ist kein Vault-Backup von BUILT.'); }
 }
 
 /* ---------- Vault-Sicherung in der Tabelle ----------
@@ -2068,17 +2196,16 @@ function render() {
     if (view === 'spot' && name !== 'spot') closeEditor();
     if (view === 'spots' && name !== 'spots' && SPOT.view) { cancelAnimationFrame(SPOT.view.raf); SPOT.view = null; }
     if (view === 'spot-bild') SPOT.galDel = null;
-    if (view === 'vorlagen') presetEdit = null;
   }
   let html, tone = '';
   switch (name) {
     case 'training': if (!draft) { location.hash = '#start'; return; } html = viewTraining(); tone = DAY_TONE[draft.day]; break;
+    case 'bearbeiten': if (!edraft) { location.hash = '#verlauf'; return; } html = withEd(viewEdit); tone = DAY_TONE[edraft.day]; break;
     case 'verlauf': html = head('Verlauf') + `<main class="view">${viewVerlauf()}</main>` + tabbar('verlauf'); break;
-    case 'plan': html = head('Plan') + `<main class="view">${viewPlan()}</main>` + tabbar('plan'); break;
+    case 'plan': html = head('Plan') + `<main class="view"><div class="seg" role="group" aria-label="Bereich"><button data-act="ptab" data-v="plan" aria-pressed="${planTab === 'plan'}">Plan</button><button data-act="ptab" data-v="lib" aria-pressed="${planTab === 'lib'}">Bibliothek</button></div>${planTab === 'lib' ? viewLibrary() : viewPlan()}</main>` + tabbar('plan'); break;
     case 'notizen': html = head('Notizen') + `<main class="view">${viewNotes()}</main>` + tabbar('notizen'); break;
     case 'glocke': html = subhead(draft ? 'training' : 'start') + `<main class="view">${viewBell()}</main>` + (draft ? '' : tabbar('')); break;
     case 'einstellungen': html = subhead(draft ? 'training' : 'start') + `<main class="view nobar">${viewSettings()}</main>`; break;
-    case 'vorlagen': html = subhead('einstellungen') + `<main class="view nobar">${viewPresets()}</main>`; break;
     case 'gewicht': html = subhead('profil') + `<main class="view">${viewBodyweight()}</main>` + tabbar('profil'); break;
     case 'profil': html = (arg && arg !== cfg.me ? subhead('start') : `<header class="head" id="head"><div class="brand"></div>${gearBtn()}</header>`) + `<main class="view">${viewProfile(arg && PEOPLE.includes(arg) ? arg : cfg.me)}</main>` + tabbar(arg && arg !== cfg.me ? '' : 'profil'); break;
     case 'vault': html = subhead('profil', VAULT.key && VAULT.mode === 'unlock' && !VAULT.showKey ? `<button class="btn small glass" data-act="v-lock" style="border-color:rgba(255,255,255,.3)">${ICON.lock.replace('width="22" height="22"', 'width="16" height="16"')} Sperren</button>` : '') + `<main class="view nobar">${viewVault()}</main>`; break;
@@ -2091,7 +2218,7 @@ function render() {
     case 'spots': if (!SPOT.view) { openViewer(); return; } html = viewViewer(); break;
     case 'spot-bild': html = viewSpotImage(arg); break;
     case 'geschafft': html = viewDone(arg); if (!html) { location.hash = '#start'; return; } break;
-    default: html = `<header class="head" id="head"><div class="brand">Hantelbuch</div>${spotRing()}${bellBtn()}${gearBtn()}</header><main class="view">${viewStart()}</main>` + tabbar('start');
+    default: html = `<header class="head" id="head"><div class="brand built">BUILT</div>${spotRing()}${bellBtn()}${gearBtn()}</header><main class="view">${viewStart()}</main>` + tabbar('start');
   }
   document.body.dataset.tone = tone;
   setPage(html, tone);
@@ -2180,6 +2307,7 @@ function viewStart() {
     <div class="rotation" aria-label="Deine Rotation">${rot}</div>
     ${syncLine()}
     ${flameBoard()}
+    ${progressCard()}
     <div class="sec-title"><h2>Neuigkeiten</h2>${s.feed.length ? '<a href="#verlauf">Alle</a>' : ''}</div>
     <section class="card" style="padding:4px 16px">${feed.length ? `<div class="feed">${feed.map(feedItem).join('')}</div>` : (s.feed.length ? '<div class="empty">Diese Woche noch nichts Neues. Alles Ältere findest du im Verlauf.</div>' : '<div class="empty">Hier erscheinen eure Trainings, Steigerungen und Skips.</div>')}</section>`;
 }
@@ -2281,7 +2409,7 @@ function startTraining(skipDeload, pick) {
 }
 const hasEntries = it => it.sets.some(s => s.done || int(s.r) > 0) || !!(it.note || '').trim();
 const workCount = () => { let done = 0, tot = 0; draft.items.forEach(it => it.sets.forEach(s => { tot++; if (s.done) done++; })); return { done, tot }; };
-function trainCountText() { const { done, tot } = workCount(); return `${done} / ${tot} Sätze · ${duration(draft.start, new Date().toISOString())}`; }
+function trainCountText() { const { done, tot } = workCount(); return draft.edit ? `${done} / ${tot} Sätze` : `${done} / ${tot} Sätze · ${duration(draft.start, new Date().toISOString())}`; }
 function viewTraining() {
   const { done, tot } = workCount();
   return `<header class="trainhead" id="head">
@@ -2294,10 +2422,10 @@ function viewTraining() {
     <div class="trainbar"><button class="btn primary" data-act="finish-ask">Training abschließen</button><button class="btn x" data-act="discard-ask" aria-label="Training verwerfen">${ICON.x}</button></div>`;
 }
 function pendingSwapFor(it) {
-  if (!draft || it.swappedFrom || it.removed) return null;
+  if (!draft || draft.edit || it.swappedFrom || it.removed) return null;
   return partnerSwapsToday(draft.day).find(sw => sw.data.fromId === it.ex.id && !draft.swapIgnored.includes(sw.id)) || null;
 }
-const hasWarmup = it => it.ex.warmup && it.ex.type === 'kg' && !it.removed;
+const hasWarmup = it => it.ex.warmup && it.ex.type === 'kg' && !it.removed && !(draft && draft.edit);
 function warmupLabel(it) {
   const W = num(it.sets[0] && it.sets[0].w) || workW(it.sets.map(s => ({ w: s.w, r: 1 })));
   const [p, reps] = WARMUP;
@@ -2311,13 +2439,12 @@ function exCard(it, i) {
   const unit = isTimed(x.type) ? ' s' : '';
   const hint = it.hint || '';
   const sw = pendingSwapFor(it);
-  const pct = loadOf(x), body = x.type === 'bw' && pct ? bwAt(me, new Date()) : null;
   const lastReps = j => x.type === 'tr' ? (mine && mine.type === 'tr' && mine.sets[j] ? mine.sets[j].r : '–') : (draft.deload ? x.min : mine && mine.type === x.type && mine.sets[j] ? mine.sets[j].r : x.max);
   const tField = (s, j, f) => {
-    const tm = TIMER && TIMER.i === i && TIMER.j === j ? TIMER : null;
+    const tm = !draft.edit && TIMER && TIMER.i === i && TIMER.j === j ? TIMER : null;
     const left = tm ? tmrLeft() : 0;
     const ph = f === 'r' ? lastReps(j) : (it.tt || x.min);
-    return `<div class="field kgf tf ${tm ? (tm.paused ? 'pause' : 'run') : ''}" id="tf-${i}-${j}" ${tm ? `style="--p:${Math.round((1 - left / tm.total) * 100)}%"` : ''}><button class="sign" data-act="tmr" data-i="${i}" data-j="${j}" ${s.done ? 'disabled' : ''} aria-label="${tm ? (tm.paused ? 'Timer fortsetzen' : 'Timer pausieren') : `Timer Satz ${j + 1} starten`}">${tm && !tm.paused ? ICON.pause : ICON.play}</button><input id="${f}-${i}-${j}" data-i="${i}" data-j="${j}" data-f="${f}" inputmode="numeric" autocomplete="off" aria-label="Sekunden Satz ${j + 1}" value="${tm ? fmtClock(left) : esc(s[f])}" placeholder="${ph}" ${tm ? 'readonly' : ''}><span>s</span></div>`;
+    return `<div class="field kgf tf ${tm ? (tm.paused ? 'pause' : 'run') : ''}" id="tf-${i}-${j}" ${tm ? `style="--p:${Math.round((1 - left / tm.total) * 100)}%"` : ''}><button class="sign" data-act="tmr" data-i="${i}" data-j="${j}" ${s.done || draft.edit ? 'disabled' : ''} aria-label="${tm ? (tm.paused ? 'Timer fortsetzen' : 'Timer pausieren') : `Timer Satz ${j + 1} starten`}">${tm && !tm.paused ? ICON.pause : ICON.play}</button><input id="${f}-${i}-${j}" data-i="${i}" data-j="${j}" data-f="${f}" inputmode="numeric" autocomplete="off" aria-label="Sekunden Satz ${j + 1}" value="${tm ? fmtClock(left) : esc(s[f])}" placeholder="${ph}" ${tm ? 'readonly' : ''}><span>s</span></div>`;
   };
   const wField = (s, j) => {
     if (x.type === 'tr') return tField(s, j, 'w');
@@ -2336,25 +2463,26 @@ function exCard(it, i) {
     : x.type === 'tr' ? `<div class="cols"><span></span><span class="r">Zeit</span><span class="r">Wdh.</span><span></span></div>`
     : `<div class="cols"><span></span><span class="r">${x.type === 'bw' ? '± kg' : 'kg'}</span><span class="r">Wdh.</span><span></span></div>`;
   const warm = hasWarmup(it) ? `<div class="wsets"><div class="wset ${it.wu[0] ? 'ok' : ''}"><span class="n">W</span><span class="wv" id="wu-${i}">${warmupLabel(it)}</span><button class="check" data-act="wu" data-i="${i}" aria-label="Aufwärmsatz erledigt" aria-pressed="${!!it.wu[0]}">${ICON.check}</button></div></div>` : '';
-  const kgTag = x.type === 'bw' && pct ? `<span class="tag kgtag">${body != null ? `KG ${fmtN(body)} · ${pct} %` : `KG fehlt · ${pct} %`}</span>` : '';
-  const tags = [it.swappedFrom ? `<span class="tag">Heute statt ${esc(it.swappedFrom.name)}${it.swapBy && it.swapBy !== me ? ` · von ${esc(it.swapBy)}` : ''}</span>` : '', it.removed ? '<span class="tag warn">Nicht mehr im Plan</span>' : '', x.personal ? '<span class="tag">Nur ich</span>' : '', kgTag].join('');
+  const kgTag = '';
+  const tags = [it.swappedFrom ? `<span class="tag">${draft.edit ? 'statt' : 'Heute statt'} ${esc(it.swappedFrom.name)}${it.swapBy && it.swapBy !== me ? ` · von ${esc(it.swapBy)}` : ''}</span>` : '', it.removed ? '<span class="tag warn">Nicht mehr im Plan</span>' : '', x.personal ? '<span class="tag">Nur ich</span>' : '', kgTag].join('');
   return `<article class="ex glass ${it.sets.length && it.sets.every(s => s.done) ? 'done' : ''} ${it.removed ? 'gone' : ''}" data-card="${i}" data-swaphint="${sw ? esc(sw.id) : ''}">
     <div class="ex-head"><div class="nm"><h3>${esc(x.name)}</h3>
       ${tags ? `<div class="tags">${tags}</div>` : ''}</div>
       <span class="tgt">${it.sets.length}×${x.min}–${x.max}${unit}</span></div>
     ${hint ? `<div class="exhint">${esc(hint)}${it.kind === 'plateau' && !draft.deload ? `<div class="btnrow"><button class="btn small" data-act="plateau-down" data-i="${i}">Heute −10 %</button></div><span class="small muted">Oder im Plan die Spanne anheben, z. B. ${x.min}–${x.max} → ${x.min + 2}–${x.max + 2}.</span>` : ''}</div>` : ''}
     ${sw ? `<div class="swaphint"><span><b>${esc(sw.person)}</b> hat heute ${esc(sw.data.fromName)} durch <b>${esc(sw.data.to.name)}</b> getauscht.</span><div class="btnrow"><button class="btn small primary" data-act="swap-follow" data-i="${i}" data-id="${esc(sw.id)}">Auch tauschen</button><button class="btn small ghost" data-act="swap-ignore" data-id="${esc(sw.id)}">Nein</button></div></div>` : ''}
-    ${mine && mine.note ? `<div class="small muted">Deine Notiz vom letzten Mal: ${esc(mine.note)}</div>` : ''}
+    ${mine && mine.note && !draft.edit ? `<div class="small muted">Deine Notiz vom letzten Mal: ${esc(mine.note)}</div>` : ''}
     <div class="howrow"><details class="how"><summary>Ausführung & Video</summary><div class="body">
-      ${x.cue ? `<p>${esc(x.cue)}</p>` : ''}
+      ${(() => { const Lx = libGet(x.id), cue = Lx ? Lx.cue : x.cue; return cue ? `<p style="white-space:pre-line">${esc(cue)}</p>` : '<p class="small warn-t">Noch keine Ausführungshinweise hinterlegt. Ergänzen unter Plan → Bibliothek.</p>'; })()}
       ${x.image ? `<img src="${esc(x.image)}" alt="${esc(x.name)}" loading="lazy">` : ''}
-      <a class="vlink" href="${esc(videoUrl(x))}" target="_blank" rel="noopener">▶ ${x.video ? 'Video ansehen' : 'Shorts auf YouTube'}</a>
+      ${(() => { const Lx = libGet(x.id), v = (Lx && Lx.video) || x.video; return `<a class="vlink" href="${esc(videoUrl({ name: x.name, video: v }))}" target="_blank" rel="noopener">▶ ${v ? 'Video ansehen' : 'Shorts auf YouTube'}</a>`; })()}
     </div></details>
     <details class="how mus" data-ex="${esc(x.id)}" ${musOpen.has(x.id) ? 'open' : ''}><summary>Muskeln</summary><div class="body">${musBlock(x, DAY_TONE[draft.day])}</div></details></div>
     <div class="sets ${x.type}">${cols}${warm}${rows}</div>
-    <div class="cardacts"><button class="addset" data-act="addset" data-i="${i}">+ Satz</button><button class="addset" data-act="delset" data-i="${i}" ${it.sets.length <= 1 ? 'disabled' : ''}>− Satz</button><span class="sp"></span>${it.removed ? '' : `<button class="addset" data-act="swap-open" data-i="${i}">${ICON.swap} Heute tauschen</button>`}</div>
+    <div class="cardacts"><button class="addset" data-act="addset" data-i="${i}">+ Satz</button><button class="addset" data-act="delset" data-i="${i}" ${it.sets.length <= 1 ? 'disabled' : ''}>− Satz</button><span class="sp"></span>${it.removed ? '' : `<button class="addset" data-act="swap-open" data-i="${i}">${ICON.swap} ${draft.edit ? 'Tauschen' : 'Heute tauschen'}</button>`}</div>
     ${whyRow(it, i)}
     <label class="note"><span>Notiz</span><textarea id="note-${i}" data-note="${i}" rows="2" placeholder="z. B. Schulter zwickt, nächstes Mal enger greifen">${esc(it.note)}</textarea></label>
+    ${!draft.edit ? '' : it.ask ? `<div class="btnrow"><button class="btn small danger" data-act="ed-rmex-yes" data-i="${i}">${esc(x.name)} entfernen</button><button class="btn small ghost" data-act="ed-rmex-no" data-i="${i}">Abbrechen</button></div>` : `<button class="lnk danger-t" data-act="ed-rmex" data-i="${i}" style="align-self:flex-start">Übung aus dem Training entfernen</button>`}
   </article>`;
 }
 // Grund für + / − Satz: kleine Chips, optional. Ohne Auswahl gilt neutral.
@@ -2473,7 +2601,7 @@ function collectEntries() {
     const en = { exId: x.id, name: x.name, type: x.type, sets, note: (it.note || '').trim(), feel: '' };
     if (it.rm && it.rm.length) en.rm = it.rm.slice();
     if (x.type === 'tr') en.tt = it.tt;
-    if (x.type === 'bw') en.load = loadOf(x);
+    if (it.swappedFrom && it.swappedFrom.id !== x.id) en.from = { id: it.swappedFrom.id, name: it.swappedFrom.name };
     return en;
   }).filter(en => en.sets.length || en.note);
 }
@@ -2538,133 +2666,26 @@ function applyToDraft(plan) {
   });
   draft.items = res; draft.title = plan.title; saveDraft();
 }
-function knownExercises() {
-  const s = st(), map = new Map();
-  PEOPLE.forEach(p => DAYS.forEach(d => s.plans[p][d].exercises.forEach(x => { if (!map.has(x.name.toLowerCase())) map.set(x.name.toLowerCase(), { id: x.id, name: x.name, type: x.type }); })));
-  Object.entries(s.exInfo).forEach(([id, v]) => { if (!map.has(v.name.toLowerCase())) map.set(v.name.toLowerCase(), { id, name: v.name, type: v.type }); });
-  return map;
-}
-function swapForm(i) {
+function swapForm(i, keep) {
   const it = draft.items[i], x = it.ex;
-  swCtx = { mode: 'draft', i, x, day: draft.day };
-  $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet full form" id="swapform" data-i="${i}" novalidate>
+  if (!keep || !PK || PK.ctx !== 'swap') PK = { ctx: 'swap', i, x, day: draft.day, sel: '', q: '', group: 'Passend', exclude: new Set([x.id, ...(it.swappedFrom ? [it.swappedFrom.id] : [])]), vals: null };
+  PK.reopen = () => swapForm(i, true);
+  PK.onSel = L => { const r = isTimed(L.type) !== isTimed(x.type); if (r || isTimed(L.type)) { $('#sw-min').value = L.min; $('#sw-max').value = L.max; } $('#sw-unit').textContent = isTimed(L.type) ? 'Sek. von' : 'Wdh. von'; };
+  const v = (k, d) => esc(pkVal(k, d));
+  $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet full form tone-${DAY_TONE[draft.day]}" id="swapform" data-i="${i}" novalidate>
     ${sheetHead(`${esc(dl(draft.day))} · ${esc(x.name)}`, 'Heute tauschen')}
     <h2>Heute tauschen</h2>
     <p class="help" style="margin:0">Ersetzt <b>${esc(x.name)}</b> nur in diesem Training. Dein Plan bleibt unverändert, die Ersatzübung bekommt ihren eigenen Verlauf.</p>
-    <label>Ersatzübung suchen<span class="swsearch">${ICON.search}<input class="inp" id="sw-name" name="name" maxlength="60" autocomplete="off" required placeholder="z. B. Beinpresse, Burpees"></span></label>
-    <input type="hidden" id="sw-lib" name="libid" value="">
-    <div id="sw-sug" class="sug"></div>
-    <label>Art<select id="sw-type" name="type">${Object.entries(TYPE_LABEL).map(([k, v]) => `<option value="${k}" ${x.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
-    <div class="grid3"><label>Sätze<input class="inp" id="sw-sets" name="sets" inputmode="numeric" value="${x.sets}"></label><label>von<input class="inp" id="sw-min" name="min" inputmode="numeric" value="${x.min}"></label><label>bis<input class="inp" id="sw-max" name="max" inputmode="numeric" value="${x.max}"></label></div>
+    ${pickBlock('Ersatzübung suchen')}
+    <div class="grid3"><label>Sätze<input class="inp" id="sw-sets" name="sets" inputmode="numeric" value="${v('sets', x.sets)}"></label><label><span id="sw-unit">${isTimed(x.type) ? 'Sek. von' : 'Wdh. von'}</span><input class="inp" id="sw-min" name="min" inputmode="numeric" value="${v('min', x.min)}"></label><label>bis<input class="inp" id="sw-max" name="max" inputmode="numeric" value="${v('max', x.max)}"></label></div>
     <fieldset class="radios"><legend>Für wen?</legend>
-      <label class="chk"><input type="radio" name="who" value="both" checked><span>Für uns beide heute<small>${esc(partner())} sieht den Tausch in seinem heutigen Training für ${esc(dl(draft.day))}.</small></span></label>
-      <label class="chk"><input type="radio" name="who" value="me"><span>Nur für mich</span></label>
+      <label class="chk"><input type="radio" name="who" value="both" ${pkVal('who', 'both') === 'both' ? 'checked' : ''}><span>Für uns beide heute<small>${esc(partner())} sieht den Tausch in seinem heutigen Training für ${esc(dl(draft.day))}.</small></span></label>
+      <label class="chk"><input type="radio" name="who" value="me" ${pkVal('who', 'both') === 'me' ? 'checked' : ''}><span>Nur für mich</span></label>
     </fieldset>
     <div class="err" id="sw-err" hidden></div>
     <div class="sbar"><button class="btn primary" type="submit">Tauschen</button></div>
   </form></div>`;
-  swGroup = 'Passend'; renderSwSug();
-}
-/* Tauschen oder Ergänzen in einem gespeicherten Training (Bearbeiten, auch Trainings des anderen) */
-function weSwapForm(i) {
-  const w = st().workouts.find(x => x.id === wedit.id); if (!w) return;
-  readWorkoutForm();
-  const add = i === 'add', en = add ? null : wedit.entries[i];
-  const x = add ? { id: '', name: '', muscles: { p: [], s: [] } } : { id: en.exId, name: en.name, type: en.type };
-  swCtx = { mode: 'edit', i, add, x, day: w.data.day };
-  const whose = w.person === cfg.me ? 'du' : esc(w.person);
-  $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet full form" id="swapform" data-mode="edit" novalidate>
-    ${sheetHead(`${w.person !== cfg.me ? esc(w.person) + ' · ' : ''}${esc(dl(w.data.day))} · ${fmtDate(w.ts)}`, add ? 'Übung hinzufügen' : 'Übung tauschen')}
-    <h2>${add ? 'Übung hinzufügen' : 'Übung tauschen'}</h2>
-    <p class="help" style="margin:0">${add ? `Ergänzt eine Übung, die ${whose} gemacht, aber nicht eingetragen ${w.person === cfg.me ? 'hast' : 'hat'}.` : `Ersetzt <b>${esc(en.name)}</b> nur in diesem Training. Der Plan bleibt unverändert. Sätze, Wiederholungen und Bewertungen werden übernommen, das Gewicht nur bei gleicher Art.`}</p>
-    <label>${add ? 'Übung suchen' : 'Ersatzübung suchen'}<span class="swsearch">${ICON.search}<input class="inp" id="sw-name" name="name" maxlength="60" autocomplete="off" required placeholder="z. B. Beinpresse, Burpees"></span></label>
-    <input type="hidden" id="sw-lib" name="libid" value="">
-    <div id="sw-sug" class="sug"></div>
-    <label>Art<select id="sw-type" name="type">${Object.entries(TYPE_LABEL).map(([k, v]) => `<option value="${k}" ${(add ? 'kg' : en.type) === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
-    ${add ? `<label>Sätze<input class="inp" id="sw-sets" name="sets" inputmode="numeric" value="3"></label>` : ''}
-    <div class="err" id="sw-err" hidden></div>
-    <div class="sbar"><button class="btn primary" type="submit">${add ? 'Hinzufügen' : 'Tauschen'}</button></div>
-  </form></div>`;
-  swGroup = add ? 'Alle' : 'Passend'; renderSwSug();
-}
-// Satzwerte beim Tausch übernehmen: Wiederholungen und Bewertungen bleiben, Gewicht nur bei gleicher Art, Sekunden zwischen Zeit-Arten
-function convSet(from, to, s) {
-  const o = { ...s };
-  if (from === to) return o;
-  const secs = from === 'time' ? s.r : from === 'tr' ? (s.w ?? s.t) : '';
-  const reps = from === 'time' ? '' : s.r;
-  delete o.t; delete o.neg;
-  if (to === 'time') { o.r = secs || ''; delete o.w; }
-  else if (to === 'tr') { o.w = secs || ''; o.r = reps || ''; }
-  else { o.w = ''; o.r = reps || ''; }
-  return o;
-}
-function submitWeSwap(form) {
-  const f = new FormData(form), ctx = swCtx;
-  const err = m => { const e = $('#sw-err'); e.textContent = m; e.hidden = false; };
-  const name = String(f.get('name') || '').trim();
-  if (!name) return err('Bitte wähle oder gib eine Übung ein.');
-  const known = knownExercises().get(name.toLowerCase()), libE = LIB_BY_ID[String(f.get('libid') || '')];
-  const type = known ? known.type : TYPE_LABEL[f.get('type')] ? f.get('type') : 'kg';
-  const id = known ? known.id : libE && libE[1] === name ? libE[0] : 's-' + slug(name);
-  const nm = known ? known.name : name;
-  const def = PEOPLE.flatMap(p => DAYS.flatMap(d => st().plans[p][d].exercises)).find(y => y.id === id);
-  if (wedit.entries.some((o, k) => k !== ctx.i && o.exId === id)) return err('Die Übung ist schon in diesem Training.');
-  if (ctx.add) {
-    const n = int(f.get('sets'));
-    if (!n || n > 10) return err('Bitte gib 1 bis 10 Sätze an.');
-    wedit.entries.push({ exId: id, name: nm, type, note: '', feel: '', ...(type === 'bw' && def && def.load != null ? { load: def.load } : {}), sets: Array.from({ length: n }, () => ({ w: '', r: '' })) });
-    wedit.focus = wedit.entries.length - 1;
-  } else {
-    const en = wedit.entries[ctx.i];
-    if (id === en.exId) return err('Das ist dieselbe Übung.');
-    en.sets = en.sets.map(x => convSet(en.type, type, x));
-    if (!en.from) en.from = { id: en.exId, name: en.name };
-    if (en.from.id === id) delete en.from;
-    if (type !== en.type) delete en.tt;
-    en.exId = id; en.name = nm; en.type = type;
-    if (type === 'bw') { if (def && def.load != null) en.load = def.load; } else delete en.load;
-    wedit.focus = ctx.i;
-  }
-  swCtx = null; workoutForm();
-}
-/* Suche in der Bibliothek beim Tauschen: ohne Suchbegriff zuerst Übungen mit denselben Hauptmuskeln */
-let swGroup = 'Passend', swCtx = null;
-function swMatches(x) {
-  const m = x.muscles && x.muscles.p.length ? x.muscles : libMuscles(x.id, x.name), P = new Set(m.p);
-  return EX_LIB.filter(e => e[0] !== x.id && normName(e[1]) !== normName(x.name)).map(e => ({ e, sc: csvMus(e[3]).filter(k => P.has(k)).length })).filter(o => o.sc > 0).sort((a, b) => b.sc - a.sc).map(o => o.e);
-}
-function renderSwSug() {
-  const box = $('#sw-sug'), inp = $('#sw-name'), form = $('#swapform'); if (!box || !inp || !form) return;
-  if (!swCtx) return;
-  const x = swCtx.x, tk = DAY_TONE[swCtx.day];
-  const lib = $('#sw-lib').value;
-  const item = (e, sel) => { const m = { p: csvMus(e[3]), s: csvMus(e[4]) }; return `<button type="button" role="option" class="sugitem ${sel ? 'sel' : ''}" data-act="${sel ? 'sw-clear' : 'sw-pick'}" data-id="${e[0]}" aria-selected="${!!sel}">${bodyFig(bestView(m), tk, m, { w: 22, nums: false })}<span class="sgt"><b>${esc(e[1])}</b><span>${esc(m.p.map(k => BODY.names[k][0]).join(', '))}</span></span><span class="tp">${sel ? 'Ändern' : TYPE_LABEL[e[2]]}</span></button>`; };
-  if (lib && LIB_BY_ID[lib]) { box.innerHTML = `<div class="suglist">${item(LIB_BY_ID[lib], true)}</div>`; return; }
-  const q = normName(inp.value), toks = q.split(' ').filter(Boolean);
-  const groups = [...(swCtx.add ? [] : ['Passend']), 'Alle', 'Kondition', ...Object.keys(BODY.groups)];
-  const chips = `<div class="chips scroll" role="group" aria-label="Nach Muskelgruppe filtern">${groups.map(g => `<button type="button" class="pchip ${g === swGroup ? 'tonep' : ''}" data-act="sw-g" data-v="${g}" aria-pressed="${g === swGroup}">${g}</button>`).join('')}</div>`;
-  let hits, label;
-  const match = e => { const n = normName(e[1]) + ' ' + e[0].replace(/-/g, ' '); return toks.every(t => n.includes(t)); };
-  if (swGroup === 'Passend') { hits = swMatches(x).filter(match); label = `Gleiche Hauptmuskeln wie ${x.name}`; }
-  else if (swGroup === 'Alle') { hits = EX_LIB.filter(match).sort((a, b) => a[1].localeCompare(b[1], 'de')); label = 'Alle Übungen'; }
-  else { hits = EX_LIB.filter(e => match(e) && inGroup(e, swGroup)); label = swGroup === 'Kondition' ? 'Ganzkörper / Kondition' : swGroup; }
-  if (toks.length && !hits.length && swGroup === 'Passend') { hits = EX_LIB.filter(match); label = 'Treffer in der Bibliothek'; }
-  const inTr = swCtx.mode === 'edit' && wedit ? new Set(wedit.entries.map(en => en.exId)) : new Set();
-  hits = hits.filter(e => e[0] !== x.id && !inTr.has(e[0])).slice(0, 30);
-  box.innerHTML = chips + `<div class="eyebrow" style="margin:4px 2px 0">${esc(label)} · ${hits.length}</div>
-    <div class="suglist" role="listbox" aria-label="${esc(label)}">${hits.map(e => item(e)).join('')}
-    ${inp.value.trim() ? `<div class="sugitem new"><span class="plus">+</span><span class="sgt"><b>„${esc(inp.value.trim())}“ als neue Übung</b><span>${swCtx.mode === 'edit' ? 'Art unten einstellen' : 'Art und Spanne unten einstellen'}</span></span></div>` : ''}</div>`;
-  const on = box.querySelector('.chips.scroll .pchip[aria-pressed="true"]'); if (on) on.parentElement.scrollLeft = Math.max(0, on.offsetLeft - 16);
-}
-function pickSw(id) {
-  const e = LIB_BY_ID[id]; if (!e) return;
-  $('#sw-lib').value = id; $('#sw-name').value = e[1];
-  const ty = $('#sw-type'); ty.value = e[2];
-  if (!$('#sw-min')) { renderSwSug(); return; }
-  if (TIMED_RANGE[e[2]]) { $('#sw-min').value = TIMED_RANGE[e[2]][0]; $('#sw-max').value = TIMED_RANGE[e[2]][1]; }
-  else { const x = swCtx.x; if (isTimed(x.type)) { $('#sw-min').value = 8; $('#sw-max').value = 12; } }
-  renderSwSug();
+  renderPick();
 }
 function doSwap(i, x, from, by, shared) {
   if (TIMER) tmrStop();
@@ -2677,22 +2698,223 @@ function doSwap(i, x, from, by, shared) {
 function submitSwap(form) {
   const f = new FormData(form), i = +form.dataset.i, it = draft.items[i];
   const err = m => { const e = $('#sw-err'); e.textContent = m; e.hidden = false; };
-  const name = String(f.get('name') || '').trim();
+  const L = libGet(PK && PK.sel);
   const sets = int(f.get('sets')), min = int(f.get('min')), max = int(f.get('max'));
-  if (!name) return err('Bitte gib die Ersatzübung ein.');
+  if (!L) return err('Bitte wähle die Ersatzübung aus der Bibliothek oder erstelle eine neue.');
   if (!sets || sets > 10 || !min || !max || min > max) return err('Bitte prüfe Sätze und Spanne.');
-  const known = knownExercises().get(name.toLowerCase());
-  const libE = LIB_BY_ID[String(f.get('libid') || '')];
-  const type = known ? known.type : f.get('type');
-  const id = known ? known.id : libE && libE[1] === name ? libE[0] : 's-' + slug(name);
   const from = it.swappedFrom || { id: it.ex.id, name: it.ex.name };
-  if (id === it.ex.id || id === from.id) return err('Das ist dieselbe Übung.');
-  const def = PEOPLE.flatMap(p => DAYS.flatMap(d => st().plans[p][d].exercises)).find(y => y.id === id);
-  const x = cleanEx({ id, name: known ? known.name : name, type, sets, min, max, step: isTimed(type) ? 0 : 2.5, warmup: false, load: def ? def.load : undefined });
-  $('#modal').innerHTML = '';
+  if (L.id === it.ex.id || L.id === from.id) return err('Das ist dieselbe Übung.');
+  const x = exFromLib(L, { sets, min, max });
+  PK = null; $('#modal').innerHTML = '';
   doSwap(i, x, from, cfg.me, f.get('who') === 'both');
   render();
   toast(f.get('who') === 'both' ? `Getauscht. ${partner()} sieht den Tausch.` : 'Getauscht');
+}
+
+/* ---------- Übungsauswahl: überall dieselbe (Plan, Heute tauschen, Training bearbeiten, Zusammenführen) ---------- */
+let PK = null;   // { ctx, x, day, sel, q, group, exclude, type, onSel, reopen, vals }
+const libAll = () => Object.values(st().lib).filter(L => !L.del && !L.into);
+const libVisible = () => libAll().filter(L => !L.hidden);
+const libGet = id => { const lib = st().lib; const L = lib[libTarget(lib, id)]; return L && !L.del ? L : null; };
+const libGroups = withMatch => [...(withMatch ? ['Passend'] : []), 'Alle', 'Kondition', ...Object.keys(BODY.groups)];
+const inGroupL = (L, g) => g === 'Alle' || (g === 'Kondition' ? L.kond : !!BODY.groups[g] && L.p.some(k => BODY.groups[g].includes(k)));
+const searchNorm = v => String(v || '').toLowerCase().replace(/[^a-z0-9äöüß]+/g, ' ').trim();
+const libText = L => searchNorm(L.name) + ' ' + L.id.replace(/-/g, ' ') + ' ' + searchNorm(L.syn);
+function libSearch(q, group, x, o = {}) {
+  const toks = searchNorm(q).split(' ').filter(Boolean);
+  let list = (o.hidden ? libAll() : libVisible()).filter(L => !(o.exclude && o.exclude.has(L.id)) && (!o.type || L.type === o.type) && toks.every(t => libText(L).includes(t)));
+  if (group === 'Passend' && x) {
+    const P = new Set(musOf(x).p);
+    return list.map(L => ({ L, sc: L.p.filter(k => P.has(k)).length })).filter(v => v.sc > 0 && v.L.id !== x.id).sort((a, b) => b.sc - a.sc || a.L.name.localeCompare(b.L.name, 'de')).map(v => v.L);
+  }
+  if (group === 'Ausgeblendet') return libAll().filter(L => L.hidden && toks.every(t => libText(L).includes(t))).sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  return list.filter(L => inGroupL(L, group)).sort((a, b) => a.name.localeCompare(b.name, 'de'));
+}
+function libItem(L, tk, act, sel) {
+  const m = { p: L.p, s: L.s };
+  return `<button type="button" role="option" class="sugitem ${sel ? 'sel' : ''}" data-act="${act}" data-id="${esc(L.id)}" aria-selected="${!!sel}">${bodyFig(bestView(m), tk, m, { w: 22, nums: false })}<span class="sgt"><b>${esc(L.name)}</b><span>${esc(m.p.map(k => BODY.names[k][0]).join(', ') || 'Noch keine Muskeln')}</span></span><span class="tp">${sel ? 'Ändern' : TYPE_LABEL[L.type]}</span></button>`;
+}
+const pickBlock = label => `<label>${label}<span class="swsearch">${ICON.search}<input class="inp" id="pk-q" value="${esc(PK.q || '')}" maxlength="60" autocomplete="off" placeholder="z. B. Beinpresse, Burpees"></span></label><div id="pk-sug" class="sug"></div>`;
+function renderPick() {
+  const box = $('#pk-sug'); if (!box || !PK) return;
+  const tk = DAY_TONE[PK.day] || 'y';
+  if (PK.sel) { const L = libGet(PK.sel); if (L) { box.innerHTML = `<div class="suglist">${libItem(L, tk, 'pk-clear', true)}</div>`; return; } PK.sel = ''; }
+  const groups = libGroups(!!PK.x);
+  if (!groups.includes(PK.group)) PK.group = groups[0];
+  const q = PK.q || '';
+  let hits = libSearch(q, PK.group, PK.x, PK), label = PK.group === 'Passend' ? `Gleiche Hauptmuskeln wie ${PK.x.name}` : PK.group === 'Alle' ? 'Alle Übungen' : PK.group === 'Kondition' ? 'Ganzkörper / Kondition' : PK.group;
+  if (q.trim() && !hits.length && PK.group !== 'Alle') { hits = libSearch(q, 'Alle', PK.x, PK); label = 'Treffer in der Bibliothek'; }
+  const chips = `<div class="chips scroll" role="group" aria-label="Nach Muskelgruppe filtern">${groups.map(g => `<button type="button" class="pchip ${g === PK.group ? 'tonep' : ''}" data-act="pk-g" data-v="${g}" aria-pressed="${g === PK.group}">${g}</button>`).join('')}</div>`;
+  box.innerHTML = chips + `<div class="eyebrow" style="margin:4px 2px 0">${esc(label)} · ${hits.length}</div>
+    <div class="suglist" role="listbox" aria-label="${esc(label)}">${hits.slice(0, 40).map(L => libItem(L, tk, 'pk-pick')).join('')}
+    ${PK.ctx === 'merge' ? '' : `<button type="button" class="sugitem new" data-act="pk-new"><span class="plus">+</span><span class="sgt"><b>${q.trim() ? `„${esc(q.trim())}“ als neue Übung erstellen` : 'Neue Übung erstellen'}</b><span>${hits.length ? 'Nicht dabei? Name, Art und Muskeln festlegen' : 'Nichts gefunden. Name, Art und Muskeln festlegen'}</span></span></button>`}</div>`;
+  const on = box.querySelector('.chips.scroll .pchip[aria-pressed="true"]'); if (on) on.parentElement.scrollLeft = Math.max(0, on.offsetLeft - 16);
+}
+// Werte des offenen Formulars merken, bevor eine neue Übung erstellt wird
+function pkKeep() { const f = $('#modal form'); if (!f || !PK) return; PK.vals = {}; new FormData(f).forEach((v, k) => { PK.vals[k] = v; }); f.querySelectorAll('input[type=checkbox]').forEach(c => { PK.vals[c.name] = c.checked ? 'on' : ''; }); }
+const pkVal = (k, d) => (PK && PK.vals && PK.vals[k] != null ? PK.vals[k] : d);
+// Übung aus der Bibliothek für Plan oder Training: Sätze und Spanne aus dem eigenen Plan, sonst Standard der Bibliothek
+function exFromLib(L, extra = {}) {
+  const def = PEOPLE.flatMap(p => DAYS.flatMap(d => st().plans[p][d].exercises)).find(y => y.id === L.id);
+  return cleanEx({ id: L.id, name: L.name, type: L.type, sets: def ? def.sets : L.sets, min: def ? def.min : L.min, max: def ? def.max : L.max, step: isTimed(L.type) ? 0 : def ? def.step : 2.5, warmup: false, muscles: { p: L.p, s: L.s }, cue: L.cue, video: L.video, ...extra });
+}
+// Übung ist irgendwo in Gebrauch (Verlauf, Pläne): dann nur ausblenden statt löschen und die Art bleibt fest
+const libUsed = id => PEOPLE.some(p => (st().hist[p][id] || []).length || DAYS.some(d => st().plans[p][d].exercises.some(x => x.id === id)));
+const libHasHist = id => PEOPLE.some(p => (st().hist[p][id] || []).length);
+function libSave(rec, why) {
+  const L = cleanLib(rec);
+  const data = {}; LIB_FIELDS.forEach(k => { data[k] = L[k]; }); data.id = L.id; data.row = libRow(L);
+  addEvent('lib', data, `Bibliothek: ${L.name} ${why}`);
+  return L.id;
+}
+
+/* ---------- Übung in der Bibliothek erstellen oder bearbeiten ---------- */
+let LF = null;   // { id, tk, opts }
+function libForm(L, opts = {}) {
+  const isNew = !L;
+  const x = L || cleanLib({ id: 'neu', name: opts.name || '', type: opts.type || 'kg' });
+  if (isNew) x.name = (opts.name || '').trim();
+  const tk = opts.tk || (builder && DAY_TONE[builder.day]) || (L && DAY_TONE[exerciseDay(L.id)]) || 'y';
+  LF = { id: isNew ? '' : x.id, tk, opts };
+  const lockType = !isNew && libHasHist(x.id);
+  const used = !isNew && libUsed(x.id);
+  const seed = !isNew && LIB_SEED[x.id];
+  const differs = seed && LIB_FIELDS.some(k => !['hidden', 'del', 'into'].includes(k) && JSON.stringify(seed[k]) !== JSON.stringify(x[k]));
+  const merged = isNew ? [] : Object.values(st().lib).filter(y => y.into === x.id && !y.del);
+  const hist = isNew ? [] : (st().libHist[x.id] || []).slice(-8).reverse();
+  const timed = isTimed(x.type);
+  $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet full form tone-${tk}" id="libform" novalidate>
+    ${sheetHead('Bibliothek', isNew ? 'Neue Übung' : 'Übung bearbeiten')}
+    <h2>${isNew ? 'Neue Übung' : esc(x.name)}</h2>
+    <p class="help" style="margin:0">${isNew ? 'Die Übung kommt in die gemeinsame Bibliothek und steht danach überall zur Auswahl.' : `Gilt für dich und ${esc(partner())}, in allen Plänen und im Verlauf.`}${!isNew ? ` <span class="mono small">${x.ts ? `Zuletzt geändert ${fmtDate(x.ts)}${x.by ? ' von ' + esc(x.by === cfg.me ? 'dir' : x.by) : ''}` : 'Startbestand'}</span>` : ''}</p>
+    <label>Name<input class="inp" id="lf-name" name="name" value="${esc(x.name)}" maxlength="80" required autocomplete="off"></label>
+    <div id="lf-sim"></div>
+    <fieldset class="radios"><legend>Art</legend><div class="typeseg" role="group" aria-label="Art der Übung">${Object.entries(TYPE_LABEL).map(([k, v]) => `<label class="tsb"><input type="radio" name="type" value="${k}" ${x.type === k ? 'checked' : ''} ${lockType && x.type !== k ? 'disabled' : ''}><span>${v}</span></label>`).join('')}</div>
+      ${lockType ? '<span class="help">Die Art bleibt fest, weil es schon Trainings mit dieser Übung gibt. Für eine andere Art lege eine neue Übung an.</span>' : '<span class="help">Gewicht: kg und Wdh. · Körpergewicht: Wdh., optional ± kg · Zeit: Sekunden · Zeit + Wdh.: Wdh. in fester Zeit.</span>'}</fieldset>
+    <label class="chk"><input type="checkbox" name="kond" ${x.kond ? 'checked' : ''}><span>Gruppe Kondition<small>Erscheint zusätzlich unter „Kondition“ (z. B. Burpees).</small></span></label>
+    <div class="musform"><span class="eyebrow">Muskeln</span>
+      <div id="f-mus-prev">${musPreview({ p: x.p, s: x.s }, tk)}</div>
+      <input type="hidden" id="f-muscles" name="muscles" value="${esc(JSON.stringify({ p: x.p, s: x.s }))}">
+      <button type="button" class="btn small" data-act="mus-edit">Muskeln bearbeiten</button></div>
+    <div class="grid3"><label>Sätze<input class="inp" name="sets" inputmode="numeric" value="${x.sets}"></label>
+      <label><span id="lf-unit">${timed ? 'Sek. von' : 'Wdh. von'}</span><input class="inp" name="min" inputmode="numeric" value="${x.min}"></label>
+      <label>bis<input class="inp" name="max" inputmode="numeric" value="${x.max}"></label></div>
+    <span class="help" style="margin-top:-6px">Standard beim Hinzufügen zum Plan. Im Plan kann jeder seine Spanne anpassen.</span>
+    <label>Ausführung<textarea name="cue" rows="4" maxlength="1500" placeholder="Worauf es ankommt, z. B. Rücken gerade, langsam absenken">${esc(x.cue)}</textarea></label>
+    <label>Video-Link (optional)<input class="inp" name="video" type="url" inputmode="url" value="${esc(x.video)}" placeholder="https://youtube.com/shorts/…"><span class="help">Leer: Die App sucht passende YouTube Shorts.</span></label>
+    <label>Suchbegriffe (optional)<input class="inp" name="syn" value="${esc(x.syn)}" maxlength="200" placeholder="z. B. Captain's Chair, Pull-ups"><span class="help">Weitere Namen, unter denen die Suche die Übung findet.</span></label>
+    <div class="err" id="lf-err" hidden></div>
+    ${isNew ? '' : `<div class="libmore">
+      ${merged.length ? `<div class="eyebrow">Zusammengeführt</div>${merged.map(y => `<div class="devrow"><span class="small" style="flex:1">${esc(y.name)}</span><button type="button" class="btn small ghost" data-act="lib-unmerge" data-id="${esc(y.id)}">Trennen</button></div>`).join('')}` : ''}
+      <div class="btnrow wrap">
+        <button type="button" class="btn small" data-act="lib-merge">Mit anderer Übung zusammenführen</button>
+        ${differs ? '<button type="button" class="btn small ghost" data-act="lib-restore">Ursprünglichen Stand wiederherstellen</button>' : ''}
+        ${x.hidden ? '<button type="button" class="btn small ghost" data-act="lib-show">Wieder einblenden</button>' : used ? '<button type="button" class="btn small ghost" data-act="lib-hide">Ausblenden</button>' : '<button type="button" class="btn small ghost danger-t" data-act="lib-del">Löschen</button>'}
+      </div>
+      ${used && !x.hidden ? '<span class="help">Wird in Plänen oder im Verlauf genutzt. Ausblenden versteckt sie in der Auswahl, der Verlauf bleibt.</span>' : ''}
+      ${hist.length ? `<div class="eyebrow">Änderungen</div><div class="libhist">${hist.map(e => `<div><span class="mono small">${fmtDate(e.ts)}</span><span class="small">${esc(e.person === cfg.me ? 'Du' : e.person)}: ${esc(String(e.summary || '').replace(/^Bibliothek: /, ''))}</span></div>`).join('')}</div>` : ''}
+    </div>`}
+    <div class="sbar"><button class="btn primary" type="submit">${isNew ? 'Erstellen' : 'Speichern'}</button></div>
+  </form></div>`;
+  libSim();
+  if (isNew) setTimeout(() => { const n = $('#lf-name'); if (n && !n.value) n.focus(); }, 50);
+}
+// Ähnliche Namen beim Erstellen anzeigen (gegen doppelte Übungen)
+function libSim() {
+  const box = $('#lf-sim'), n = $('#lf-name'); if (!box || !n) return;
+  const q = normName(n.value), toks = q.split(' ').filter(t => t.length > 3);
+  if (!toks.length) { box.innerHTML = ''; return; }
+  const sim = libVisible().filter(L => L.id !== LF.id).map(L => ({ L, sc: toks.filter(t => libText(L).includes(t)).length + (normName(L.name) === q ? 5 : 0) })).filter(v => v.sc >= Math.min(2, toks.length) || toks.some(t => t.length >= 6 && libText(v.L).includes(t))).sort((a, b) => b.sc - a.sc).slice(0, 4).map(v => v.L);
+  box.innerHTML = sim.length ? `<div class="simbox"><span class="eyebrow">Gibt es vielleicht schon</span>${sim.map(L => `<button type="button" class="pchip" data-act="lf-use" data-id="${esc(L.id)}">${esc(L.name)}</button>`).join('')}</div>` : '';
+}
+function submitLib(form) {
+  const f = new FormData(form), err = m => { const e = $('#lf-err'); e.textContent = m; e.hidden = false; e.scrollIntoView({ block: 'center' }); };
+  const name = String(f.get('name') || '').trim(), sets = int(f.get('sets')), min = int(f.get('min')), max = int(f.get('max'));
+  if (!name) return err('Bitte gib einen Namen ein.');
+  if (!sets || sets > 10) return err('Sätze: bitte eine Zahl von 1 bis 10.');
+  if (!min || !max || min > max) return err('Bitte gib eine gültige Spanne an, z. B. 8 bis 12.');
+  const same = v => String(v).trim().toLowerCase().replace(/\s+/g, ' ');
+  const dup = libVisible().find(L => L.id !== LF.id && same(L.name) === same(name));
+  if (dup) return err(`„${dup.name}“ gibt es schon. Bitte dort bearbeiten oder die beiden zusammenführen.`);
+  let m; try { m = cleanMuscles(JSON.parse(f.get('muscles') || 'null')) || { p: [], s: [] }; } catch (e) { m = { p: [], s: [] }; }
+  const old = LF.id ? st().lib[LF.id] : null;
+  const type = old && libHasHist(old.id) ? old.type : (TYPE_LABEL[f.get('type')] ? f.get('type') : 'kg');
+  let id = LF.id;
+  if (!id) { const base = slug(name).slice(0, 40) || 'uebung'; id = st().lib[base] ? base + '-' + uid().slice(0, 4) : base; }
+  const rec = { ...(old || {}), id, name, type, p: m.p, s: m.s, kond: f.get('kond') === 'on', sets, min, max, cue: String(f.get('cue') || '').trim(), video: String(f.get('video') || '').trim(), syn: String(f.get('syn') || '').trim(), hidden: old ? old.hidden : false, del: false, into: old ? old.into : '' };
+  const ch = old ? LIB_FIELDS.filter(k => JSON.stringify(old[k]) !== JSON.stringify(cleanLib(rec)[k])).map(k => ({ name: 'Name', type: 'Art', p: 'Muskeln', s: 'Muskeln', kond: 'Gruppe', sets: 'Sätze', min: 'Spanne', max: 'Spanne', cue: 'Ausführung', video: 'Video', syn: 'Suchbegriffe' }[k])).filter(Boolean) : [];
+  if (old && !ch.length) { libFormDone(id); return; }
+  libSave(rec, old ? `geändert (${[...new Set(ch)].join(', ')})` : 'erstellt');
+  toast(old ? 'Übung gespeichert. Gilt für euch beide.' : 'Übung erstellt');
+  libFormDone(id);
+}
+function libFormDone(id) {
+  const o = LF && LF.opts; LF = null;
+  if (o && o.done) o.done(id); else { $('#modal').innerHTML = ''; render(); }
+}
+function libAct(kind) {
+  const L = LF && st().lib[LF.id]; if (!L) return;
+  if (kind === 'restore') { const S = LIB_SEED[L.id]; libSave({ ...S, hidden: L.hidden, into: L.into }, 'auf den Startbestand zurückgesetzt'); toast('Ursprünglicher Stand wiederhergestellt'); }
+  if (kind === 'hide') { libSave({ ...L, hidden: true }, 'ausgeblendet'); toast('Ausgeblendet. Unter „Ausgeblendet“ wieder einblenden.'); }
+  if (kind === 'show') { libSave({ ...L, hidden: false }, 'wieder eingeblendet'); toast('Wieder eingeblendet'); }
+  if (kind === 'del') { if (libUsed(L.id)) return; libSave({ ...L, del: true }, 'gelöscht'); toast('Übung gelöscht'); }
+  libFormDone(kind === 'del' ? '' : L.id);
+}
+// Zusammenführen: Verlauf, Pläne und Notizen der einen Übung zählen danach für die andere
+function libMergeForm(id) {
+  const L = st().lib[id]; if (!L) return;
+  const back = LF; 
+  PK = { ctx: 'merge', x: { id: L.id, name: L.name, muscles: { p: L.p, s: L.s } }, day: back ? Object.keys(DAY_TONE).find(d => DAY_TONE[d] === back.tk) : 'A', sel: '', q: '', group: 'Passend', exclude: new Set([id]), type: L.type, src: id, back };
+  PK.onSel = () => mergePreview();
+  $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet full form" id="mergeform" novalidate>
+    ${sheetHead('Bibliothek · ' + esc(L.name), 'Zusammenführen')}
+    <h2>Zusammenführen</h2>
+    <p class="help" style="margin:0"><b>${esc(L.name)}</b> geht in der gewählten Übung auf. Trainings, Pläne und Notizen beider Personen zählen danach dort. Lässt sich in der Bibliothek wieder trennen. Nur Übungen derselben Art (${TYPE_LABEL[L.type]}).</p>
+    ${pickBlock('Übung, die bleibt')}
+    <div id="mg-prev"></div>
+    <div class="err" id="mg-err" hidden></div>
+    <div class="sbar"><button class="btn primary" type="submit">Zusammenführen</button></div>
+  </form></div>`;
+  renderPick(); mergePreview();
+}
+function mergePreview() {
+  const box = $('#mg-prev'); if (!box || !PK) return;
+  const L = st().lib[PK.src], T = PK.sel && libGet(PK.sel);
+  if (!T) { box.innerHTML = ''; return; }
+  const n = p => (st().hist[p][L.id] || []).length;
+  const plans = PEOPLE.flatMap(p => DAYS.filter(d => st().plans[p][d].exercises.some(x => x.id === L.id)).map(d => `${p === cfg.me ? 'dein' : p + 's'} ${dl(d, p)}`));
+  const notes = PEOPLE.reduce((a, p) => a + (st().hist[p][L.id] || []).filter(h => h.note).length, 0);
+  box.innerHTML = `<div class="abortbox"><span class="eyebrow">Wandert zu ${esc(T.name)}</span><div class="openlist">${PEOPLE.map(p => `<div><span>Trainings ${esc(p === cfg.me ? 'von dir' : 'von ' + p)}</span><span>${n(p)}</span></div>`).join('')}<div><span>Pläne</span><span>${esc(plans.join(', ') || 'keine')}</span></div><div><span>Notizen</span><span>${notes}</span></div></div></div>`;
+}
+function submitMerge() {
+  const err = m => { const e = $('#mg-err'); e.textContent = m; e.hidden = false; };
+  const L = st().lib[PK.src], T = PK.sel && libGet(PK.sel);
+  if (!T) return err('Bitte wähle die Übung, die bleiben soll.');
+  if (T.type !== L.type) return err('Nur Übungen derselben Art lassen sich zusammenführen.');
+  libSave({ ...L, into: T.id }, `in ${T.name} zusammengeführt`);
+  builder = null; PK = null; LF = null; $('#modal').innerHTML = '';
+  toast(`${L.name} ist jetzt Teil von ${T.name}`); render();
+}
+
+/* ---------- Bibliothek im Plan-Tab ---------- */
+let planTab = 'plan';
+const LIBV = { q: '', group: 'Alle' };
+function libListHTML() {
+  const groups = ['Alle', 'Kondition', ...Object.keys(BODY.groups), 'Ausgeblendet'];
+  const hits = libSearch(LIBV.q, LIBV.group, null, {});
+  const tk = 'y';
+  return `<div class="chips scroll" role="group" aria-label="Nach Muskelgruppe filtern">${groups.map(g => `<button type="button" class="pchip ${g === LIBV.group ? 'tonep' : ''}" data-act="lib-g" data-v="${g}" aria-pressed="${g === LIBV.group}">${g}</button>`).join('')}</div>
+    <div class="eyebrow" style="margin:4px 2px 0">${hits.length} ${hits.length === 1 ? 'Übung' : 'Übungen'}</div>
+    <div class="suglist">${hits.map(L => libItem(L, tk, 'lib-open')).join('') || '<div class="empty">Keine Übung gefunden.</div>'}
+    <button type="button" class="sugitem new" data-act="lib-new"><span class="plus">+</span><span class="sgt"><b>${LIBV.q.trim() ? `„${esc(LIBV.q.trim())}“ als neue Übung erstellen` : 'Neue Übung erstellen'}</b><span>Name, Art, Muskeln und Ausführung festlegen</span></span></button></div>`;
+}
+function viewLibrary() {
+  const warn = st().libWarn || [];
+  const noSheet = cfg.url && scriptVersion != null && scriptVersion < LIB_MIN_SCRIPT;
+  return `${noSheet ? `<section class="card notice"><b>Bibliothek noch nicht in der Tabelle</b><span class="small">Das Google-Skript ist noch Version ${scriptVersion}. Mit Version ${LIB_MIN_SCRIPT} erscheint die Bibliothek als eigenes Blatt. Bis dahin gleichen sich Änderungen trotzdem über den Log ab.</span></section>` : ''}
+    ${warn.length ? `<section class="card notice"><b>${warn.length} ${warn.length === 1 ? 'Eintrag' : 'Einträge'} im Blatt nicht erkannt</b><span class="small">Bitte im Blatt „Bibliothek“ korrigieren (Muskelnamen wie im Blatt „Muskeln“):</span><ul class="small" style="margin:0;padding-left:18px">${warn.slice(0, 8).map(w => `<li>${esc(w)}</li>`).join('')}</ul></section>` : ''}
+    <label class="libsearch"><span class="swsearch">${ICON.search}<input class="inp" id="lib-q" value="${esc(LIBV.q)}" autocomplete="off" placeholder="Übung suchen" aria-label="Übung suchen"></span></label>
+    <div id="lib-list">${libListHTML()}</div>`;
 }
 
 /* ---------- Verlauf ---------- */
@@ -2759,48 +2981,87 @@ function chartSvg(series, label) {
   series.forEach(sr => {
     if (!sr.points.length) return;
     g += `<polyline fill="none" stroke="${sr.color}" stroke-width="2.5" ${sr.dash ? 'stroke-dasharray="5 4"' : ''} stroke-linejoin="round" stroke-linecap="round" points="${sr.points.map(p => `${X(p.t).toFixed(1)},${Y(p.v).toFixed(1)}`).join(' ')}"/>`;
+    sr.points.forEach((p, i) => { if (p.lab && (i === 0 || sr.points[i - 1].lab !== p.lab)) g += `<text class="plab" x="${X(p.t).toFixed(1)}" y="${(Y(p.v) - 9).toFixed(1)}" text-anchor="middle">${esc(p.lab)}</text>`; });
     sr.points.forEach((p, i) => { const last = i === sr.points.length - 1; g += `<circle cx="${X(p.t).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="${last ? 4.5 : 3}" fill="${last ? sr.color : '#000'}" stroke="${sr.color}" stroke-width="2"/>`; });
   });
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Verlauf ${esc(label)}">${g}</svg>`;
 }
 const LEG = (dash) => `<svg width="18" height="4" aria-hidden="true"><line x1="0" y1="2" x2="18" y2="2" stroke="#fff" stroke-width="3" ${dash ? 'stroke-dasharray="4 3"' : ''}/></svg>`;
+/* ---------- Fortschritt: fairer Vergleich unabhängig von Körpergewicht und Kraftniveau ----------
+   Pro Übung der Wert jeder Einheit (geschätzte Maximalkraft, Sekunden oder Wdh. pro Minute) im Verhältnis zum
+   Durchschnitt der ersten zwei Einheiten im Zeitraum. Körpergewichtsübungen mit festem Bezugsgewicht. */
+const PERIODS = { '4w': ['4 Wochen', 28], '3m': ['3 Monate', 91], all: ['Seit Start', 0] };
+let exMode = 'fort', exPeriod = '4w';
+function progress(p, id, per, type) {
+  const all = normalSessions(p, id).filter(h => h.sets.some(x => int(x.r) > 0));
+  if (!all.length) return null;
+  const ty = type || all[all.length - 1].type;
+  const days = PERIODS[per || exPeriod][1], from = days ? Date.now() - days * 864e5 : 0;
+  const hs = all.filter(h => h.type === ty && +new Date(h.ts) >= from);
+  if (hs.length < 3) return { n: hs.length, pts: [], pct: null };
+  const ref = ty === 'bw' ? bwRef(p, hs[0].ts) : 0;
+  const vals = hs.map(h => sessionStrength(h, null, p, ref));
+  const base = (vals[0] + vals[1]) / 2;
+  if (!(base > 0)) return { n: hs.length, pts: [], pct: null };
+  const pts = hs.map((h, i) => ({ t: +new Date(h.ts), v: Math.round((vals[i] / base - 1) * 1000) / 10 }));
+  return { n: hs.length, pts, pct: pts[pts.length - 1].v };
+}
+const fmtPct = v => (v == null ? '–' : `${v > 0.5 ? '+' : v < -0.5 ? '−' : '±'}${fmtN(Math.abs(Math.round(v)))} %`);
+const zusLabel = h => { const ss = h.sets.filter(x => int(x.r) > 0); if (!ss.length) return ''; const b = ss.reduce((a, x) => (int(x.r) > int(a.r) ? x : a)); const w = num(b.w); return w ? (w > 0 ? '+' : '−') + fmtN(Math.abs(w)) : ''; };
+// Startseite: Fortschritt der letzten 4 Wochen je Trainingstag, Durchschnitt über die gemeinsamen Übungen
+function progressCard() {
+  const s = st(), me = cfg.me, other = partner();
+  const rows = DAYS.map(d => {
+    const ids = s.plans[me][d].exercises.filter(x => !x.personal && s.plans[other][d].exercises.some(y => y.id === x.id)).map(x => x.id);
+    const of = p => ids.map(id => progress(p, id, '4w')).filter(r => r && r.pct != null).map(r => r.pct);
+    return { d, a: of(me), b: of(other) };
+  });
+  const all = k => rows.flatMap(r => r[k]);
+  if (!all('a').length && !all('b').length) return `<section class="card progcard"><div class="rowbetween"><b>Fortschritt · 4 Wochen</b></div><span class="small muted">Noch zu wenig Daten. Sobald eine gemeinsame Übung drei Trainings in den letzten 4 Wochen hat, vergleicht ihr hier euren Fortschritt in Prozent.</span></section>`;
+  const cell = (v, w) => `<span class="pv ${v != null && (w == null || v >= w) ? 'lead' : ''}">${fmtPct(v)}</span>`;
+  const line = (label, a, b, bold) => { const A = a.length ? avg(a) : null, B = b.length ? avg(b) : null; return `<div class="prow2 ${bold ? 'tot' : ''}">${label}${cell(A, B)}${cell(B, A)}</div>`; };
+  return `<section class="card progcard"><div style="display:flex;flex-direction:column;gap:2px"><b>Fortschritt · 4 Wochen</b><span class="small muted">Durchschnitt eurer gemeinsamen Übungen</span></div>
+    <div class="pgrid"><div class="prow2 hd"><span></span><span class="who">${avatar(me, 20)}Du</span><span class="who">${avatar(other, 20)}${esc(other)}</span></div>
+      ${rows.map(r => line(dayChip(r.d, me), r.a, r.b)).join('')}${line('<b>Gesamt</b>', all('a'), all('b'), true)}</div>
+    <span class="small muted">Steigerung gegenüber dem Anfang des Zeitraums. So vergleicht ihr fair, egal wie schwer oder stark jemand ist.</span></section>`;
+}
 function viewExercise(id) {
   const s = st(), me = cfg.me, other = partner();
-  const info = s.exInfo[id];
-  if (!info) return '<div class="empty">Diese Übung gibt es nicht.</div>';
+  const L = libGet(id), info = s.exInfo[id];
+  if (!info && !L) return '<div class="empty">Diese Übung gibt es nicht.</div>';
   const day = exerciseDay(id);
   const def = DAYS.map(d => s.plans[me][d].exercises.find(x => x.id === id)).find(Boolean) || DAYS.map(d => s.plans[other][d].exercises.find(x => x.id === id)).find(Boolean);
-  const type = (def && def.type) || info.type;
+  const type = (def && def.type) || (L && L.type) || info.type, name = (L && L.name) || (def && def.name) || info.name;
+  const cue = L ? L.cue : def && def.cue, video = (L && L.video) || (def && def.video);
   const sessionsOf = p => normalSessions(p, id, type);
-  const pct = type === 'bw' ? (def ? loadOf(def) : 100) : 0;
-  const total = type === 'bw' && pct > 0;
-  const hTotal = h => { const b = bwAt(h.person, h.ts); return b == null ? null : Math.max(...h.sets.map(x => totalLoad(b, h.load ?? pct, num(x.w)))); };
-  const weighted = type === 'kg' || (type === 'bw' && [me, other].some(p => sessionsOf(p).some(h => usesWeight(h.type, h.sets))));
-  const value = h => type === 'tr' ? score('tr', h.sets) % 1000 : type === 'time' ? Math.max(...h.sets.map(x => x.r)) : total ? hTotal(h) : weighted ? workW(h.sets) : sum(h.sets.map(x => x.r));
-  const label = type === 'tr' ? 'Wiederholungen, bester Satz' : type === 'time' ? 'Längster Satz (Sek.)' : type === 'kg' ? 'Schwerster Satz (kg)' : total ? 'Gesamtlast, schwerster Satz (kg)' : weighted ? 'Zusatzgewicht (kg)' : 'Wiederholungen gesamt';
-  const series = [me, other].map(p => ({ p, color: p === me ? '#fff' : 'rgba(255,255,255,.75)', dash: p !== me, points: sessionsOf(p).filter(h => h.sets.length).map(h => ({ t: +new Date(h.ts), v: value(h) })).filter(pt => pt.v != null) }));
-  const noBody = total ? [me, other].filter(p => sessionsOf(p).length && !s.bw[p].length) : [];
-  const best = p => {
-    const h = sessionsOf(p).filter(x => x.sets.length); if (!h.length) return '–';
-    if (total) { const v = h.map(hTotal).filter(x => x != null); return v.length ? fmtN(Math.max(...v)) + ' kg' : '–'; }
-    const b = h.reduce((a, x) => score(x.type, x.sets) > score(a.type, a.sets) ? x : a); return metricLabel(b.type, b.sets);
-  };
-  const sessLine = h => { const l = bwLines(h, h.person, h.ts, def); const ft = feelText(h); return `<div class="v">${l ? l.main : fmtSets(h.type, h.sets)}</div>${l ? `<div class="mono muted small">${esc(l.sub)}</div>` : ''}${ft ? `<div class="small muted">${esc(ft)}</div>` : ''}`; };
+  const absVal = h => type === 'tr' ? score('tr', h.sets) % 1000 : type === 'time' ? Math.max(...h.sets.map(x => int(x.r))) : type === 'kg' ? workW(h.sets) : Math.max(...h.sets.map(x => int(x.r)));
+  const absLabel = type === 'tr' ? 'Wiederholungen, bester Satz' : type === 'time' ? 'Längster Satz (Sek.)' : type === 'kg' ? 'Schwerster Satz (kg)' : 'Wiederholungen, bester Satz';
+  const fort = exMode === 'fort';
+  const prog = { [me]: progress(me, id, exPeriod, type), [other]: progress(other, id, exPeriod, type) };
+  const series = [me, other].map(p => ({ p, color: p === me ? '#fff' : 'rgba(255,255,255,.75)', dash: p !== me, points: fort ? (prog[p] ? prog[p].pts : []) : sessionsOf(p).filter(h => h.sets.length).map(h => ({ t: +new Date(h.ts), v: absVal(h), lab: type === 'bw' ? zusLabel(h) : '' })) }));
+  const best = p => { const h = sessionsOf(p).filter(x => x.sets.length); if (!h.length) return '–'; const b = h.reduce((a, x) => score(x.type, x.sets) > score(a.type, a.sets) ? x : a); return metricLabel(b.type, b.sets); };
+  const card = p => fort
+    ? `<span class="val">${prog[p] && prog[p].pct != null ? fmtPct(prog[p].pct) : '–'}</span><span class="eyebrow">${prog[p] && prog[p].pct != null ? PERIODS[exPeriod][0] : prog[p] ? `zu wenig Daten (${prog[p].n} von 3)` : 'noch nicht trainiert'}</span><span class="small muted">Bestwert ${esc(best(p))}</span>`
+    : `<span class="val">${esc(best(p))}</span><span class="eyebrow">Bestwert</span>`;
+  const basis = type === 'kg' || type === 'bw' ? 'geschätzte Maximalkraft' : type === 'tr' ? 'Wdh. pro Minute' : 'Sekunden';
+  const sessLine = h => { const ft = feelText(h); return `<div class="v">${fmtSets(h.type, h.sets)}</div>${ft ? `<div class="small muted">${esc(ft)}</div>` : ''}`; };
   const sessions = [...(s.hist[me][id] || []), ...(s.hist[other][id] || [])].sort((a, b) => b.ts.localeCompare(a.ts));
   return `<div style="display:flex;flex-direction:column;gap:8px">
       <div style="display:flex;gap:8px;align-items:center">${day ? dayChip(day, me, 'lg') : '<span class="tag" style="margin:0">Archiv</span>'}<span class="mono muted small">${TYPE_LABEL[type]}${def ? ` · ${def.sets}×${def.min}–${def.max}${isTimed(type) ? ' s' : ''}` : ''}</span></div>
-      <h1 style="margin:0;font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.1">${esc((def && def.name) || info.name)}</h1>
-      ${def && def.cue ? `<span class="muted" style="font-size:14px">${esc(def.cue)}</span>` : ''}
-      ${def && def.image ? `<img src="${esc(def.image)}" alt="${esc(def.name)}" loading="lazy" style="border-radius:14px">` : ''}
-      <a class="vlink" href="${esc(videoUrl(def || { name: info.name }))}" target="_blank" rel="noopener">▶ ${def && def.video ? 'Video ansehen' : 'Shorts auf YouTube'}</a>
+      <h1 style="margin:0;font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.1">${esc(name)}</h1>
+      ${cue ? `<span class="muted" style="font-size:14px;white-space:pre-line">${esc(cue)}</span>` : `<span class="small warn-t">Noch keine Ausführungshinweise hinterlegt.${L ? ` <button class="lnk" data-act="lib-open" data-id="${esc(L.id)}">In der Bibliothek ergänzen</button>` : ''}</span>`}
+      ${def && def.image ? `<img src="${esc(def.image)}" alt="${esc(name)}" loading="lazy" style="border-radius:14px">` : ''}
+      <a class="vlink" href="${esc(videoUrl({ name, video }))}" target="_blank" rel="noopener">▶ ${video ? 'Video ansehen' : 'Shorts auf YouTube'}</a>
     </div>
+    <div class="seg" role="group" aria-label="Ansicht"><button data-act="exmode" data-v="fort" aria-pressed="${fort}">Fortschritt</button><button data-act="exmode" data-v="abs" aria-pressed="${!fort}">Absolut</button></div>
+    ${fort ? `<div class="chips" role="group" aria-label="Zeitraum">${Object.entries(PERIODS).map(([k, [l]]) => `<button class="pchip ${k === exPeriod ? 'tonep' : ''}" data-act="exper" data-v="${k}" aria-pressed="${k === exPeriod}">${l}</button>`).join('')}</div>` : ''}
     <div class="stat2">
-      <div class="card"><span class="who">${avatar(me, 24)}Du</span><span class="val">${best(me)}</span><span class="eyebrow">Bestwert</span></div>
-      <div class="card"><span class="who">${avatar(other, 24)}${esc(other)}</span><span class="val">${best(other)}</span><span class="eyebrow">Bestwert</span></div>
+      <div class="card"><span class="who">${avatar(me, 24)}Du</span>${card(me)}</div>
+      <div class="card"><span class="who">${avatar(other, 24)}${esc(other)}</span>${card(other)}</div>
     </div>
-    <section class="card chart"><div class="rowbetween"><b>${label}</b><div class="legend"><span class="ln">${LEG(false)}Du</span><span class="ln">${LEG(true)}${esc(other)}</span></div></div>
-      ${chartSvg(series, label)}<span class="small muted">ohne Deload-Einheiten${total ? ` · Körpergewicht × ${pct} % + Zusatz/Abzug` : ''}${noBody.length ? ` · ${noBody.map(p => p === me ? 'Du hast' : esc(p) + ' hat').join(', ')} noch kein Körpergewicht eingetragen` : ''}</span></section>
-    ${def ? `<section class="card musc"><b>Muskeln</b>${musBlock(def, DAY_TONE[day] || 'y')}</section>` : ''}
+    <section class="card chart"><div class="rowbetween"><b>${fort ? 'Fortschritt in %' : absLabel}</b><div class="legend"><span class="ln">${LEG(false)}Du</span><span class="ln">${LEG(true)}${esc(other)}</span></div></div>
+      ${chartSvg(series, fort ? 'Fortschritt' : absLabel)}<span class="small muted">${fort ? `Gegenüber den ersten zwei Einheiten im Zeitraum · ${basis} · ohne Deload` : `ohne Deload-Einheiten${type === 'bw' ? ' · Zahl über dem Punkt: Zusatz (+) oder Hilfe (−) in kg' : ''}`}</span></section>
+    ${L || def ? `<section class="card musc"><div class="rowbetween"><b>Muskeln</b>${L ? `<button class="lnk" data-act="lib-open" data-id="${esc(L.id)}">Bearbeiten</button>` : ''}</div>${musBlock(def || { id, name, muscles: { p: L.p, s: L.s } }, DAY_TONE[day] || 'y')}</section>` : ''}
     <div class="sec-title"><h2>Alle Einheiten</h2></div>
     <section class="card">${sessions.length ? sessions.map(h => `<div class="sess"><div class="top"><span class="who" style="color:var(--fg)">${h.person === me ? 'Du' : esc(h.person)}</span><span class="mono">${fmtDate(h.ts)}${h.deload ? ' · Deload' : ''}</span></div>
       ${sessLine(h)}${h.note ? `<p class="quote muted">${esc(h.note)}</p>` : ''}</div>`).join('') : '<div class="empty">Noch nicht trainiert.</div>'}</section>`;
@@ -2816,104 +3077,123 @@ function viewWorkout(id) {
       ${imp.length ? `<div class="chips">${imp.map(i => `<span class="chip ${i.pr ? 'pr' : ''}">${esc(i.name)} ${esc(i.label)}${i.pr ? ' · Rekord' : ''}</span>`).join('')}</div>` : ''}</div>
     ${d.edited ? `<span class="small muted">Nachträglich bearbeitet${d.editedBy && d.editedBy !== e.person ? ` von ${d.editedBy === cfg.me ? 'dir' : esc(d.editedBy)}` : ''} am ${fmtDate(d.edited)}, ${fmtTime(d.edited)}</span>` : ''}
     <section class="card">${d.entries.map(en => `<a class="sess" href="#uebung:${encodeURIComponent(en.exId)}"><div class="top"><b style="color:var(--fg)">${esc(en.name)}${en.from ? ` <span class="small muted" style="font-weight:400">statt ${esc(en.from.name)}</span>` : ''}</b><span class="mono">${en.sets.length} ${en.sets.length === 1 ? 'Satz' : 'Sätze'}</span></div>
-      ${(() => { const l = bwLines(en, e.person, e.ts); const ft = feelText(en); return `<div class="v">${l ? l.main : fmtSets(en.type, en.sets)}</div>${l ? `<div class="mono muted small">${esc(l.sub)}</div>` : ''}${ft ? `<div class="small muted">${esc(ft)}</div>` : ''}`; })()}${en.note ? `<p class="quote muted">${esc(en.note)}</p>` : ''}</a>`).join('')}</section>
+      ${(() => { const ft = feelText(en); return `<div class="v">${fmtSets(en.type, en.sets)}</div>${ft ? `<div class="small muted">${esc(ft)}</div>` : ''}`; })()}${en.note ? `<p class="quote muted">${esc(en.note)}</p>` : ''}</a>`).join('')}</section>
     ${e.person === cfg.me ? (wDelAsk === e.id
       ? `<section class="card"><b>Training endgültig löschen?</b><span class="small muted">Es verschwindet bei dir und bei ${esc(partner())} aus Verlauf, Statistik und Rotation.</span><div class="btnrow"><button class="btn small danger" data-act="w-del-yes" data-id="${esc(e.id)}">Löschen</button><button class="btn small ghost" data-act="w-del-no">Abbrechen</button></div></section>`
       : `<div class="btnrow"><button class="btn glass" data-act="w-edit" data-id="${esc(e.id)}">Bearbeiten</button><button class="btn ghost danger-t" data-act="w-del" data-id="${esc(e.id)}">Löschen</button></div>`)
       : LS.get('dev', false) ? `<div class="btnrow"><button class="btn glass" data-act="w-edit" data-id="${esc(e.id)}">Bearbeiten (Entwickleroptionen)</button></div>` : ''}`;
 }
-/* ---------- Abgeschlossenes Training bearbeiten ---------- */
-let wedit = null, wDelAsk = null, devN = 8;
-function workoutForm() {
-  const w = st().workouts.find(x => x.id === wedit.id); if (!w) return;
-  const old = $('#wform'), bd = old && old.closest('.backdrop'), keep = old ? [old.scrollTop, bd ? bd.scrollTop : 0] : null;
-  const wfmt = (type, v) => typeof v === 'string' ? esc(v) : type === 'kg' ? fmtIn(v) : v ? (v < 0 ? '-' : '') + fmtIn(v) : '';
-  const other = w.person !== cfg.me;
-  const whyRowW = (en, i) => {
-    const out = [];
-    if (en.rm && en.rm.length) out.push(`<div class="why" role="group" aria-label="Warum weniger Sätze?"><span class="eyebrow">${en.rm.length} ${en.rm.length === 1 ? 'Satz' : 'Sätze'} weniger · warum?</span><div class="chips">${Object.entries(REM_WHY).map(([k, v]) => `<button type="button" class="pchip" data-act="we-why-rm" data-i="${i}" data-v="${k}" aria-pressed="${en.rm[en.rm.length - 1] === k}">${v}</button>`).join('')}</div></div>`);
-    const added = en.sets.filter(x => x.add || x.a);
-    if (added.length) { const la = added[added.length - 1]; out.push(`<div class="why" role="group" aria-label="Warum mehr Sätze?"><span class="eyebrow">${added.length} ${added.length === 1 ? 'Satz' : 'Sätze'} mehr · warum?</span><div class="chips">${Object.entries(ADD_WHY).map(([k, v]) => `<button type="button" class="pchip" data-act="we-why-add" data-i="${i}" data-v="${k}" aria-pressed="${la.a === k}">${v}</button>`).join('')}</div></div>`); }
-    return out.join('');
-  };
-  $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet full form" id="wform" novalidate>
-    ${sheetHead(`${other ? esc(w.person) + ' · ' : ''}${esc(dl(w.data.day))} · ${fmtDate(w.ts)}`, 'Training bearbeiten')}
-    <h2>Training bearbeiten</h2>
-    <p class="help" style="margin:0">Änderungen gelten auch für Steigerung und Statistik. ${other ? `${esc(w.person)} sieht das korrigierte Training und bekommt einen Hinweis in der Glocke.` : `${esc(partner())} sieht das korrigierte Training.`}</p>
-    ${wedit.entries.map((en, i) => `<section class="card wed" data-wi="${i}">
-      <div class="rowbetween" style="align-items:flex-start"><div style="display:flex;flex-direction:column;min-width:0"><b>${esc(en.name)}</b>${en.from ? `<span class="small muted">statt ${esc(en.from.name)}</span>` : ''}</div><span class="mono muted small" style="white-space:nowrap">${en.type === 'time' ? 'Sekunden' : en.type === 'tr' ? 'Sek. · Wdh.' : en.type === 'bw' ? '± kg · Wdh.' : 'kg · Wdh.'}</span></div>
-      ${en.sets.map((st2, j) => `<div class="wrow"><span class="n mono">${j + 1}</span>
-        ${en.type === 'time' ? '' : en.type === 'tr' ? `<input class="inp mono" data-we="w" data-i="${i}" data-j="${j}" inputmode="numeric" value="${esc(st2.w ?? st2.t ?? '')}" placeholder="Sek." aria-label="${esc(en.name)} Satz ${j + 1} Sekunden">` : `<input class="inp mono" data-we="w" data-i="${i}" data-j="${j}" inputmode="${en.type === 'bw' ? 'text' : 'decimal'}" value="${wfmt(en.type, st2.w)}" placeholder="${en.type === 'bw' ? '0' : 'kg'}" aria-label="${esc(en.name)} Satz ${j + 1} Gewicht">`}
-        <input class="inp mono" data-we="r" data-i="${i}" data-j="${j}" inputmode="numeric" value="${st2.r || ''}" placeholder="${en.type === 'time' ? 'Sek.' : 'Wdh.'}" aria-label="${esc(en.name)} Satz ${j + 1} ${en.type === 'time' ? 'Sekunden' : 'Wiederholungen'}"></div>
-        <div class="sfeel" role="group" aria-label="Wie war Satz ${j + 1}?">${Object.entries(SET_FEEL).map(([k, v]) => `<button type="button" data-act="we-feel" data-i="${i}" data-j="${j}" data-v="${k}" aria-pressed="${st2.f === k}">${v}</button>`).join('')}</div>`).join('')}
-      <div class="cardacts"><button type="button" class="addset" data-act="we-add" data-i="${i}">+ Satz</button><button type="button" class="addset" data-act="we-del" data-i="${i}" ${en.sets.length ? '' : 'disabled'}>− Satz</button><span class="sp"></span><button type="button" class="addset" data-act="we-swap" data-i="${i}">${ICON.swap} Tauschen</button></div>
-      ${whyRowW(en, i)}
-      <label>Notiz<textarea data-we="note" data-i="${i}" rows="2" maxlength="500">${esc(en.note || '')}</textarea></label>
-      ${wedit.ask === i
-        ? `<div class="btnrow"><button type="button" class="btn small danger" data-act="we-rmex-yes" data-i="${i}">${esc(en.name)} entfernen</button><button type="button" class="btn small ghost" data-act="we-rmex-no">Abbrechen</button></div>`
-        : `<button type="button" class="lnk danger-t" data-act="we-rmex" data-i="${i}" style="align-self:flex-start">Übung aus dem Training entfernen</button>`}
-    </section>`).join('')}
-    <button type="button" class="btn glass" data-act="we-addex">${ICON.plus} Übung hinzufügen</button>
-    <div class="err" id="we-err" hidden></div>
-    <div class="sbar"><button class="btn primary" type="submit">Änderungen speichern</button></div>
-  </form></div>`;
-  const nf = $('#wform'), nb = nf.closest('.backdrop');
-  if (wedit.focus != null) { const c = nf.querySelector(`[data-wi="${wedit.focus}"]`); wedit.focus = null; if (c) c.scrollIntoView({ block: 'start' }); }
-  else if (keep) { nf.scrollTop = keep[0]; if (nb) nb.scrollTop = keep[1]; }
+/* ---------- Abgeschlossenes Training bearbeiten: gleiche Karten und Möglichkeiten wie im Training ----------
+   Das Training wird als eigener Entwurf (edraft) geladen. Beim Anzeigen und bei Aktionen tritt er kurz an die Stelle
+   des laufenden Trainings, so laufen dieselben Karten und Knöpfe. Ein laufendes Training bleibt davon unberührt. */
+let edraft = (() => { const d = LS.get('edraft', null); return d && d.edit && Array.isArray(d.items) ? d : null; })(), wDelAsk = null, devN = 8;
+function withEd(fn) { const keep = draft; draft = edraft; try { return fn(); } finally { edraft = draft; draft = keep; } }
+function edSetOf(type, x) {
+  const base = { done: true, f: SET_FEEL[x.f] ? x.f : '', a: ADD_WHY[x.a] ? x.a : '' };
+  if (type === 'time') return blankSet(null, { ...base, r: String(int(x.r) || '') });
+  if (type === 'tr') return blankSet(null, { ...base, w: String(int(x.t) || ''), r: String(int(x.r) || '') });
+  const w = num(x.w);
+  if (type === 'bw') return blankSet(null, { ...base, w: w ? fmtIn(Math.abs(w)) : '', neg: w < 0, r: String(int(x.r) || '') });
+  return blankSet(null, { ...base, w: fmtIn(w), r: String(int(x.r) || '') });
 }
-function closeModal() {
-  if (swCtx && swCtx.mode === 'edit' && $('#swapform') && wedit) { const i = swCtx.i; swCtx = null; wedit.focus = i === 'add' ? null : i; workoutForm(); return; }
-  swCtx = null; $('#modal').innerHTML = '';
-}
-// Beim Öffnen: Sätze über dem Plan gelten als „mehr“ (für die Gründe), wie im Training
-function weditOf(w) {
+const edItem = (ex, sets, extra = {}) => ({ ex, note: '', feel: '', wu: [], swappedFrom: null, swapBy: null, removed: false, hint: '', kind: '', sets, tt: ex.type === 'tr' ? ex.min : 0, rm: [], ...extra });
+function openEdit(w) {
   const pl = st().plans[w.person][w.data.day];
-  const entries = clone(w.data.entries).map(en => {
-    const x = pl && pl.exercises.find(y => y.id === en.exId);
-    const n = x ? (w.data.deload ? Math.ceil((+x.sets || 1) / 2) : +x.sets || 0) - (en.rm ? en.rm.length : 0) : null;
-    en.sets.forEach((st2, j) => { if (st2.a || (n != null && j >= n)) st2.add = true; });
-    return en;
+  const planN = x => (w.data.deload ? Math.ceil((+x.sets || 1) / 2) : +x.sets || 1);
+  const items = w.data.entries.map(en => {
+    const L = libGet(en.exId), def = pl.exercises.find(y => y.id === en.exId);
+    const ex = def ? clone(def) : L ? exFromLib(L) : cleanEx({ id: en.exId, name: en.name, type: en.type });
+    ex.type = en.type;
+    const sets = en.sets.map(x => edSetOf(en.type, x));
+    const n = def ? planN(def) - (en.rm ? en.rm.length : 0) : null;
+    sets.forEach((x, j) => { if (x.a || (n != null && j >= n)) x.add = true; });
+    if (w.abort && def) for (let j = sets.length; j < n; j++) sets.push(blankSet(null));   // offene Sätze eines abgebrochenen Trainings
+    return edItem(ex, sets, { note: en.note || '', feel: en.feel || '', swappedFrom: en.from || null, tt: en.tt || (en.type === 'tr' ? ex.min : 0), rm: (en.rm || []).slice() });
   });
-  return { id: w.id, entries };
+  if (w.abort) pl.exercises.forEach(x => { if (!items.some(it => it.ex.id === x.id || (it.swappedFrom && it.swappedFrom.id === x.id))) items.push(edItem(clone(x), Array.from({ length: planN(x) }, () => blankSet(null)))); });
+  edraft = { edit: true, ref: w.id, person: w.person, day: w.data.day, title: w.data.title, start: w.data.start, deload: !!w.data.deload, swapIgnored: [], items };
+  LS.set('edraft', edraft);
+  location.hash = '#bearbeiten';
 }
-function readWorkoutForm() {
-  document.querySelectorAll('#wform [data-we]').forEach(el => {
-    const en = wedit.entries[+el.dataset.i];
-    if (el.dataset.we === 'note') { en.note = el.value; return; }
-    const set = en.sets[+el.dataset.j];
-    if (el.dataset.we === 'r') set.r = el.value;
-    else set.w = el.value;
-  });
+function viewEdit() {
+  const { done, tot } = workCount(), other = draft.person !== cfg.me;
+  return `<header class="trainhead" id="head">
+      <div class="row"><a class="iconbtn" href="#training-log:${encodeURIComponent(draft.ref)}" aria-label="Zurück ohne Speichern">${ICON.left}</a><span class="count" id="tp-count">${trainCountText()}</span><span style="width:44px"></span></div>
+      <div class="ttl"><div><h1 class="kurz">${esc(dl(draft.day, draft.person))}</h1><div class="sub">Bearbeiten · ${other ? esc(draft.person) + ' · ' : ''}${fmtDate(draft.start)}</div></div>${draft.deload ? '<span class="pill dl">Deload</span>' : ''}</div>
+      <div class="bar"><i id="tp-bar" style="width:${tot ? done / tot * 100 : 0}%"></i></div>
+    </header>
+    <main class="view notab">${other ? `<div class="small muted" style="padding:0 4px">${esc(draft.person)} sieht die Änderung in den Neuigkeiten und bekommt einen Hinweis in der Glocke.</div>` : ''}
+      ${draft.items.map((it, i) => exCard(it, i)).join('')}
+      <button class="btn glass" data-act="ed-addex">${ICON.plus} Übung hinzufügen</button></main>
+    <div class="trainbar"><button class="btn primary" data-act="ed-save">Änderungen speichern</button><button class="btn x" data-act="ed-cancel" aria-label="Änderungen verwerfen">${ICON.x}</button></div>`;
 }
-function saveWorkoutEdit() {
-  readWorkoutForm();
-  const w = st().workouts.find(x => x.id === wedit.id); if (!w) return;
-  const errW = m => { const e = $('#we-err'); e.textContent = m; e.hidden = false; e.scrollIntoView({ block: 'center' }); };
-  for (const en of wedit.entries) {
-    const j = en.sets.findIndex(x => !(int(x.r) > 0) || (en.type === 'tr' && !(int(x.w ?? x.t) > 0)));
-    if (j >= 0) return errW(`${en.name}: In Satz ${j + 1} fehlt ein Wert. Trag ihn ein oder entferne leere Sätze mit „− Satz“.`);
+// Tauschen oder Hinzufügen im Bearbeiten (läuft mit dem Bearbeiten-Entwurf)
+function edPickForm(i) {
+  const add = i === 'add', it = add ? null : draft.items[i];
+  PK = { ctx: 'edit', i, x: it ? it.ex : null, day: draft.day, sel: '', q: '', group: add ? 'Alle' : 'Passend', exclude: new Set(draft.items.map(t => t.ex.id)), vals: null };
+  PK.reopen = () => withEd(() => { const keep = PK; edPickForm(i); PK.sel = keep.sel; PK.q = keep.q; PK.vals = keep.vals; renderPick(); });
+  $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet full form tone-${DAY_TONE[draft.day]}" id="edpick" novalidate>
+    ${sheetHead(`${draft.person !== cfg.me ? esc(draft.person) + ' · ' : ''}${esc(dl(draft.day, draft.person))} · ${fmtDate(draft.start)}`, add ? 'Übung hinzufügen' : 'Übung tauschen')}
+    <h2>${add ? 'Übung hinzufügen' : 'Übung tauschen'}</h2>
+    <p class="help" style="margin:0">${add ? 'Für eine Übung, die gemacht, aber nicht eingetragen wurde. Die Sätze danach wie im Training eintragen und abhaken.' : `Ersetzt <b>${esc(it.ex.name)}</b> nur in diesem Training. Der Plan bleibt unverändert. Sätze, Wiederholungen und Bewertungen bleiben, das Gewicht nur bei gleicher Art.`}</p>
+    ${pickBlock(add ? 'Übung suchen' : 'Ersatzübung suchen')}
+    ${add ? `<label>Sätze<input class="inp" name="sets" inputmode="numeric" value="${esc(pkVal('sets', 3))}"></label>` : ''}
+    <div class="err" id="ep-err" hidden></div>
+    <div class="sbar"><button class="btn primary" type="submit">${add ? 'Hinzufügen' : 'Tauschen'}</button></div>
+  </form></div>`;
+  renderPick();
+}
+// Satzwerte beim Tausch: Wiederholungen und Bewertungen bleiben, Gewicht nur bei gleicher Art, Sekunden zwischen Zeit-Arten
+function convDSet(from, to, x) {
+  const o = { ...x }; if (from === to) return o;
+  const secs = from === 'time' ? x.r : from === 'tr' ? x.w : '', reps = from === 'time' ? '' : x.r;
+  Object.assign(o, { neg: false, alt: '', mk: '', lab: '', man: false });
+  if (to === 'time') { o.r = secs || ''; o.w = ''; } else if (to === 'tr') { o.w = secs || ''; o.r = reps || ''; } else { o.w = ''; o.r = reps || ''; }
+  if (!int(o.r) || to === 'kg' || (to === 'tr' && !int(o.w))) o.done = false;
+  return o;
+}
+function submitEdPick(form) {
+  const f = new FormData(form), err = m => { const e = $('#ep-err'); e.textContent = m; e.hidden = false; };
+  const L = libGet(PK && PK.sel); if (!L) return err('Bitte wähle eine Übung aus der Bibliothek oder erstelle eine neue.');
+  const ex = exFromLib(L);
+  if (PK.i === 'add') {
+    const n = int(f.get('sets')); if (!n || n > 10) return err('Sätze: bitte eine Zahl von 1 bis 10.');
+    draft.items.push(edItem(ex, Array.from({ length: n }, () => blankSet(null))));
+  } else {
+    const it = draft.items[PK.i]; if (L.id === it.ex.id) return err('Das ist dieselbe Übung.');
+    it.sets = it.sets.map(x => convDSet(it.ex.type, ex.type, x));
+    if (!it.swappedFrom) it.swappedFrom = { id: it.ex.id, name: it.ex.name };
+    if (it.swappedFrom.id === ex.id) it.swappedFrom = null;
+    it.ex = ex; it.tt = ex.type === 'tr' ? (it.tt || ex.min) : 0;
   }
-  const entries = wedit.entries.map(en => ({
-    exId: en.exId, name: en.name, type: en.type, feel: en.feel || '', note: String(en.note || '').trim().slice(0, 500),
-    ...(en.type === 'bw' && en.load != null ? { load: en.load } : {}),
-    ...(en.rm && en.rm.length ? { rm: en.rm } : {}), ...(en.tt ? { tt: en.tt } : {}), ...(en.from ? { from: en.from } : {}),
-    sets: en.sets.map(x => { const o = en.type === 'time' ? { r: int(x.r) } : en.type === 'tr' ? { t: int(x.w ?? x.t), r: int(x.r) } : { w: en.type === 'kg' ? Math.abs(num(String(x.w).replace('−', '-'))) : num(String(x.w).replace('−', '-')), r: int(x.r) }; if (SET_FEEL[x.f]) o.f = x.f; if (ADD_WHY[x.a]) o.a = x.a; return o; }).filter(x => x.r > 0)
-  })).filter(en => en.sets.length || en.note);
-  if (!entries.some(en => en.sets.length)) { const e = $('#we-err'); e.textContent = 'Mindestens ein Satz muss bleiben. Zum Entfernen des ganzen Trainings nutze „Löschen“.'; e.hidden = false; return; }
+  saveDraft(); PK = null; $('#modal').innerHTML = ''; render();
+  if (L.type === 'kg' && PK === null) toast('Gewicht eintragen und Sätze abhaken');
+}
+function saveEdit() {
+  const w = st().workouts.find(x => x.id === draft.ref);
+  if (!w) { draft = null; LS.set('edraft', null); location.hash = '#verlauf'; return; }
+  const kgEmpty = draft.items.find(it => it.ex.type === 'kg' && it.sets.some(x => (x.done || int(x.r) > 0) && !num(x.w)));
+  if (kgEmpty) { toast(`${kgEmpty.ex.name}: Gewicht fehlt.`); return; }
+  const entries = collectEntries();
+  if (!entries.some(en => en.sets.length)) { toast('Trag mindestens einen Satz ein. Ganz löschen geht im Verlauf.'); return; }
   const sig = en => JSON.stringify([en.sets, en.note || '', en.rm || []]);
-  const before = JSON.stringify(w.data.entries.map(en => [en.exId, sig(en)])), after = JSON.stringify(entries.map(en => [en.exId, sig(en)]));
-  if (before === after) { $('#modal').innerHTML = ''; wedit = null; return; }
-  // Was hat sich geändert? (für Neuigkeiten und die Glocke des anderen)
-  const old = w.data.entries, oldIds = new Set(old.map(en => en.exId)), newIds = new Set(entries.map(en => en.exId)), chg = [];
-  const swapped = new Set();
+  const old = w.data.entries;
+  const before = JSON.stringify(old.map(en => [en.exId, sig(en)])), after = JSON.stringify(entries.map(en => [en.exId, sig(en)]));
+  const ref = w.id; draft = null; LS.set('edraft', null);
+  if (before === after) { location.hash = '#training-log:' + ref; return; }
+  const oldIds = new Set(old.map(en => en.exId)), newIds = new Set(entries.map(en => en.exId)), chg = [], swapped = new Set();
   entries.forEach(en => { if (oldIds.has(en.exId)) return; if (en.from && oldIds.has(en.from.id) && !newIds.has(en.from.id)) { chg.push(`${en.from.name} → ${en.name}`); swapped.add(en.from.id); } else chg.push(`+ ${en.name}`); });
   old.forEach(en => { if (!newIds.has(en.exId) && !swapped.has(en.exId)) chg.push(`− ${en.name}`); });
   if (entries.some(en => { const o = old.find(x => x.exId === en.exId); return o && sig(o) !== sig(en); })) chg.push('Werte korrigiert');
-  addEvent('workout_edit', { ref: w.id, entries, chg, ...(w.person !== cfg.me ? { as: w.person } : {}) }, `${w.person !== cfg.me ? `Training von ${w.person}: ` : ''}${dl(w.data.day)} vom ${fmtDate(w.ts)} bearbeitet${chg.length ? ` (${chg.join(', ')})` : ''} · ` + entries.map(en => `${en.name}: ${fmtSets(en.type, en.sets)}${en.note ? ` (Notiz: ${en.note})` : ''}`).join(' | '));
-  $('#modal').innerHTML = ''; wedit = null; toast('Training geändert'); render();
+  addEvent('workout_edit', { ref, entries, chg, ...(w.person !== cfg.me ? { as: w.person } : {}) }, `${w.person !== cfg.me ? `Training von ${w.person}: ` : ''}${dl(w.data.day, w.person)} vom ${fmtDate(w.ts)} bearbeitet${chg.length ? ` (${chg.join(', ')})` : ''} · ` + entries.map(en => `${en.name}: ${fmtSets(en.type, en.sets)}${en.note ? ` (Notiz: ${en.note})` : ''}`).join(' | '));
+  toast(w.person !== cfg.me ? `Gespeichert. ${w.person} bekommt einen Hinweis.` : 'Training gespeichert');
+  location.hash = '#training-log:' + ref;
 }
-
-/* ---------- Profil ---------- */
+function closeModal() {
+  if (LF && LF.opts && LF.opts.cancel && $('#libform')) { const c = LF.opts.cancel; LF = null; c(); return; }
+  if (PK && PK.ctx === 'merge' && PK.back && $('#mergeform')) { const b = PK.back; PK = null; const L = st().lib[b.id]; LF = null; if (L) libForm(L, b.opts); else $('#modal').innerHTML = ''; return; }
+  PK = null; LF = null; $('#modal').innerHTML = '';
+}
 function viewProfile(p) {
   const s = st(), own = p === cfg.me;
   const ws = s.workouts.filter(w => w.person === p);
@@ -3116,7 +3396,7 @@ function viewPlan() {
   const b = builder, d = b.day, w = b.work[d], other = partner();
   const seg = `<div class="seg" role="group" aria-label="Trainingstag">${DAYS.map(k => `<button data-act="bday" data-v="${k}" aria-pressed="${k === d}"><i class="dot t-${DAY_TONE[k]}" style="width:9px;height:9px;margin-right:6px;vertical-align:1px"></i>${esc(b.work[k].short || DAY_SHORT[k])}${b.dirty[k] ? '<i class="mark"></i>' : ''}</button>`).join('')}</div>`;
   const rows = w.exercises.map((x, i) => `<div class="prow">
-      <div class="n"><b>${esc(x.name)}</b><span class="small muted">${TYPE_LABEL[x.type]} · ${x.sets}×${x.min}–${x.max}${isTimed(x.type) ? ' s' : ''}${x.type === 'bw' ? ` · KG ${loadOf(x)} %` : ''}${x.type !== 'time' && x.step ? ` · +${fmtN(x.step)} kg` : ''}</span>
+      <div class="n"><b>${esc(x.name)}</b><span class="small muted">${TYPE_LABEL[x.type]} · ${x.sets}×${x.min}–${x.max}${isTimed(x.type) ? ' s' : ''}${x.type !== 'time' && x.step ? ` · +${fmtN(x.step)} kg` : ''}</span>
         ${x.personal || x.warmup ? `<span class="tags">${x.personal ? '<span class="tag">Nur ich</span>' : ''}${x.warmup ? '<span class="tag">Aufwärmsatz</span>' : ''}</span>` : ''}</div>
       <div class="tools"><button class="tool" data-act="bmove" data-i="${i}" data-v="-1" aria-label="Nach oben" ${i === 0 ? 'disabled' : ''}>${ICON.up}</button><button class="tool" data-act="bmove" data-i="${i}" data-v="1" aria-label="Nach unten" ${i === w.exercises.length - 1 ? 'disabled' : ''}>${ICON.down}</button></div>
       <div class="acts"><button data-act="bedit" data-i="${i}">Bearbeiten</button><button data-act="breplace" data-i="${i}">Austauschen</button><button class="del" data-act="bremove" data-i="${i}">Entfernen</button></div>
@@ -3135,73 +3415,67 @@ function viewPlan() {
 }
 function markDirty() { builder.dirty[builder.day] = diffPlan(st().plans[cfg.me][builder.day], builder.work[builder.day], false).length > 0; }
 const sheetHead = (eyebrow, title) => `<div class="shead"><button type="button" class="iconbtn" data-act="mclose" aria-label="Zurück ohne Speichern">${ICON.left}</button><span class="shead-t"><span class="eyebrow">${eyebrow}</span><b>${title}</b></span></div>`;
-function exerciseForm(mode, i) {
-  const w = builder.work[builder.day];
-  const old = mode === 'add' ? null : w.exercises[i];
-  sugGroup = '';
-  const x = mode === 'edit' ? old : { id: '', name: '', muscles: { p: [], s: [] }, type: old ? old.type : 'kg', sets: old ? old.sets : 3, min: old ? old.min : 8, max: old ? old.max : 12, step: old ? old.step : 2.5, cue: '', video: '', image: '', warmup: false, personal: old ? old.personal : false, load: old && old.type === 'bw' ? loadOf(old) : 100 };
-  const curLoad = x.type === 'bw' ? loadOf(x) : 100;
-  const title = mode === 'add' ? 'Neue Übung' : mode === 'edit' ? 'Übung bearbeiten' : 'Übung austauschen';
-  $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet full form" id="exform" data-mode="${mode}" data-i="${i ?? ''}" novalidate>
+function exerciseForm(mode, i, keep) {
+  const w = builder.work[builder.day], old = mode === 'add' ? null : w.exercises[i];
+  if (!keep || !PK || PK.ctx !== 'plan') {
+    PK = { ctx: 'plan', mode, i, x: mode === 'replace' ? old : null, day: builder.day, sel: mode === 'edit' ? old.id : '', q: '', group: mode === 'replace' ? 'Passend' : 'Alle', exclude: new Set(w.exercises.map(y => y.id)), vals: null };
+  }
+  PK.reopen = () => exerciseForm(mode, i, true);
+  PK.onSel = L => planFormSel(L, true);
+  const x = mode === 'edit' ? old : { sets: old ? old.sets : 3, min: old ? old.min : 8, max: old ? old.max : 12, step: old && !isTimed(old.type) ? old.step : 2.5, warmup: false, personal: old ? old.personal : false, image: '', type: old ? old.type : 'kg' };
+  const title = mode === 'add' ? 'Neue Übung' : mode === 'edit' ? 'Übung im Plan' : 'Übung austauschen';
+  const v = (k, d) => esc(pkVal(k, d));
+  $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet full form tone-${DAY_TONE[builder.day]}" id="exform" data-mode="${mode}" data-i="${i ?? ''}" novalidate>
     ${sheetHead(`${esc(w.short || DAY_SHORT[builder.day])} · ${esc(w.title || '')}`, title)}
     <h2>${title}</h2>
     ${mode === 'replace' ? `<p class="help" style="margin:0">Ersetzt <b>${esc(old.name)}</b>. Deren bisherige Einträge bleiben im Archiv erhalten.</p>` : ''}
-    ${mode === 'edit' ? `<p class="help" style="margin:0">Änderungen hier gelten für dieselbe Übung, ihr Verlauf läuft weiter. Für eine andere Übung nutze „Austauschen“.</p>` : ''}
-    <label>${mode === 'edit' ? 'Name' : 'Name oder Suche'}<input class="inp" id="f-name" name="name" value="${esc(x.name)}" maxlength="60" required autocomplete="off"></label>
-    ${mode === 'edit' ? '' : '<div id="f-sug" class="sug"></div>'}
-    <input type="hidden" id="f-libid" name="libid" value="">
-    <label>Art<select id="f-type" name="type">${Object.entries(TYPE_LABEL).map(([k, v]) => `<option value="${k}" ${x.type === k ? 'selected' : ''}>${v}${k === 'bw' ? ' (Wdh., optional ± kg)' : k === 'time' ? ' (Sekunden)' : k === 'tr' ? ' (Sekunden mit Timer, Wdh. zählen)' : ' (kg + Wdh.)'}</option>`).join('')}</select></label>
-    <div id="f-load-l" class="loadbox" ${x.type === 'bw' ? '' : 'hidden'}>
-      <label>Lastanteil Körpergewicht<span class="field pctf"><input id="f-load" name="load" inputmode="numeric" autocomplete="off" value="${curLoad}" aria-label="Lastanteil Körpergewicht in Prozent"><span>%</span></span>
-        <span class="help">Anteil, der in die Gesamtlast eingeht. Eigene Zahl eintragen oder Vorlage wählen. Wird mit ${esc(partner())} abgeglichen.</span></label>
-      <div class="chips loadchips">${st().presets.map(pr => `<button type="button" class="pchip" data-act="fload" data-v="${pr.pct}" aria-pressed="${pr.pct === curLoad}">${pr.pct} % ${esc(pr.name)}</button>`).join('')}<a class="pchip lnk" href="#vorlagen" data-act="mclose">Vorlagen bearbeiten</a></div>
-    </div>
-    <div class="musform"><span class="eyebrow">Muskeln · wird mit ${esc(partner())} abgeglichen</span>
-      <div id="f-mus-prev">${musPreview(musOf(x), DAY_TONE[builder.day])}</div>
-      <input type="hidden" id="f-muscles" name="muscles" value="${esc(JSON.stringify(musOf(x)))}">
-      <button type="button" class="btn small" data-act="mus-edit">Muskeln bearbeiten</button></div>
-    <div class="grid3"><label>Sätze<input class="inp" id="f-sets" name="sets" inputmode="numeric" value="${x.sets}"></label>
-      <label><span id="f-unit-min">${isTimed(x.type) ? 'Sek. von' : 'Wdh. von'}</span><input class="inp" id="f-min" name="min" inputmode="numeric" value="${x.min}"></label>
-      <label>bis<input class="inp" id="f-max" name="max" inputmode="numeric" value="${x.max}"></label></div>
-    <label class="chk" id="f-warm-l" ${x.type === 'kg' ? '' : 'hidden'}><input type="checkbox" id="f-warmup" name="warmup" ${x.warmup ? 'checked' : ''}><span>Aufwärmsatz<small>Ein Satz mit 60 % × 6 vor den Arbeitssätzen. Wird mit ${esc(partner())} abgeglichen.</small></span></label>
-    <label class="chk"><input type="checkbox" id="f-personal" name="personal" ${x.personal ? 'checked' : ''}><span>Abweichende Übung (nur ich)<small>Gehört nicht zum gemeinsamen Training und löst bei ${esc(partner())} nie eine Meldung aus.</small></span></label>
+    ${mode === 'edit' ? '' : pickBlock('Übung aus der Bibliothek')}
+    <div id="pf-info"></div>
+    <div class="grid3"><label>Sätze<input class="inp" id="f-sets" name="sets" inputmode="numeric" value="${v('sets', x.sets)}"></label>
+      <label><span id="f-unit-min">${isTimed(x.type) ? 'Sek. von' : 'Wdh. von'}</span><input class="inp" id="f-min" name="min" inputmode="numeric" value="${v('min', x.min)}"></label>
+      <label>bis<input class="inp" id="f-max" name="max" inputmode="numeric" value="${v('max', x.max)}"></label></div>
+    <label class="chk" id="f-warm-l" ${x.type === 'kg' ? '' : 'hidden'}><input type="checkbox" id="f-warmup" name="warmup" ${pkVal('warmup', x.warmup ? 'on' : '') === 'on' ? 'checked' : ''}><span>Aufwärmsatz<small>Ein Satz mit 60 % × 6 vor den Arbeitssätzen. Wird mit ${esc(partner())} abgeglichen.</small></span></label>
+    <label class="chk"><input type="checkbox" id="f-personal" name="personal" ${pkVal('personal', x.personal ? 'on' : '') === 'on' ? 'checked' : ''}><span>Abweichende Übung (nur ich)<small>Gehört nicht zum gemeinsamen Training und löst bei ${esc(partner())} nie eine Meldung aus.</small></span></label>
     <div class="persbox"><div class="eyebrow">Persönlich · wird nicht abgeglichen</div>
-      <label id="f-step-l" ${isTimed(x.type) ? 'hidden' : ''}><span id="f-step-t">${x.type === 'bw' ? 'Steigerung Zusatzgewicht in kg (0 = keine)' : 'Steigerung in kg'}</span><input class="inp" id="f-step" name="step" inputmode="decimal" value="${fmtIn(x.step || 0)}"><span class="help">Wird vorgeschlagen, wenn alle Sätze die obere Wdh.-Zahl erreichen.</span></label>
-      <label>Ausführung<textarea id="f-cue" name="cue" rows="3" maxlength="500">${esc(x.cue)}</textarea></label>
-      <label>Video-Link (optional)<input class="inp" id="f-video" name="video" type="url" inputmode="url" value="${esc(x.video)}" placeholder="https://youtube.com/shorts/…"><span class="help">Leer lassen: Die App sucht passende YouTube Shorts zur Ausführung.</span></label>
-      <label>Bild-Link (optional)<input class="inp" id="f-image" name="image" type="url" inputmode="url" value="${esc(x.image)}" placeholder="https://…/bild.jpg"></label>
+      <label id="f-step-l" ${isTimed(x.type) ? 'hidden' : ''}><span id="f-step-t">${x.type === 'bw' ? 'Steigerung Zusatzgewicht in kg (0 = keine)' : 'Steigerung in kg'}</span><input class="inp" id="f-step" name="step" inputmode="decimal" value="${v('step', fmtIn(x.step || 0))}"><span class="help">Wird vorgeschlagen, wenn alle Sätze die obere Wdh.-Zahl erreichen.</span></label>
+      <label>Bild-Link (optional)<input class="inp" id="f-image" name="image" type="url" inputmode="url" value="${v('image', x.image || '')}" placeholder="https://…/bild.jpg"></label>
     </div>
     <div class="err" id="f-err" hidden></div>
     <div class="sbar"><button class="btn primary" type="submit">${mode === 'replace' ? 'Austauschen' : 'Übernehmen'}</button></div>
   </form></div>`;
-  if (mode !== 'edit') renderSug();
-  setTimeout(() => { const n = $('#f-name'); if (n && mode !== 'edit') n.focus(); }, 50);
+  if (mode !== 'edit') renderPick();
+  planFormSel(libGet(PK.sel), false);
+}
+// Gewählte Übung im Plan-Formular: Art, Muskeln, Ausführung aus der Bibliothek, Spanne als Vorschlag
+function planFormSel(L, fill) {
+  const box = $('#pf-info'); if (!box) return;
+  if (!L) { box.innerHTML = ''; return; }
+  const tk = DAY_TONE[builder.day], timed = isTimed(L.type);
+  box.innerHTML = `<div class="pfinfo"><div class="rowbetween"><b>${esc(L.name)}</b><span class="tag" style="margin:0">${TYPE_LABEL[L.type]}</span></div>
+    ${musPreview({ p: L.p, s: L.s }, tk)}
+    <span class="small ${L.cue ? 'muted' : 'warn-t'}">${L.cue ? esc(L.cue) : 'Noch keine Ausführungshinweise hinterlegt.'}</span>
+    <button type="button" class="btn small ghost" data-act="lib-edit" data-id="${esc(L.id)}" style="align-self:flex-start">In der Bibliothek bearbeiten</button></div>`;
+  if (fill && PK.mode !== 'edit') { $('#f-sets').value = L.sets; $('#f-min').value = L.min; $('#f-max').value = L.max; if (timed) $('#f-step').value = '0'; else if (!num($('#f-step').value)) $('#f-step').value = fmtIn(2.5); }
+  $('#f-unit-min').textContent = timed ? 'Sek. von' : 'Wdh. von';
+  $('#f-warm-l').hidden = L.type !== 'kg';
+  $('#f-step-l').hidden = timed;
+  $('#f-step-t').textContent = L.type === 'bw' ? 'Steigerung Zusatzgewicht in kg (0 = keine)' : 'Steigerung in kg';
 }
 function submitExercise(form) {
   const f = new FormData(form), mode = form.dataset.mode, i = +form.dataset.i;
-  const w = builder.work[builder.day];
-  const name = String(f.get('name') || '').trim();
-  const type = f.get('type');
+  const w = builder.work[builder.day], old = mode === 'add' ? null : w.exercises[i];
+  const err = m => { const e = $('#f-err'); e.textContent = m; e.hidden = false; e.scrollIntoView({ block: 'center' }); };
+  const L = libGet(PK && PK.sel);
+  if (!L) return err('Bitte wähle eine Übung aus der Bibliothek oder erstelle eine neue.');
   const sets = int(f.get('sets')), min = int(f.get('min')), max = int(f.get('max'));
-  const err = m => { const e = $('#f-err'); e.textContent = m; e.hidden = false; };
-  if (!name) return err('Bitte gib einen Namen ein.');
   if (!sets || sets > 10) return err('Sätze: bitte eine Zahl von 1 bis 10.');
   if (!min || !max || min > max) return err('Bitte gib eine gültige Spanne an, z. B. 8 bis 12.');
-  const url = v => { v = String(v || '').trim(); return /^https?:\/\//i.test(v) ? v : ''; };
-  const data = { name, type, sets, min, max, step: isTimed(type) ? 0 : Math.max(0, num(f.get('step'))), cue: String(f.get('cue') || '').trim(), video: url(f.get('video')), image: url(f.get('image')), warmup: type === 'kg' && f.get('warmup') === 'on', personal: f.get('personal') === 'on' };
-  try { data.muscles = cleanMuscles(JSON.parse(f.get('muscles') || 'null')) || { p: [], s: [] }; } catch (e) { data.muscles = { p: [], s: [] }; }
-  const libId = String(f.get('libid') || '');
-  const used = id => DAYS.some(d => builder.work[d].exercises.some(y => y.id === id));
-  const newId = () => (LIB_BY_ID[libId] && LIB_BY_ID[libId][1] === name && !used(libId) ? libId : 'u-' + uid().slice(0, 8));
-  if (type === 'bw') {
-    const lv = String(f.get('load') ?? '').trim();
-    if (!/^\d{1,3}$/.test(lv) || +lv > 200) return err('Lastanteil: bitte eine Zahl von 0 bis 200 eintragen.');
-    data.load = +lv;
-  }
-  if (mode === 'edit') { Object.assign(w.exercises[i], data); if (type !== 'bw') delete w.exercises[i].load; }
-  else if (mode === 'add') w.exercises.push({ id: newId(), ...data });
-  else { const old = w.exercises[i]; w.exercises.splice(i, 1, { id: newId(), replaces: old.id, ...data }); }
-  $('#modal').innerHTML = ''; markDirty(); render();
+  if (w.exercises.some((y, k) => y.id === L.id && !(mode !== 'add' && k === i))) return err(`${L.name} ist schon in diesem Trainingstag.`);
+  const data = { id: L.id, name: L.name, type: L.type, sets, min, max, step: isTimed(L.type) ? 0 : Math.max(0, num(f.get('step'))), cue: L.cue, video: L.video, image: safeUrl(f.get('image')), warmup: L.type === 'kg' && f.get('warmup') === 'on', personal: f.get('personal') === 'on', muscles: { p: L.p.slice(), s: L.s.slice() } };
+  if (mode === 'edit') Object.assign(w.exercises[i], data);
+  else if (mode === 'add') w.exercises.push(data);
+  else w.exercises.splice(i, 1, { ...data, replaces: old.id });
+  PK = null; $('#modal').innerHTML = ''; markDirty(); render();
 }
 function savePlan() {
   const d = builder.day, w = builder.work[d];
@@ -3209,7 +3483,7 @@ function savePlan() {
   const changes = diffPlan(st().plans[cfg.me][d], w, false);
   if (!changes.length) { builder.dirty[d] = false; render(); return; }
   const notify = sharedDiff(st().plans[cfg.me][d], w).length > 0 && sharedDiff(st().plans[partner()][d], w).length > 0;
-  addEvent('plan_change', { day: d, title: w.title, short: w.short, exercises: clone(w.exercises), changes }, `${w.short} geändert: ${changes.map(diffText).join('; ')}`);
+  addEvent('plan_change', { day: d, title: w.title, short: w.short, exercises: clone(w.exercises), changes, v2: true }, `${w.short} geändert: ${changes.map(diffText).join('; ')}`);
   builder.dirty[d] = false;
   toast(notify ? `${w.short} gespeichert. ${partner()} bekommt einen Hinweis.` : `${w.short} gespeichert.`);
   render();
@@ -3223,8 +3497,6 @@ function viewSettings() {
   return `<h1 class="display" style="font-size:30px">Einstellungen</h1>
     <div class="secl">Profil</div>
     <div class="rows glass"><label class="row" style="min-height:72px">${avatar(cfg.me, 46)}<span style="display:flex;flex-direction:column"><b>${esc(cfg.me)}</b><span class="small muted">Profilbild sehen beide</span></span><span class="v" style="color:var(--fg);font-family:var(--body);font-weight:600">Ändern</span><input type="file" id="av-file2" accept="image/*" hidden></label></div>
-    <div class="secl">Plan</div>
-    <div class="rows glass"><a class="row" href="#vorlagen">Lastanteil-Vorlagen<span class="v">${st().presets.length} ${st().presets.length === 1 ? 'Vorlage' : 'Vorlagen'}</span>${ICON.right}</a></div>
     <div class="secl">Vault</div>
     <div class="rows glass">
       ${hasVault ? `<button class="row" data-act="v-change">Vault-Code ändern<span class="v">• • • •</span></button>
@@ -3261,39 +3533,8 @@ function viewSettings() {
       ${resetAsk ? `<div class="btnrow"><button class="btn small danger" data-act="reset-yes">Ja, zurücksetzen</button><button class="btn small ghost" data-act="reset-no">Abbrechen</button></div>` : `<button class="btn danger" data-act="reset-ask">Zurücksetzen</button>`}
     </section>`;
 }
-/* ---------- Lastanteil-Vorlagen (gemeinsam für beide) ---------- */
-let presetEdit = null;
 const musOpen = new Set();
 document.addEventListener('toggle', e => { const d = e.target; if (d && d.matches && d.matches('details.mus')) { if (d.open) musOpen.add(d.dataset.ex); else musOpen.delete(d.dataset.ex); } }, true);
-const presetsDirty = () => presetEdit && JSON.stringify(presetEdit) !== JSON.stringify(st().presets);
-function viewPresets() {
-  if (!presetEdit) presetEdit = clone(st().presets);
-  const rows = presetEdit.map((pr, i) => `<div class="prerow">
-      <input class="prename" id="pre-n-${i}" data-pre="name" data-i="${i}" value="${esc(pr.name)}" maxlength="40" placeholder="Name, z. B. Australian Pull-ups" aria-label="Name der Vorlage ${i + 1}">
-      <span class="field pctf"><input id="pre-p-${i}" data-pre="pct" data-i="${i}" inputmode="numeric" autocomplete="off" value="${pr.pct === '' ? '' : esc(pr.pct)}" placeholder="–" aria-label="Prozent für ${esc(pr.name || 'Vorlage ' + (i + 1))}"><span>%</span></span>
-      <button class="predel" data-act="pre-del" data-i="${i}" aria-label="Vorlage ${esc(pr.name || i + 1)} löschen">${ICON.trash}</button>
-    </div>`).join('');
-  return `<h1 class="display" style="font-size:30px">Lastanteil-Vorlagen</h1>
-    <p class="muted" style="margin:0;font-size:14px">Erscheinen als Schnellwahl im Plan-Builder bei Körpergewichtsübungen. Gelten für dich und ${esc(partner())}.</p>
-    <div class="secl">Vorlagen</div>
-    <div class="rows glass prerows">${rows || '<div class="empty" style="padding:16px">Keine Vorlagen. Im Builder kannst du den Wert trotzdem frei eintragen.</div>'}</div>
-    <div class="cardacts" style="padding:0 4px"><button class="addset" data-act="pre-add">+ Vorlage</button><span class="sp"></span><button class="addset muted" data-act="pre-reset">Standard wiederherstellen</button></div>
-    <div class="err" id="pre-err" hidden></div>
-    ${presetsDirty() ? `<div style="height:56px"></div><div class="savebar"><span>Ungespeicherte Änderungen</span><button class="btn ghost" data-act="pre-discard">Verwerfen</button><button class="btn primary" data-act="pre-save">Speichern</button></div>` : ''}`;
-}
-function savePresets() {
-  const err = m => { const e = $('#pre-err'); if (e) { e.textContent = m; e.hidden = false; } };
-  const list = [];
-  for (const pr of presetEdit) {
-    const name = String(pr.name || '').trim(), v = String(pr.pct ?? '').trim();
-    if (!name && !v) continue;
-    if (!name) return err('Jede Vorlage braucht einen Namen.');
-    if (!/^\d{1,3}$/.test(v) || +v > 200) return err(`„${name}“: bitte einen Wert von 0 bis 200 % eintragen.`);
-    list.push({ name: name.slice(0, 40), pct: +v });
-  }
-  addEvent('load_presets', { list, reset: !list.length }, `Lastanteil-Vorlagen: ${list.map(x => `${x.name} ${x.pct} %`).join(', ') || 'Standard'}`);
-  presetEdit = null; toast(`Vorlagen gespeichert. Gilt auch für ${partner()}.`); render();
-}
 function vaultCloudText() {
   const m = vmeta(), c = vcloud();
   if (!m || m.v !== 2) return 'nach dem nächsten Öffnen';
@@ -3405,20 +3646,13 @@ const actions = {
     const l = it.sets.pop(); if (!l.add) it.rm.push('');
     saveDraft(); rerenderCard(i);
   },
-  'swap-open': t => swapForm(+t.dataset.i),
+  'swap-open': t => (draft && draft.edit ? edPickForm(+t.dataset.i) : swapForm(+t.dataset.i)),
   'mus-full': t => { const x = exById(t.dataset.ex); if (x) openMusFull(x, t.dataset.tone); },
   'mf-side': t => { const f = $('#mf-flip'); if (!f) return; f.classList.toggle('turned', t.dataset.v === 'b'); document.querySelectorAll('[data-act="mf-side"]').forEach(b => b.setAttribute('aria-pressed', String(b === t))); },
   'mus-edit': () => openMusEditor(),
   'me-side': t => { musEd.view = t.dataset.v; musEdRender(); },
   'me-cancel': () => { const o = $('#museditor'); if (o) o.remove(); musEd = null; },
   'me-done': () => { $('#f-muscles').value = JSON.stringify(musEd.m); $('#f-mus-prev').innerHTML = musPreview(musEd.m, musEd.tk); const o = $('#museditor'); if (o) o.remove(); musEd = null; },
-  'sug-g': t => { sugGroup = t.dataset.v; renderSug(); },
-  'sug-pick': t => pickSug(t.dataset.id),
-  'sw-g': t => { swGroup = t.dataset.v; renderSwSug(); },
-  'sw-pick': t => pickSw(t.dataset.id),
-  'sw-clear': () => { $('#sw-lib').value = ''; $('#sw-name').value = ''; renderSwSug(); $('#sw-name').focus(); },
-  'sug-close': () => { sugGroup = ''; $('#f-sug').innerHTML = ''; },
-  fload: t => { const el = $('#f-load'); if (el) el.value = t.dataset.v; document.querySelectorAll('.loadchips .pchip[data-v]').forEach(b => b.setAttribute('aria-pressed', String(b === t))); },
   'swap-follow': t => {
     const sw = st().swaps.find(e => e.id === t.dataset.id), i = +t.dataset.i; if (!sw) return;
     doSwap(i, clone(sw.data.to), { id: sw.data.fromId, name: sw.data.fromName }, sw.person, false); render(); toast('Getauscht');
@@ -3438,6 +3672,8 @@ const actions = {
     toast(from === todayStr() ? 'Körpergewicht gespeichert' : 'Körpergewicht für diesen Zeitraum gespeichert'); render();
   },
   vtab: t => { verlaufTab = t.dataset.v; render(); },
+  exmode: t => { exMode = t.dataset.v; render(); },
+  exper: t => { exPeriod = t.dataset.v; render(); },
   calmove: t => { cal.m += +t.dataset.v; if (cal.m < 0) { cal.m = 11; cal.y--; } if (cal.m > 11) { cal.m = 0; cal.y++; } render(); },
   calday: t => { cal.sel = t.dataset.v; render(); },
   nfilter: t => { notesFilter = t.dataset.v; render(); },
@@ -3451,27 +3687,32 @@ const actions = {
   breplace: t => exerciseForm('replace', +t.dataset.i),
   badd: () => exerciseForm('add'),
   bremove: t => { const a = builder.work[builder.day].exercises; const x = a.splice(+t.dataset.i, 1)[0]; markDirty(); render(); toast(`${x.name} entfernt. Speichern nicht vergessen.`); },
-  'pre-add': () => { presetEdit.push({ name: '', pct: '' }); render(); const n = document.getElementById(`pre-n-${presetEdit.length - 1}`); if (n) n.focus(); },
-  'pre-del': t => { presetEdit.splice(+t.dataset.i, 1); render(); },
-  'pre-reset': () => { presetEdit = clone(DEFAULT_PRESETS); render(); },
-  'pre-discard': () => { presetEdit = null; render(); },
-  'pre-save': () => savePresets(),
   bdiscard: () => { builder.work[builder.day] = clone(st().plans[cfg.me][builder.day]); builder.dirty[builder.day] = false; render(); },
   bsave: () => savePlan(),
-  'w-edit': t => { const w = st().workouts.find(x => x.id === t.dataset.id); if (!w || (w.person !== cfg.me && !LS.get('dev', false))) return; wedit = weditOf(w); workoutForm(); },
-  'we-add': t => { readWorkoutForm(); const en = wedit.entries[+t.dataset.i], l = en.sets[en.sets.length - 1];
-    if (en.rm && en.rm.length) { en.rm.pop(); en.sets.push({ w: l ? (l.w ?? l.t ?? '') : '', r: '' }); }   // gestrichenen Satz zurückholen
-    else en.sets.push({ w: l ? (l.w ?? l.t ?? '') : '', r: '', add: true });
-    workoutForm(); },
-  'we-del': t => { readWorkoutForm(); const en = wedit.entries[+t.dataset.i]; if (!en.sets.length) return; const x = en.sets.pop(); if (!x.add && !x.a) (en.rm = en.rm || []).push(''); workoutForm(); },
-  'we-feel': t => { readWorkoutForm(); const x = wedit.entries[+t.dataset.i].sets[+t.dataset.j]; x.f = x.f === t.dataset.v ? '' : t.dataset.v; workoutForm(); },
-  'we-why-rm': t => { readWorkoutForm(); const en = wedit.entries[+t.dataset.i], k = en.rm.length - 1; en.rm[k] = en.rm[k] === t.dataset.v ? '' : t.dataset.v; workoutForm(); },
-  'we-why-add': t => { readWorkoutForm(); const ad = wedit.entries[+t.dataset.i].sets.filter(x => x.add || x.a), la = ad[ad.length - 1]; if (la) la.a = la.a === t.dataset.v ? '' : t.dataset.v; workoutForm(); },
-  'we-swap': t => weSwapForm(+t.dataset.i),
-  'we-addex': () => weSwapForm('add'),
-  'we-rmex': t => { readWorkoutForm(); wedit.ask = +t.dataset.i; workoutForm(); },
-  'we-rmex-no': () => { readWorkoutForm(); wedit.ask = null; workoutForm(); },
-  'we-rmex-yes': t => { readWorkoutForm(); wedit.entries.splice(+t.dataset.i, 1); wedit.ask = null; workoutForm(); },
+  'w-edit': t => { const w = st().workouts.find(x => x.id === t.dataset.id); if (!w || (w.person !== cfg.me && !LS.get('dev', false))) return; openEdit(w); },
+  'ed-addex': () => edPickForm('add'),
+  'ed-rmex': t => { const i = +t.dataset.i; draft.items[i].ask = true; rerenderCard(i); },
+  'ed-rmex-no': t => { const i = +t.dataset.i; draft.items[i].ask = false; rerenderCard(i); },
+  'ed-rmex-yes': t => { draft.items.splice(+t.dataset.i, 1); saveDraft(); render(); },
+  'ed-save': () => saveEdit(),
+  'ed-cancel': () => { const ref = draft && draft.ref; draft = null; LS.set('edraft', null); location.hash = ref ? '#training-log:' + encodeURIComponent(ref) : '#verlauf'; },
+  ptab: t => { planTab = t.dataset.v; render(); },
+  'lib-g': t => { LIBV.group = t.dataset.v; const l = $('#lib-list'); if (l) l.innerHTML = libListHTML(); },
+  'lib-open': t => libForm(libGet(t.dataset.id)),
+  'lib-new': () => libForm(null, { name: LIBV.q }),
+  'lib-edit': t => { pkKeep(); const snap = PK, back = () => { PK = snap; snap.reopen(); }; libForm(libGet(t.dataset.id), { tk: DAY_TONE[snap.day], done: back, cancel: back }); },
+  'lib-merge': () => { if (LF && LF.id) libMergeForm(LF.id); },
+  'lib-unmerge': t => { const y = st().lib[t.dataset.id]; if (!y) return; const cur = LF && LF.id, o = LF && LF.opts; libSave({ ...y, into: '' }, 'wieder getrennt'); toast(`${y.name} ist wieder eigenständig`); if (cur) libForm(st().lib[cur], o); },
+  'lib-restore': () => libAct('restore'),
+  'lib-hide': () => libAct('hide'),
+  'lib-show': () => libAct('show'),
+  'lib-del': () => libAct('del'),
+  'lf-use': t => { const o = LF && LF.opts; if (o && o.done && PK) { LF = null; o.done(t.dataset.id); } else libForm(libGet(t.dataset.id)); },
+  'pk-g': t => { PK.group = t.dataset.v; renderPick(); },
+  'pk-pick': t => { PK.sel = t.dataset.id; renderPick(); if (PK.onSel) PK.onSel(libGet(PK.sel)); },
+  'pk-clear': () => { PK.sel = ''; renderPick(); if (PK.onSel && PK.ctx === 'merge') PK.onSel(); const q = $('#pk-q'); if (q) q.focus(); },
+  'pk-new': () => { pkKeep(); const snap = PK; libForm(null, { name: PK.q, tk: DAY_TONE[PK.day], done: id => { PK = snap; PK.sel = id; PK.q = ''; snap.reopen(); if (PK && PK.ctx === 'swap' && PK.onSel) PK.onSel(libGet(id)); }, cancel: () => { PK = snap; snap.reopen(); } }); },
+  'me-pick': t => { const k = t.dataset.m; if (LABEL_VIEW[k]) musEd.view = LABEL_VIEW[k]; else if (FRONT_IDS.has(k) && !BACK_IDS.has(k)) musEd.view = 'front'; else if (BACK_IDS.has(k) && !FRONT_IDS.has(k)) musEd.view = 'back'; const m2 = musEd.m; if (m2.p.includes(k)) { m2.p = m2.p.filter(y => y !== k); m2.s.push(k); } else if (m2.s.includes(k)) m2.s = m2.s.filter(y => y !== k); else m2.p.push(k); musEdRender(k); },
   'dev-more': () => { devN += 8; render(); },
   'w-del': t => { wDelAsk = t.dataset.id; render(); },
   'w-del-no': () => { wDelAsk = null; render(); },
@@ -3548,22 +3789,24 @@ document.addEventListener('click', e => {
   const t = e.target.closest('[data-act]');
   if (!t || !actions[t.dataset.act]) return;
   if (t.tagName === 'BUTTON' && t.type !== 'submit') e.preventDefault();
-  actions[t.dataset.act](t, e);
+  if (view === 'bearbeiten' && edraft) withEd(() => actions[t.dataset.act](t, e));
+  else actions[t.dataset.act](t, e);
 });
 document.addEventListener('submit', e => {
   if (e.target.id === 'exform') { e.preventDefault(); submitExercise(e.target); }
-  if (e.target.id === 'swapform') { e.preventDefault(); if (swCtx && swCtx.mode === 'edit') submitWeSwap(e.target); else submitSwap(e.target); }
-  if (e.target.id === 'wform') { e.preventDefault(); saveWorkoutEdit(); }
+  if (e.target.id === 'swapform') { e.preventDefault(); submitSwap(e.target); }
+  if (e.target.id === 'edpick') { e.preventDefault(); withEd(() => submitEdPick(e.target)); }
+  if (e.target.id === 'libform') { e.preventDefault(); submitLib(e.target); }
+  if (e.target.id === 'mergeform') { e.preventDefault(); submitMerge(); }
   if (e.target.id === 'vaultform') { e.preventDefault(); saveVaultEntry(e.target); }
 });
 document.addEventListener('change', e => {
   const t = e.target;
-  if (t.id === 'f-type') t.dispatchEvent(new Event('input', { bubbles: true }));
   if ((t.id === 'av-file' || t.id === 'av-file2') && t.files[0]) setAvatar(t.files[0]);
   if (t.id === 'v-import' && t.files[0]) readBackupFile(t.files[0]);
   if ((t.id === 'sp-file' || t.id === 'sp-file2') && t.files[0]) openEditor(t.files[0]);
   if (t.id === 'dev-tgl') { LS.set('dev', t.checked); render(); }
-  if (t.dataset.f === 'w' && draft && draft.items[+t.dataset.i] && draft.items[+t.dataset.i].ex.type === 'bw') { if (propagateDown(+t.dataset.i, +t.dataset.j)) { saveDraft(); rerenderCard(+t.dataset.i); } }
+  if (t.dataset.f === 'w') { const go = () => { if (draft && draft.items[+t.dataset.i] && draft.items[+t.dataset.i].ex.type === 'bw' && propagateDown(+t.dataset.i, +t.dataset.j)) { saveDraft(); rerenderCard(+t.dataset.i); } }; if (view === 'bearbeiten' && edraft) withEd(go); else go(); }
   if (t.id === 'vn-file' && t.files[0]) {
     if (VAULT.photoUrl) URL.revokeObjectURL(VAULT.photoUrl);
     VAULT.picking = 0; VAULT.photo = t.files[0]; VAULT.photoUrl = URL.createObjectURL(t.files[0]);
@@ -3577,6 +3820,22 @@ let draftTimer;
 document.addEventListener('input', e => {
   const t = e.target;
   if (t.id === 'sp-size' && SPOT.ed) { SPOT.ed.textSize = +t.value; layoutEditor(); return; }
+  if (view === 'bearbeiten' && edraft && (t.dataset.f || t.dataset.note != null)) { withEd(() => draftInput(t)); return; }
+  if (t.id === 'pk-q' && PK) { PK.q = t.value; PK.sel = ''; renderPick(); return; }
+  if (t.id === 'lf-name') { libSim(); return; }
+  if (t.id === 'lib-q') { LIBV.q = t.value; const l = $('#lib-list'); if (l) l.innerHTML = libListHTML(); return; }
+  if (t.id === 'me-q' && musEd) { musEd.q = t.value; musHits(); return; }
+  if (draftInput(t)) return;
+  if ((t.dataset.b === 'title' || t.dataset.b === 'short') && builder) {
+    builder.work[builder.day][t.dataset.b] = t.dataset.b === 'short' ? t.value.toUpperCase().slice(0, 6) : t.value.trimStart();
+    const was = builder.dirty[builder.day]; markDirty();
+    if (was !== builder.dirty[builder.day]) { const id = t.id, pos = t.selectionStart; render(); const n = document.getElementById(id); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }
+  } else if (t.name === 'type' && $('#libform')) {
+    const u = $('#lf-unit'); if (u) u.textContent = isTimed(t.value) ? 'Sek. von' : 'Wdh. von';
+  }
+});
+// Eingaben in Satzfeldern und Notizen des Trainings (oder des Bearbeiten-Entwurfs)
+function draftInput(t) {
   if (t.dataset.f && draft) {
     const i = +t.dataset.i, j = +t.dataset.j;
     const set = draft.items[i].sets[j];
@@ -3587,37 +3846,16 @@ document.addEventListener('input', e => {
       if (draft.items[i].ex.type === 'bw') { const f = document.getElementById(`wf-${i}-${j}`); if (f) { f.classList.toggle('plus', num(t.value) > 0 && !set.neg); f.classList.toggle('minus', num(t.value) > 0 && set.neg); } }
     }
     if (t.dataset.f === 'w' && j === 0) { const el = document.getElementById(`wu-${i}`); if (el) el.textContent = warmupLabel(draft.items[i]); }
-    clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 300);
-  } else if (t.dataset.note != null && draft) {
-    draft.items[+t.dataset.note].note = t.value;
-    clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 300);
-  } else if ((t.dataset.b === 'title' || t.dataset.b === 'short') && builder) {
-    builder.work[builder.day][t.dataset.b] = t.dataset.b === 'short' ? t.value.toUpperCase().slice(0, 6) : t.value.trimStart();
-    const was = builder.dirty[builder.day]; markDirty();
-    if (was !== builder.dirty[builder.day]) { const id = t.id, pos = t.selectionStart; render(); const n = document.getElementById(id); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }
-  } else if (t.dataset.pre && presetEdit) {
-    const pr = presetEdit[+t.dataset.i]; if (!pr) return;
-    const was = !!presetsDirty();
-    if (t.dataset.pre === 'pct') { const v = t.value.replace(/[^0-9]/g, '').slice(0, 3); pr.pct = v === '' ? '' : +v; if (t.value !== v) t.value = v; }
-    else pr.name = t.value;
-    if (was !== !!presetsDirty()) { const id = t.id, pos = t.selectionStart; render(); const n = document.getElementById(id); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} } }
-  } else if (t.id === 'f-name' && $('#f-sug')) {
-    $('#f-libid').value = ''; renderSug();
-  } else if (t.id === 'sw-name' && $('#sw-sug')) {
-    $('#sw-lib').value = ''; renderSwSug();
-  } else if (t.id === 'f-load') {
-    document.querySelectorAll('.loadchips .pchip[data-v]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === t.value.trim())));
-  } else if (t.id === 'f-type') {
-    $('#f-step-l').hidden = isTimed(t.value);
-    $('#f-warm-l').hidden = t.value !== 'kg';
-    $('#f-load-l').hidden = t.value !== 'bw';
-    $('#f-step-t').textContent = t.value === 'bw' ? 'Steigerung Zusatzgewicht in kg (0 = keine)' : 'Steigerung in kg';
-    $('#f-unit-min').textContent = isTimed(t.value) ? 'Sek. von' : 'Wdh. von';
-  } else if (t.id === 'sw-name') {
-    const k = knownExercises().get(t.value.trim().toLowerCase());
-    if (k) { const sel = $('#sw-type'); if (sel) sel.value = k.type; }
+    if (draft.edit) saveDraft(); else { clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 300); }
+    return true;
   }
-});
+  if (t.dataset.note != null && draft) {
+    draft.items[+t.dataset.note].note = t.value;
+    if (draft.edit) saveDraft(); else { clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 300); }
+    return true;
+  }
+  return false;
+}
 document.addEventListener('pointerdown', ev => { if (view === 'spot' && ev.target.closest('#sp-stage')) edPointerDown(ev); else if (view === 'spots' && ev.target.closest('#sv')) svDown(ev); });
 document.addEventListener('pointermove', ev => { if (view === 'spot') edPointerMove(ev); });
 document.addEventListener('pointerup', ev => { if (view === 'spot') edPointerUp(ev); else if (view === 'spots') svUp(ev); });

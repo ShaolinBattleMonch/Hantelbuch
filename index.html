@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Hantelbuch</title>
+<title>BUILT</title>
 <meta name="description" content="Trainingsplan und Fortschritte für Manu und Rob">
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Hantelbuch">
+<meta name="apple-mobile-web-app-title" content="BUILT">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
@@ -25,16 +25,13 @@
 <div id="toast" class="toast" role="status" hidden></div>
 <div id="loader" class="loader" hidden>
   <div class="ld-inner">
-    <div class="ld-brand">Hantelbuch</div>
-    <div class="ld-ring">
-      <svg viewBox="0 0 120 120" aria-hidden="true">
-        <circle class="ld-track" cx="60" cy="60" r="52"></circle>
-        <circle class="ld-bar" id="ld-bar" cx="60" cy="60" r="52"></circle>
-      </svg>
+    <div class="ld-brand">BUILT</div>
+    <div class="ld-block">
+      <div class="ld-text" id="ld-text">Verbinde …</div>
+      <div class="ld-sub" id="ld-sub"></div>
+      <div class="ld-track" role="progressbar" aria-label="Ladefortschritt" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="ld-track"><i id="ld-bar"></i></div>
       <div class="ld-pct" id="ld-pct">0 %</div>
     </div>
-    <div class="ld-text" id="ld-text">Verbinde …</div>
-    <div class="ld-sub" id="ld-sub"></div>
   </div>
 </div>
 <script src="app.js"></script>
