@@ -4,7 +4,7 @@
    zuerst auf dem Handy, beim Sync in der Google-Tabelle. Der aktuelle Stand wird immer aus dem Log berechnet.
    Ausnahme: der Vault. Seine Bilder bleiben verschlüsselt nur auf diesem Handy und werden nie synchronisiert. */
 
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.0.1';
 const SCRIPT_MIN = 2;            // benötigte Version des Google-Skripts
 const PEOPLE = ['Manu', 'Rob'];
 const DAYS = ['A', 'B', 'C'];    // interne Kennung der Trainingstage, angezeigt werden die Kürzel
@@ -1398,6 +1398,11 @@ async function pinComplete() {
     if (pin !== VAULT.first) { VAULT.mode = 'set1'; VAULT.first = ''; return fail('Die Codes stimmen nicht überein. Bitte noch einmal.'); }
     const restoring = !!VAULT.restore;
     VAULT.msg = restoring ? 'Stelle Vault wieder her …' : 'Lege Vault an …'; render();
+    if (restoring) {
+      // Ersetzt einen auf diesem Handy neu angelegten Vault: dessen Einträge passen nicht zum alten Schlüssel
+      for (const r of await IDB.all(cfg.me)) await IDB.del(r.id);
+      LS.set('vault.tomb.' + cfg.me, []); LS.set('vault.cloud.' + cfg.me, null);
+    }
     const raw = restoring ? VAULT.restore.raw : crypto.getRandomValues(new Uint8Array(20));
     const k = await rawKeys(raw);
     LS.set('vault.' + cfg.me, await wrapMeta(pin, raw, restoring));
@@ -1576,7 +1581,7 @@ async function startRestore() {
   try {
     const k = await rawKeys(raw);
     const r = await call({ action: 'vault_list', person: cfg.me, vtoken: k.token }, 30000);
-    LS.set('vault.tok.' + cfg.me, k.token);
+    // Zugang erst beim Festlegen des Codes übernehmen, damit ein abgebrochener Versuch den jetzigen Vault nicht stört
     VAULT.restore = { raw, n: (r.entries || []).length };
     VAULT.mode = 'set1'; location.hash = '#vault';
   } catch (e) {
@@ -3264,6 +3269,7 @@ function viewRestore() {
   return `<div class="form">
     <h1 class="display" style="font-size:30px">Vault wieder&shy;herstellen</h1>
     <p class="muted" style="margin:0">Gib deinen Wiederherstellungsschlüssel ein. Danach legst du einen Code für dieses Handy fest und deine Bilder werden aus der Tabelle geladen.</p>
+    ${vmeta() ? `<section class="card notice"><b>Ersetzt den Vault auf diesem Handy</b><span class="small">Der jetzige Vault und sein Schlüssel werden ersetzt. Bilder, die du nur darin gespeichert hast, gehen verloren. Die Sicherung in der Tabelle bleibt unangetastet, bis der neue Code festgelegt ist.</span></section>` : ''}
     <label>Wiederherstellungsschlüssel<textarea class="inp mono" id="rk-in" rows="2" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"></textarea></label>
     <div class="err" id="rk-err" hidden></div>
     <button class="btn primary" id="rk-go" data-act="rk-restore">Weiter</button>
@@ -3502,7 +3508,8 @@ function viewSettings() {
       ${hasVault ? `<button class="row" data-act="v-change">Vault-Code ändern<span class="v">• • • •</span></button>
       <button class="row" data-act="v-showkey">Wiederherstellungsschlüssel<span class="v"${vmeta().saved ? '' : ' style="color:var(--warn)"'}>${vmeta().saved ? 'anzeigen' : 'noch nicht notiert'}</span></button>
       <div class="row">Sicherung in der Tabelle<span class="v">${vaultCloudText()}</span></div>
-      <button class="row" data-act="v-export">Backup als Datei<span class="v">sichern</span></button>` : `<a class="row" href="#vault">Vault einrichten<span class="v">Code festlegen</span></a>
+      <button class="row" data-act="v-export">Backup als Datei<span class="v">sichern</span></button>
+      <a class="row" href="#vault-wiederherstellen">Mit anderem Schlüssel wiederherstellen<span class="v">ersetzen</span></a>` : `<a class="row" href="#vault">Vault einrichten<span class="v">Code festlegen</span></a>
       <a class="row" href="#vault-wiederherstellen">Vault wiederherstellen<span class="v">mit Schlüssel</span></a>`}
       <label class="row">Backup-Datei laden<span class="v">Datei wählen</span><input type="file" id="v-import" accept="application/json,.json" hidden></label>
     </div>
