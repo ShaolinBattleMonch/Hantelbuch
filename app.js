@@ -4,7 +4,7 @@
    zuerst auf dem Handy, beim Sync in der Google-Tabelle. Der aktuelle Stand wird immer aus dem Log berechnet.
    Ausnahme: der Vault. Seine Bilder bleiben verschlüsselt nur auf diesem Handy und werden nie synchronisiert. */
 
-const APP_VERSION = '2.1.0';
+const APP_VERSION = '2.1.1';
 const SCRIPT_MIN = 2;            // benötigte Version des Google-Skripts
 const PEOPLE = ['Manu', 'Rob'];
 const DAYS = ['A', 'B', 'C'];    // interne Kennung der Trainingstage, angezeigt werden die Kürzel
@@ -1787,6 +1787,8 @@ function chatSync() {
     let changed = false;
     try {
       const key = await chatKey();
+      const tombs = LS.get('chat.tomb.' + cfg.me, []);
+      for (const id of [...tombs]) { await call({ action: 'chat_del', person: cfg.me, id }, 30000); tombs.splice(tombs.indexOf(id), 1); LS.set('chat.tomb.' + cfg.me, tombs); }
       for (const m of CHAT.msgs.filter(x => x.pend && x.from === cfg.me)) {
         const o = { text: m.text }; if (m.spot) { o.spot = m.spot; o.spotOwner = m.spotOwner; }
         const enc = await encJSON(key, o);
@@ -1854,7 +1856,7 @@ function reactBadges(id) {
   const em = rs.filter(r => r.emoji), tx = rs.filter(r => r.text).length;
   return `<span class="rbadges">${tx ? `<span class="rb-tx" aria-label="${tx} ${tx === 1 ? 'Antwort' : 'Antworten'}">${ICON.bubble}${tx}</span>` : ''}${em.length ? `<span class="rb-em" aria-label="Reaktionen ${esc(em.map(r => r.emoji).join(' '))}">${em.slice(-4).map(r => `<span>${esc(r.emoji)}</span>`).join('')}</span>` : ''}</span>`;
 }
-const reactBubble = r => `<div class="rbub ${r.emoji ? 'emo' : ''}">${avatar(r.p, 30)}<span>${esc(r.emoji || r.text)}</span></div>`;
+const reactBubble = r => `<div class="rbub ${r.emoji ? 'emo' : ''}"><a class="rb-av" href="#profil:${encodeURIComponent(r.p)}" data-act="goprof" data-p="${esc(r.p)}" aria-label="Profil von ${esc(r.p)}">${avatar(r.p, 30)}</a><span>${esc(r.emoji || r.text)}</span></div>`;
 
 /* ---------- Chat: Ansichten ---------- */
 function viewChats() {
@@ -1873,7 +1875,7 @@ function viewChats() {
 function chatNewSheet(q = '') {
   const list = others().filter(p => !q || p.toLowerCase().includes(q.toLowerCase()));
   sheet(`<h2>Neuer Chat</h2>
-    <label class="cn-search">${ICON.search}<input id="cn-q" type="search" placeholder="Name suchen" aria-label="Name suchen" value="${esc(q)}" autocomplete="off"></label>
+    <label class="cn-search">${ICON.search.replace('<svg ', '<svg width="18" height="18" ')}<input id="cn-q" type="search" placeholder="Buddy-ID suchen" aria-label="Buddy-ID suchen" value="${esc(q)}" autocomplete="off"></label>
     <span class="eyebrow">Gym Buddys</span>
     <div class="cn-list">${list.map(p => `<button class="cn-row glass" data-act="chat-open" data-p="${esc(p)}">${avatar(p, 46)}<span><b>${esc(p)}</b><span class="small muted">${chatWith(p).length ? 'Chat fortsetzen' : 'Neuen Chat beginnen'}</span></span><span class="cn-go">Schreiben</span></button>`).join('') || '<div class="empty">Niemand gefunden.</div>'}</div>
     <div class="cn-add"><span class="cn-plus">${ICON.plus.replace('width="16" height="16"', 'width="20" height="20"')}</span><span>Gym Buddy hinzufügen<br><span class="small">Kommt mit dem Freunde-System</span></span></div>
@@ -1903,7 +1905,7 @@ function chatMsgsHTML(p) {
       return;
     }
     const mine = m.from === me;
-    const bub = `<div class="cbub">${esc(m.text)}</div>`;
+    const bub = mine ? `<button type="button" class="cbub" data-act="cm-del" data-id="${esc(m.id)}" aria-label="Nachricht: ${esc(m.text)}. Antippen zum Löschen">${esc(m.text)}</button>` : `<div class="cbub">${esc(m.text)}</div>`;
     const body = m.spot ? `<div class="crep">${mine ? bub + chatSpotThumb(m.spot, m.spotOwner) : chatSpotThumb(m.spot, m.spotOwner) + bub}</div>` : bub;
     out += `<div class="cmsg ${mine ? 'me' : 'them'}">${body}<span class="ctime">${fmtTime(ts)}${m.pend ? ' · wird gesendet' : ''}</span></div>`;
   });
@@ -1912,13 +1914,20 @@ function chatMsgsHTML(p) {
 function viewChat(p) {
   if (!CHAT.loaded) loadChat();
   CHAT.open = p;
-  return `<div class="chat-head"><div class="chat-head-in">${backBtn('chats')}${avatar(p, 36)}<span class="chat-who"><b>${esc(p)}</b><span class="lockline">${ICON.lock.replace('width="22" height="22"', 'width="12" height="12"')}verschlüsselt · ${CHAT_DAYS} Tage</span></span></div></div>
+  return `<div class="chat-head"><div class="chat-head-in">${backBtn('chats')}<a class="chat-prof" href="#profil:${encodeURIComponent(p)}" data-act="goprof" data-p="${esc(p)}" aria-label="Profil von ${esc(p)}">${avatar(p, 36)}</a><span class="chat-who"><b>${esc(p)}</b><span class="lockline">${ICON.lock.replace('width="22" height="22"', 'width="12" height="12"')}verschlüsselt · ${CHAT_DAYS} Tage</span></span></div></div>
     <main class="view chat-view"><div class="chat-msgs" id="chat-msgs">${chatMsgsHTML(p)}</div></main>
     <form class="chat-bar" id="chatform" novalidate>
       <a class="iconbtn" href="#kamera" aria-label="Spot aufnehmen">${ICON.cam.replace('width="22" height="22"', 'width="20" height="20"')}</a>
       <label class="chat-in glass"><input id="chat-in" placeholder="Nachricht" aria-label="Nachricht an ${esc(p)}" autocomplete="off" enterkeyhint="send" maxlength="${CHAT_LEN}" value="${esc(CHAT.draft && CHAT.draft[p] || '')}"></label>
       <button class="chat-send" type="submit" aria-label="Senden">${ICON.send}</button>
     </form>`;
+}
+// Eigene Nachricht für beide löschen: verschwindet hier sofort und beim anderen mit dem nächsten Abgleich
+function chatDelete(id) {
+  const m = CHAT.msgs.find(x => x.id === id); if (!m || m.from !== cfg.me) return;
+  CHAT.msgs = CHAT.msgs.filter(x => x.id !== id); saveChat();
+  if (!m.pend) { const t = LS.get('chat.tomb.' + cfg.me, []); t.push(id); LS.set('chat.tomb.' + cfg.me, t); }
+  chatChanged(); chatSync(); toast('Nachricht gelöscht');
 }
 function chatSubmit() {
   const p = CHAT.open, inp = $('#chat-in'); if (!p || !inp) return;
@@ -2209,7 +2218,7 @@ function viewViewer() {
   return `<div class="sv" id="sv">
     <img class="sv-img" src="${spotUrl(s)}" alt="Spot von ${esc(s.person)}">
     <div class="sv-bars">${v.list.map((x, i) => `<i><b style="width:${i < v.i ? 100 : 0}%" ${i === v.i ? 'id="sv-cur"' : ''}></b></i>`).join('')}</div>
-    <div class="sv-head"><a href="#profil:${esc(s.person)}" data-act="sv-prof">${avatar(s.person, 34)}</a><span style="flex:1;display:flex;flex-direction:column;line-height:1.2"><b>${esc(s.person)}</b><span class="mono small" style="opacity:.8">${relDay(s.created)}, ${fmtTime(s.created)}</span></span><button class="tool" data-act="sv-close" aria-label="Schließen">${ICON.x}</button></div>
+    <div class="sv-head"><a href="#profil:${esc(s.person)}" data-act="sv-prof" aria-label="Profil von ${esc(s.person)}">${avatar(s.person, 34)}</a><span style="flex:1;display:flex;flex-direction:column;line-height:1.2"><a href="#profil:${esc(s.person)}" data-act="sv-prof" style="font-weight:700;color:#fff;text-decoration:none;align-self:flex-start">${esc(s.person)}</a><span class="mono small" style="opacity:.8">${relDay(s.created)}, ${fmtTime(s.created)}</span></span><button class="tool" data-act="sv-close" aria-label="Schließen">${ICON.x}</button></div>
     <div class="sv-bot" id="sv-bot">
       <div class="sv-emo glass">${SPOT_EMOJI.map(m => `<button type="button" data-act="sv-react" data-v="${m}" aria-label="Reagieren mit ${m}" ${st().spotMyReact[s.id] === m ? 'class="on"' : ''}>${m}</button>`).join('')}<i aria-hidden="true"></i><button type="button" class="sv-more ${st().spotMyReact[s.id] && !SPOT_EMOJI.includes(st().spotMyReact[s.id]) ? 'on' : ''}" data-act="sv-compose" data-v="emoji" aria-label="Mit einem anderen Emoji reagieren">${st().spotMyReact[s.id] && !SPOT_EMOJI.includes(st().spotMyReact[s.id]) ? `<span class="emo1">${esc(st().spotMyReact[s.id])}</span>` : ICON.emoplus}</button></div>
       <span style="flex:1"></span>
@@ -2217,7 +2226,7 @@ function viewViewer() {
     </div>
     <form class="sv-compose" id="sv-compose" hidden novalidate>
       <span class="small" id="sv-c-hint"></span>
-      <div class="sv-c-row"><input class="sv-c-in" id="sv-in" autocomplete="off" enterkeyhint="send"><button class="sv-c-send" type="submit" aria-label="Senden">${ICON.send}</button></div>
+      <div class="sv-c-row"><button type="button" class="sv-c-x" data-act="sv-c-x" aria-label="Abbrechen">${ICON.x}</button><textarea class="sv-c-in" id="sv-in" rows="1" autocomplete="off"></textarea><button class="sv-c-send" type="submit" aria-label="Senden">${ICON.send}</button></div>
     </form>
   </div>`;
 }
@@ -2253,7 +2262,8 @@ function svCompose(mode) {
   const f = $('#sv-compose'), inp = $('#sv-in'); if (!f || !inp) return;
   v.paused = true; v.compose = mode;
   f.hidden = false; $('#sv-bot').hidden = true;
-  inp.value = ''; inp.maxLength = mode === 'emoji' ? 16 : 1000;
+  inp.value = ''; inp.maxLength = mode === 'emoji' ? 16 : 1000; inp.style.height = '';
+  inp.setAttribute('enterkeyhint', mode === 'emoji' ? 'send' : 'enter');
   inp.placeholder = mode === 'emoji' ? 'Emoji' : `Antwort an ${s.person}`;
   inp.setAttribute('aria-label', mode === 'emoji' ? 'Emoji als Reaktion' : `Antwort an ${s.person}`);
   inp.classList.toggle('emo', mode === 'emoji');
@@ -2290,7 +2300,8 @@ function spotReact(s, em) {
 }
 function svDown(ev) {
   const v = SPOT.view; if (!v) return;
-  if (v.compose) { if (!ev.target.closest('.sv-compose')) svComposeEnd(); return; }
+  // beim Schreiben: Tippen aufs Bild schließt nur die Tastatur, der Text bleibt (Abbrechen über ×)
+  if (v.compose) { if (!ev.target.closest('.sv-compose')) { const i = $('#sv-in'); if (i) i.blur(); } return; }
   if (ev.target.closest('.sv-bot, .sv-head, .sv-compose')) return;
   v.down = { x: ev.clientX, y: ev.clientY, t: Date.now() };
   v.holdT = setTimeout(() => { if (v.down) v.paused = true; }, 220);
@@ -4067,6 +4078,7 @@ const actions = {
   'sv-prof': (t, e) => { e.preventDefault(); const p = SPOT.view && SPOT.view.list[SPOT.view.i].person; closeViewer(); if (p) location.hash = '#profil:' + p; },
   'sv-react': t => { const v = SPOT.view; if (!v) return; spotReact(v.list[v.i], t.dataset.v); },
   'sv-compose': t => svCompose(t.dataset.v),
+  'sv-c-x': () => svComposeEnd(),
   'sg-save': t => {
     const id = t.dataset.id, rs = spotReactions(id);
     if (!rs.length) { saveSpotToPhotos(id, false); return; }
@@ -4077,6 +4089,12 @@ const actions = {
   },
   'sg-save-go': t => { $('#modal').innerHTML = ''; saveSpotToPhotos(t.dataset.id, t.dataset.v === 'react'); },
   'chat-new': () => chatNewSheet(),
+  'cm-del': t => {
+    const m = CHAT.msgs.find(x => x.id === t.dataset.id); if (!m) return;
+    sheet(`<h2>Nachricht löschen?</h2><div class="cdel-prev">${esc(m.text)}</div><p class="muted" style="margin:0">Sie verschwindet bei dir und bei ${esc(m.to)}.</p>
+      <div class="btnrow col"><button class="btn danger" data-act="cm-del-yes" data-id="${esc(m.id)}">Für beide löschen</button><button class="btn ghost" data-act="mclose">Abbrechen</button></div>`);
+  },
+  'cm-del-yes': t => { $('#modal').innerHTML = ''; chatDelete(t.dataset.id); },
   'sw-carry': () => swapDo('carry'),
   'sw-both': () => swapDo('both'),
   'sw-back': () => { const q = SWAPQ; SWAPQ = null; if (q && PK) swapForm(q.i, true); else $('#modal').innerHTML = ''; },
@@ -4134,6 +4152,9 @@ document.addEventListener('click', e => {
   if (view === 'bearbeiten' && edraft) withEd(() => actions[t.dataset.act](t, e));
   else actions[t.dataset.act](t, e);
 });
+document.addEventListener('keydown', e => {
+  if (e.target.id === 'sv-in' && e.key === 'Enter' && !e.shiftKey && SPOT.view && SPOT.view.compose === 'emoji') { e.preventDefault(); svSubmit(); }
+});
 document.addEventListener('submit', e => {
   if (e.target.id === 'exform') { e.preventDefault(); submitExercise(e.target); }
   if (e.target.id === 'swapform') { e.preventDefault(); submitSwap(e.target); }
@@ -4170,6 +4191,7 @@ document.addEventListener('input', e => {
   if (t.id === 'lf-name') { libSim(); return; }
   if (t.id === 'lib-q') { LIBV.q = t.value; const l = $('#lib-list'); if (l) l.innerHTML = libListHTML(); return; }
   if (t.id === 'me-q' && musEd) { musEd.q = t.value; musHits(); return; }
+  if (t.id === 'sv-in') { if (SPOT.view && SPOT.view.compose === 'text') { t.style.height = ''; t.style.height = Math.min(t.scrollHeight, 132) + 'px'; } return; }
   if (t.id === 'chat-in' && CHAT.open) { (CHAT.draft = CHAT.draft || {})[CHAT.open] = t.value; return; }
   if (t.id === 'cn-q') { const v = t.value; chatNewSheet(v); const i = $('#cn-q'); if (i) { i.focus(); i.setSelectionRange(v.length, v.length); } return; }
   if (draftInput(t)) return;
@@ -4235,11 +4257,19 @@ setInterval(() => {
   if (['chat', 'chats'].includes(view) && cfg.url && document.visibilityState === 'visible') chatSync();
 }, 15000);
 /* Tastatur: Eingabeleisten (Chat, Antwort auf Spot) sitzen über der Tastatur */
+// Unterkante des sichtbaren Bereichs (über der Tastatur) in Koordinaten des Bildschirms. Die Leisten hängen sich
+// mit „top“ daran, so sitzen sie unabhängig davon, wie iOS die Seite beim Öffnen der Tastatur verschiebt, darüber.
 function kbOffset() {
   const vv = window.visualViewport; if (!vv) return;
-  const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
-  document.documentElement.style.setProperty('--kb', (kb > 60 ? kb : 0) + 'px');
+  const root = document.documentElement, H = parseFloat(getComputedStyle(root).getPropertyValue('--H')) || window.innerHeight;
+  const bottom = vv.offsetTop + vv.height, open = H - bottom > 120 && document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
+  root.classList.toggle('kb', !!open);
+  root.style.setProperty('--vvb', Math.round(bottom) + 'px');
+  root.style.setProperty('--kbh', (open ? Math.round(H - bottom) : 0) + 'px');
+  if (open && view === 'chat') { const app = $('#app'); app.scrollTop = app.scrollHeight; }
 }
+document.addEventListener('focusin', () => setTimeout(kbOffset, 50));
+document.addEventListener('focusout', () => setTimeout(kbOffset, 50));
 if (window.visualViewport) { visualViewport.addEventListener('resize', kbOffset); visualViewport.addEventListener('scroll', kbOffset); }
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
