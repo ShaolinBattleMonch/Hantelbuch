@@ -860,3 +860,9 @@ button.cbub { font: inherit; text-align: left; cursor: pointer; border: 0; }
 .rbub .rb-av { margin-left: -15px; }
 .rbub .rb-av .av { margin-left: 0; }
 .cdel-prev { padding: 9px 13px; border-radius: 18px 18px 6px 18px; background: #fff; color: #000; align-self: flex-end; max-width: 85%; white-space: pre-wrap; word-break: break-word; }
+/* Spots im Chat erneut ansehen */
+button.cs-spot, button.cs-mini { padding: 0; cursor: pointer; color: #fff; font: inherit; }
+a.cs-mini { display: grid; }
+.cs-spot.new img { filter: blur(14px) brightness(.7); transform: scale(1.1); }
+.cs-new { position: absolute; left: 8px; right: 8px; bottom: 10px; text-align: center; font: 600 11px var(--mono); padding: 4px 6px; border-radius: 999px; background: var(--m); }
+.chat-prof, .rb-av { text-decoration: none; color: inherit; }

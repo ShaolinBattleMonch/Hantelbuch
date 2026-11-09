@@ -4,7 +4,7 @@
    zuerst auf dem Handy, beim Sync in der Google-Tabelle. Der aktuelle Stand wird immer aus dem Log berechnet.
    Ausnahme: der Vault. Seine Bilder bleiben verschlüsselt nur auf diesem Handy und werden nie synchronisiert. */
 
-const APP_VERSION = '2.1.1';
+const APP_VERSION = '2.1.2';
 const SCRIPT_MIN = 2;            // benötigte Version des Google-Skripts
 const PEOPLE = ['Manu', 'Rob'];
 const DAYS = ['A', 'B', 'C'];    // interne Kennung der Trainingstage, angezeigt werden die Kürzel
@@ -1881,9 +1881,19 @@ function chatNewSheet(q = '') {
     <div class="cn-add"><span class="cn-plus">${ICON.plus.replace('width="16" height="16"', 'width="20" height="20"')}</span><span>Gym Buddy hinzufügen<br><span class="small">Kommt mit dem Freunde-System</span></span></div>
     <button class="btn ghost" data-act="mclose">Abbrechen</button>`);
 }
+// Spot im Chat: solange er verfügbar ist, öffnet Antippen ihn erneut (eigener in der Galerie-Ansicht, fremder im Ansehen)
 function chatSpotThumb(id, owner) {
   const g = owner === cfg.me ? SPOT.gallery.find(x => x.id === id) : SPOT.inbox.find(x => x.id === id);
-  return g ? `<span class="cs-mini"><img src="${spotUrl(g)}" alt="Spot von ${esc(owner === cfg.me ? 'dir' : owner)}"></span>` : `<span class="cs-mini gone">Spot<br>abge&shy;laufen</span>`;
+  if (!g || (owner === cfg.me && !spotLive(g, CHAT.open || partner()))) return `<span class="cs-mini gone">Spot<br>abge&shy;laufen</span>`;
+  const img = `<img src="${spotUrl(g)}" alt="Spot von ${esc(owner === cfg.me ? 'dir' : owner)}">`;
+  return owner === cfg.me ? `<a class="cs-mini" href="#spot-bild:${encodeURIComponent(id)}" aria-label="Deinen Spot öffnen">${img}</a>` : `<button type="button" class="cs-mini" data-act="spot-replay" data-id="${esc(id)}" aria-label="Spot von ${esc(owner)} ansehen">${img}</button>`;
+}
+// einen Spot des anderen (noch einmal) ansehen, zurück geht es dorthin, wo man herkam
+function openSpotReplay(id) {
+  const s = SPOT.inbox.find(x => x.id === id);
+  if (!s) { toast('Der Spot ist abgelaufen'); return; }
+  SPOT.view = { list: [s], i: 0, t0: 0, el: 0, paused: false, raf: 0, down: null, back: location.hash || '#start' };
+  location.hash = '#spots';
 }
 function spotLive(g, p) {
   const age = Date.now() - new Date(g.created);
@@ -1893,11 +1903,17 @@ function chatMsgsHTML(p) {
   const me = cfg.me, lim = Date.now() - CHAT_DAYS * 864e5;
   const items = chatWith(p).map(m => ({ ts: m.ts, m }));
   SPOT.gallery.forEach(g => { if (g.person === me && g.shared && new Date(g.created).getTime() > lim) items.push({ ts: g.created, g }); });
+  SPOT.inbox.forEach(x => { if (x.person === p) items.push({ ts: x.created, x }); });
   items.sort((a, b) => a.ts.localeCompare(b.ts));
   let lastDay = '', out = '';
-  items.forEach(({ ts, m, g }) => {
+  items.forEach(({ ts, m, g, x }) => {
     const dk = dateKey(ts);
     if (dk !== lastDay) { lastDay = dk; out += `<div class="cday">${esc(relDay(ts) === 'heute' ? 'Heute' : relDay(ts) === 'gestern' ? 'Gestern' : fmtDate(ts))}</div>`; }
+    if (x) {
+      const seen = spotSeenBy(x.id, me), left = Math.max(1, Math.ceil((SPOT_LIFE - (Date.now() - new Date(x.created))) / 864e5));
+      out += `<div class="cmsg them"><button type="button" class="cs-spot ${seen ? '' : 'new'}" data-act="spot-replay" data-id="${esc(x.id)}" aria-label="Spot von ${esc(p)} ansehen"><img src="${spotUrl(x)}" alt="">${seen ? '' : '<span class="cs-new">Neu · antippen</span>'}</button><span class="ctime">Spot · ${fmtTime(ts)}${seen ? ` · noch ${left} ${left === 1 ? 'Tag' : 'Tage'}` : ''}</span></div>`;
+      return;
+    }
     if (g) {
       if (!spotLive(g, p)) { out += `<div class="cmsg me"><span class="cs-gone">${ICON.cam.replace('width="22" height="22"', 'width="14" height="14"')}Spot abgelaufen</span><span class="ctime">${fmtTime(ts)}</span></div>`; return; }
       const seen = spotSeenBy(g.id, p), left = Math.max(1, Math.ceil((SPOT_LIFE - (Date.now() - new Date(g.created))) / 864e5));
@@ -2253,7 +2269,7 @@ function viewerNext() {
 }
 function closeViewer() {
   const v = SPOT.view; if (v) cancelAnimationFrame(v.raf);
-  SPOT.view = null; location.hash = '#start';
+  SPOT.view = null; location.hash = (v && v.back) || '#start';
   loadSpots().then(() => { if (view === 'start') safeRender(); });
 }
 // Antwort oder anderes Emoji eingeben: Spot pausiert, Eingabe sitzt über der Tastatur
@@ -4089,6 +4105,7 @@ const actions = {
   },
   'sg-save-go': t => { $('#modal').innerHTML = ''; saveSpotToPhotos(t.dataset.id, t.dataset.v === 'react'); },
   'chat-new': () => chatNewSheet(),
+  'spot-replay': t => openSpotReplay(t.dataset.id),
   'cm-del': t => {
     const m = CHAT.msgs.find(x => x.id === t.dataset.id); if (!m) return;
     sheet(`<h2>Nachricht löschen?</h2><div class="cdel-prev">${esc(m.text)}</div><p class="muted" style="margin:0">Sie verschwindet bei dir und bei ${esc(m.to)}.</p>
@@ -4126,7 +4143,7 @@ const actions = {
   'v-change': () => { lockVault(); VAULT.mode = 'old'; location.hash = '#vault'; render(); },
   'v-export': () => exportVault(),
   's-save': async () => { const ok = await testAndSave($('#s-url').value, $('#s-key').value, $('#s-err')); if (ok) { toast('Verbunden'); sync({ overlay: true }); } },
-  's-me': t => { cfg.me = t.dataset.v; LS.set('cfg', cfg); builder = null; draft = null; saveDraft(); lockVault(); invalidate(); toast(`Du bist jetzt ${cfg.me}`); render(); },
+  's-me': t => { cfg.me = t.dataset.v; LS.set('cfg', cfg); builder = null; draft = null; saveDraft(); lockVault(); invalidate(); loadChat(); toast(`Du bist jetzt ${cfg.me}`); render(); loadSpots().then(() => { safeRender(); if (cfg.url) { spotSync(); chatSync(); } }); },
   'reset-ask': () => { resetAsk = true; render(); },
   'reset-no': () => { resetAsk = false; render(); },
   'reset-yes': () => { events = []; pending = []; lastSeq = 0; lastSync = null; seenIds = new Set(); saveLog(); LS.set('lastSync', null); resetAsk = false; invalidate(); builder = null; sync({ overlay: true }); render(); },
@@ -4136,7 +4153,7 @@ const actions = {
     if (!setupMe) { err.textContent = 'Bitte wähle zuerst aus, wer du bist.'; err.hidden = false; return; }
     const ok = await testAndSave($('#u-url').value, $('#u-key').value, err);
     if (!ok) return;
-    cfg.me = setupMe; LS.set('cfg', cfg); loadChat(); location.hash = '#start'; render(); sync({ overlay: true });
+    cfg.me = setupMe; LS.set('cfg', cfg); loadChat(); loadSpots(); location.hash = '#start'; render(); sync({ overlay: true });
   },
   'setup-local': () => {
     const err = $('#u-err');
