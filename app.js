@@ -4,7 +4,7 @@
    zuerst auf dem Handy, beim Sync in der Google-Tabelle. Der aktuelle Stand wird immer aus dem Log berechnet.
    Ausnahme: der Vault. Seine Bilder bleiben verschlüsselt nur auf diesem Handy und werden nie synchronisiert. */
 
-const APP_VERSION = '2.0.1';
+const APP_VERSION = '2.1.0';
 const SCRIPT_MIN = 2;            // benötigte Version des Google-Skripts
 const PEOPLE = ['Manu', 'Rob'];
 const DAYS = ['A', 'B', 'C'];    // interne Kennung der Trainingstage, angezeigt werden die Kürzel
@@ -328,6 +328,7 @@ function musPreview(m, tk) {
 }
 
 /* ---------- Hilfsfunktionen ---------- */
+const isEmoji = v => typeof v === 'string' && v.length > 0 && v.length <= 16 && /\p{Extended_Pictographic}/u.test(v) && !/[\s<>&"'`A-Za-z0-9]/.test(v);
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clone = o => JSON.parse(JSON.stringify(o));
@@ -343,6 +344,7 @@ const fmtTime = iso => new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digi
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const gen = p => (/s$/.test(p) ? p + "'" : p + 's');
 const partner = () => PEOPLE.find(p => p !== cfg.me);
+const others = () => PEOPLE.filter(p => p !== cfg.me);   // alle Gym Buddys (heute nur einer, später mehr)
 const sum = a => a.reduce((x, y) => x + y, 0);
 const avg = a => (a.length ? sum(a) / a.length : 0);
 const roundTo = (v, step) => { const s = step > 0 ? step : 2.5; return Math.round(Math.round(v / s) * s * 100) / 100; };
@@ -468,6 +470,11 @@ const ICON = {
   dl: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>',
   expand: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>',
   warn: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17v.5"/></svg>',
+  trophy: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg>',
+  chat: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>',
+  send: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
+  emoplus: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 11.5A8.5 8.5 0 1 1 12.5 3.5"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01"/><path d="M19 2v6M16 5h6"/></svg>',
+  bubble: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>',
   trash: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13"/></svg>',
   del: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 5H9l-6 7 6 7h12z"/><path d="m16 9-5 6M11 9l5 6"/></svg>'
 };
@@ -551,7 +558,7 @@ function st() { return _st || (_st = buildState()); }
 function buildState() {
   const all = events.slice().sort((a, b) => a.seq - b.seq)
     .concat(pending.filter(p => !seenIds.has(p.id)).sort((a, b) => a.ts.localeCompare(b.ts)));
-  const s = { spotSeen: {}, spotMyReact: {}, plans: {}, last: {}, workouts: [], skips: [], swaps: [], feed: [], changes: {}, lastChange: {}, lastShared: {}, decisions: {}, lastAction: {}, hist: {}, wedits: [], exInfo: {}, bw: {}, avatars: {}, first: {}, lib: null, libWarn: [], libHist: {} };
+  const s = { spotSeen: {}, spotMyReact: {}, spotReacts: {}, plans: {}, last: {}, workouts: [], skips: [], swaps: [], feed: [], changes: {}, lastChange: {}, lastShared: {}, decisions: {}, lastAction: {}, hist: {}, wedits: [], exInfo: {}, bw: {}, avatars: {}, first: {}, lib: null, libWarn: [], libHist: {} };
   _st = s; // für dl() während des Aufbaus
   // Nachträgliche Änderungen an abgeschlossenen Trainings: es gilt die jeweils letzte, nur von derselben Person
   const edits = {}, libEv = [], planHints = {};
@@ -639,9 +646,13 @@ function buildState() {
     } else if (e.type === 'spot_seen') {
       if (typeof d.spot === 'string') (s.spotSeen[d.spot] = s.spotSeen[d.spot] || new Set()).add(e.person);
     } else if (e.type === 'spot_react') {
-      if (typeof d.spot === 'string' && SPOT_EMOJI.includes(d.emoji)) {
-        if (e.person === cfg.me) s.spotMyReact[d.spot] = d.emoji;
-        if (d.owner === cfg.me && e.person !== cfg.me) s.feed.push(e);
+      // eine Reaktion pro Person und Spot, die letzte zählt; leeres Emoji nimmt sie zurück
+      if (typeof d.spot === 'string' && (d.emoji === '' || isEmoji(d.emoji))) {
+        const r = s.spotReacts[d.spot] = s.spotReacts[d.spot] || {}, prev = r[e.person];
+        if (prev && prev.ev) { const k = s.feed.indexOf(prev.ev); if (k >= 0) s.feed.splice(k, 1); }
+        if (d.emoji) r[e.person] = { emoji: d.emoji, ts: e.ts, ev: d.owner === cfg.me && e.person !== cfg.me ? e : null }; else delete r[e.person];
+        if (e.person === cfg.me) { if (d.emoji) s.spotMyReact[d.spot] = d.emoji; else delete s.spotMyReact[d.spot]; }
+        if (d.emoji && d.owner === cfg.me && e.person !== cfg.me) s.feed.push(e);
       }
     } else if (e.type === 'avatar') {
       if (d.img === '') delete s.avatars[e.person];
@@ -1234,7 +1245,7 @@ function sync({ overlay = false, quiet = false } = {}) {
       ui.set(100, 'Fertig', '');
       if (overlay) await sleep(400);
       if (rejected && !quiet) toast('Einige Einträge wurden abgelehnt. Bitte das Google-Skript aktualisieren.');
-      setTimeout(() => { vaultSync().then(() => gallerySync()); spotSync(); }, 0);
+      setTimeout(() => { vaultSync().then(() => gallerySync()); spotSync().then(() => chatSync()); }, 0);
       return { ok: true };
     } catch (err) {
       const code = (err && err.code) || 'server';
@@ -1414,7 +1425,10 @@ async function pinComplete() {
       const r = await vaultSync({ progress: (a, b) => { VAULT.msg = `Lade Bilder aus der Tabelle … ${a} von ${b}`; if (view === 'vault' && !VAULT.entries.length) render(); } });
       VAULT.msg = ''; await loadVault();
       toast(r && r.ok ? `${VAULT.entries.length} ${VAULT.entries.length === 1 ? 'Bild' : 'Bilder'} wiederhergestellt` : 'Laden unterbrochen. Der Rest kommt beim nächsten Öffnen.');
-      render(); return;
+      render();
+      // Eigene Spots gleich mitholen, nicht erst beim nächsten Öffnen der App
+      gallerySync().then(() => { if (['profil', 'kamera'].includes(view)) safeRender(); });
+      return;
     }
     VAULT.msg = ''; VAULT.showKey = rkEncode(raw);
     render(); return;
@@ -1596,7 +1610,7 @@ async function startRestore() {
    Die eigenen Spots bleiben in der Galerie auf dem Handy und werden über die Vault-Sicherung gesichert. */
 const SPOT_LIFE = 3 * 864e5, SPOT_MAX = 30 * 864e5, SPOT_SHOW = 5000;
 const SPOT_WORDS = ['DURCHGEPUMPT', 'ERLEDIGT', 'AUSGEPOWERT', 'ABGEHAKT', 'DURCHGEZOGEN', 'GESCHAFFT', 'PLATT', 'ABGERISSEN'];
-const SPOT_EMOJI = ['💪', '🔥', '😂', '👏', '🫡', '😮‍💨'];
+const SPOT_EMOJI = ['💪', '🔥', '👏'];   // feste Auswahl beim Ansehen, jedes andere Emoji über die Tastatur
 const SPOT = { inbox: [], gallery: [], urls: {}, facing: 'environment', stream: null, ed: null, view: null, galDel: null, ready: false };
 
 const SDB = {
@@ -1622,7 +1636,7 @@ async function loadSpots() {
   try {
     const me = cfg.me;
     SPOT.gallery = (await SDB.all('gallery')).filter(g => g.person === me).sort((a, b) => a.created.localeCompare(b.created));
-    SPOT.inbox = (await SDB.all('inbox')).filter(x => x.person === partner()).sort((a, b) => a.created.localeCompare(b.created));
+    SPOT.inbox = (await SDB.all('inbox')).filter(x => x.person !== me && PEOPLE.includes(x.person)).sort((a, b) => a.created.localeCompare(b.created));
   } catch (e) { SPOT.gallery = []; SPOT.inbox = []; }
   SPOT.ready = true;
 }
@@ -1642,7 +1656,7 @@ let spotSyncing = null;
 function spotSync() {
   if (spotSyncing) return spotSyncing;
   if (!cfg.me || !cfg.url || !cfg.key || navigator.onLine === false || (scriptVersion != null && scriptVersion < 4)) return Promise.resolve();
-  const me = cfg.me, other = partner();
+  const me = cfg.me;
   spotSyncing = (async () => {
     let changed = false;
     try {
@@ -1663,20 +1677,21 @@ function spotSync() {
       for (const x of list) {
         if (x.person !== me) continue;
         const age = now - new Date(x.created);
-        if ((age > SPOT_LIFE && spotSeenBy(x.id, other)) || age > SPOT_MAX) { await call({ action: 'spot_del', person: me, id: x.id }, 30000); inSheet.delete(x.id); }
+        if ((age > SPOT_LIFE && others().every(o => spotSeenBy(x.id, o))) || age > SPOT_MAX) { await call({ action: 'spot_del', person: me, id: x.id }, 30000); inSheet.delete(x.id); }
       }
-      // neue Spots des anderen laden
+      // neue Spots der anderen laden
       const have = new Set((await SDB.all('inbox')).map(x => x.id));
       for (const x of list) {
-        if (x.person !== other || have.has(x.id) || spotSeenBy(x.id, me) || now - new Date(x.created) > SPOT_MAX) continue;
+        if (x.person === me || !PEOPLE.includes(x.person) || have.has(x.id) || spotSeenBy(x.id, me) || now - new Date(x.created) > SPOT_MAX) continue;
         const g = await call({ action: 'spot_get', id: x.id }, 120000);
         const p = JSON.parse(g.chunks.join(''));
         const bytes = await decBytes(await spotKey(), p.iv, b64d(p.ct));
         await SDB.put('inbox', { id: x.id, person: x.person, created: x.created, meta: p.meta || {}, img: bytes.buffer });
         changed = true;
       }
-      // gesehene oder verschwundene aus dem Zwischenspeicher entfernen
-      for (const x of await SDB.all('inbox')) if (!inSheet.has(x.id) || spotSeenBy(x.id, me)) { await SDB.del('inbox', x.id); changed = true; }
+      // Verschwundene aus dem Zwischenspeicher entfernen. Gesehene bleiben bis zum Ablauf der Spot-Frist,
+      // damit sie im Chat neben deiner Antwort stehen können.
+      for (const x of await SDB.all('inbox')) if (!inSheet.has(x.id) || (spotSeenBy(x.id, me) && now - new Date(x.created) > SPOT_LIFE)) { await SDB.del('inbox', x.id); changed = true; }
     } catch (e) { /* nächster Versuch beim nächsten Sync */ }
     finally {
       spotSyncing = null;
@@ -1729,6 +1744,219 @@ function gallerySync() {
     finally { gallerySyncing = null; if (changed) { await loadSpots(); if (!SPOT.view && !SPOT.ed && ['profil', 'kamera'].includes(view)) safeRender(); } }
   })();
   return gallerySyncing;
+}
+
+/* ======================= Chat =======================
+   Einzelchats pro Person. Nachrichten liegen verschlüsselt im Blatt „Chat“ (Schlüssel aus dem Sync-Schlüssel, wie bei
+   den Spots) und verschwinden dort nach 30 Tagen. Gesendete Spots stehen im Chat, solange sie noch sichtbar sind, sie
+   werden dafür nicht extra gespeichert. Textantworten auf einen Spot sind Nachrichten mit Verweis auf den Spot. */
+const CHAT_MIN_SCRIPT = 6, CHAT_DAYS = 30, CHAT_LEN = 1000;
+const CHAT = { msgs: [], loaded: false };
+const chatLS = () => 'chat.msgs.' + cfg.me;
+function loadChat() {
+  const raw = LS.get(chatLS(), []);
+  CHAT.msgs = (Array.isArray(raw) ? raw : []).filter(m => m && typeof m.id === 'string' && typeof m.text === 'string' && PEOPLE.includes(m.from) && PEOPLE.includes(m.to));
+  pruneChat(); CHAT.loaded = true;
+}
+function pruneChat() { const lim = Date.now() - CHAT_DAYS * 864e5; CHAT.msgs = CHAT.msgs.filter(m => m.pend || new Date(m.ts).getTime() > lim); }
+function saveChat() { LS.set(chatLS(), CHAT.msgs); }
+const chatWith = p => CHAT.msgs.filter(m => (m.from === p && m.to === cfg.me) || (m.from === cfg.me && m.to === p));
+const chatReadMap = () => LS.get('chat.read.' + cfg.me, {}) || {};
+const chatUnread = p => { const r = chatReadMap()[p] || ''; return CHAT.msgs.filter(m => m.from === p && m.to === cfg.me && m.ts > r).length; };
+const chatUnreadAll = () => others().reduce((a, p) => a + chatUnread(p), 0);
+function chatMarkRead(p) {
+  const last = chatWith(p).filter(m => m.from === p).map(m => m.ts).sort().pop(); if (!last) return;
+  const r = chatReadMap(); if (r[p] === last) return; r[p] = last; LS.set('chat.read.' + cfg.me, r);
+}
+const chatPeers = () => others().filter(p => chatWith(p).length).sort((a, b) => (chatWith(b).pop().ts).localeCompare(chatWith(a).pop().ts));
+const chatOk = () => scriptVersion == null || scriptVersion >= CHAT_MIN_SCRIPT;
+
+let _chatKey = null, _chatKeyFor = null;
+async function chatKey() {
+  if (_chatKey && _chatKeyFor === cfg.key) return _chatKey;
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(cfg.key), 'HKDF', false, ['deriveKey']);
+  _chatKey = await crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: new TextEncoder().encode('hantelbuch-chat'), info: new TextEncoder().encode('chat') }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  _chatKeyFor = cfg.key; return _chatKey;
+}
+let chatSyncing = null;
+function chatSync() {
+  if (chatSyncing) return chatSyncing;
+  if (!cfg.me || !cfg.url || !cfg.key || navigator.onLine === false || !chatOk()) return Promise.resolve();
+  if (!CHAT.loaded) loadChat();
+  chatSyncing = (async () => {
+    let changed = false;
+    try {
+      const key = await chatKey();
+      for (const m of CHAT.msgs.filter(x => x.pend && x.from === cfg.me)) {
+        const o = { text: m.text }; if (m.spot) { o.spot = m.spot; o.spotOwner = m.spotOwner; }
+        const enc = await encJSON(key, o);
+        await call({ action: 'chat_put', person: cfg.me, to: m.to, id: m.id, ts: m.ts, data: enc.iv + '.' + b64e(enc.ct) }, 30000);
+        m.pend = false; changed = true;
+      }
+      if (changed) saveChat();
+      const list = (await call({ action: 'chat_list', person: cfg.me }, 30000)).msgs || [];
+      const have = new Set(CHAT.msgs.map(m => m.id)), inSheet = new Set(list.map(x => x.id));
+      for (const x of list) {
+        if (have.has(x.id) || !PEOPLE.includes(x.from) || !PEOPLE.includes(x.to) || typeof x.data !== 'string') continue;
+        try {
+          const [iv, ct] = x.data.split('.');
+          const o = await decJSON(key, iv, b64d(ct));
+          if (typeof o.text !== 'string' || !o.text.trim()) continue;
+          const m = { id: x.id, from: x.from, to: x.to, ts: x.ts, text: o.text.slice(0, CHAT_LEN) };
+          if (typeof o.spot === 'string' && PEOPLE.includes(o.spotOwner)) { m.spot = o.spot.slice(0, 64); m.spotOwner = o.spotOwner; }
+          CHAT.msgs.push(m); changed = true;
+        } catch (e) { /* nicht lesbar (anderer Schlüssel): überspringen */ }
+      }
+      const n = CHAT.msgs.length;
+      CHAT.msgs = CHAT.msgs.filter(m => m.pend || inSheet.has(m.id));
+      if (CHAT.msgs.length !== n) changed = true;
+      CHAT.msgs.sort((a, b) => a.ts.localeCompare(b.ts)); pruneChat();
+      if (changed) saveChat();
+    } catch (e) { /* nächster Versuch beim nächsten Sync */ }
+    finally { chatSyncing = null; if (changed) chatChanged(); }
+  })();
+  return chatSyncing;
+}
+function chatSend(to, text, ref = {}) {
+  text = String(text || '').trim().slice(0, CHAT_LEN); if (!text || !others().includes(to)) return;
+  if (!CHAT.loaded) loadChat();
+  const m = { id: uid(), from: cfg.me, to, ts: new Date().toISOString(), text, pend: true };
+  if (ref.spot) { m.spot = ref.spot; m.spotOwner = ref.spotOwner; }
+  CHAT.msgs.push(m); saveChat(); chatChanged(); chatSync();
+}
+// Neue Nachrichten: im offenen Chat nur die Liste tauschen (Eingabe und Tastatur bleiben), sonst neu zeichnen
+function chatChanged() {
+  if (view === 'chat') {
+    const el = $('#chat-msgs'), p = CHAT.open; if (!el || !p) return;
+    const app = $('#app'), atEnd = app.scrollHeight - app.scrollTop - app.clientHeight < 120;
+    el.innerHTML = chatMsgsHTML(p); chatMarkRead(p);
+    if (atEnd) app.scrollTop = app.scrollHeight;
+    return;
+  }
+  if (['start', 'chats', 'verlauf', 'plan', 'notizen', 'profil', 'glocke'].includes(view)) safeRender();
+  else if (view === 'spot-bild') render();
+}
+function chatBtn() {
+  const n = chatUnreadAll();
+  return `<a class="iconbtn" href="#chats" aria-label="Chats${n ? ', ' + n + ' ungelesen' : ''}">${ICON.chat}${n ? `<span class="badge">${n}</span>` : ''}</a>`;
+}
+
+/* Reaktionen auf einen eigenen Spot: Emojis aus dem Log, Textantworten aus dem Chat */
+function spotReactions(id) {
+  const out = [], r = st().spotReacts[id] || {};
+  Object.entries(r).forEach(([p, x]) => { if (p !== cfg.me) out.push({ p, emoji: x.emoji, ts: x.ts }); });
+  CHAT.msgs.forEach(m => { if (m.spot === id && m.from !== cfg.me) out.push({ p: m.from, text: m.text, ts: m.ts }); });
+  return out.sort((a, b) => a.ts.localeCompare(b.ts));
+}
+// klein unten rechts am Bild: Sprechblase mit Anzahl der Antworten, Emojis leicht versetzt übereinander
+function reactBadges(id) {
+  const rs = spotReactions(id); if (!rs.length) return '';
+  const em = rs.filter(r => r.emoji), tx = rs.filter(r => r.text).length;
+  return `<span class="rbadges">${tx ? `<span class="rb-tx" aria-label="${tx} ${tx === 1 ? 'Antwort' : 'Antworten'}">${ICON.bubble}${tx}</span>` : ''}${em.length ? `<span class="rb-em" aria-label="Reaktionen ${esc(em.map(r => r.emoji).join(' '))}">${em.slice(-4).map(r => `<span>${esc(r.emoji)}</span>`).join('')}</span>` : ''}</span>`;
+}
+const reactBubble = r => `<div class="rbub ${r.emoji ? 'emo' : ''}">${avatar(r.p, 30)}<span>${esc(r.emoji || r.text)}</span></div>`;
+
+/* ---------- Chat: Ansichten ---------- */
+function viewChats() {
+  if (!CHAT.loaded) loadChat();
+  const peers = chatPeers();
+  const rows = peers.map(p => {
+    const last = chatWith(p).pop(), n = chatUnread(p);
+    return `<a class="crow" href="#chat:${encodeURIComponent(p)}">${avatar(p, 50)}<span class="crow-m"><span class="crow-h"><b>${esc(p)}</b><span class="mono small muted">${relDay(last.ts) === 'heute' ? fmtTime(last.ts) : fmtDate(last.ts)}</span></span><span class="crow-l"><span class="${n ? 'unread' : 'muted'}">${last.from === cfg.me ? 'Du: ' : ''}${last.spot ? '↩ Spot · ' : ''}${esc(last.text)}</span>${n ? `<span class="cnt">${n}</span>` : ''}</span></span></a>`;
+  }).join('');
+  return `<h1 class="display" style="font-size:30px">Chats</h1>
+    ${chatOk() ? '' : `<section class="card notice"><b>Google-Skript aktualisieren</b><span class="small">Der Chat braucht das Skript Version ${CHAT_MIN_SCRIPT}. Bis dahin werden Nachrichten nur auf diesem Handy gespeichert.</span></section>`}
+    ${peers.length ? `<section class="card" style="padding:2px 16px;gap:0">${rows}</section>` : `<section class="card cempty"><span class="cempty-i">${ICON.chat.replace('width="20" height="20"', 'width="24" height="24"')}</span><b>Noch keine Chats</b><span class="small muted">Tippe auf +, um deinem Gym Buddy zu schreiben. Ein Chat erscheint hier, sobald die erste Nachricht da ist.</span></section>`}
+    <span class="lockline">${ICON.lock.replace('width="22" height="22"', 'width="12" height="12"')}Verschlüsselt · Nachrichten verschwinden nach ${CHAT_DAYS} Tagen</span>
+    <button class="fab" data-act="chat-new" aria-label="Neuer Chat">${ICON.plus.replace('width="16" height="16"', 'width="24" height="24"')}</button>`;
+}
+function chatNewSheet(q = '') {
+  const list = others().filter(p => !q || p.toLowerCase().includes(q.toLowerCase()));
+  sheet(`<h2>Neuer Chat</h2>
+    <label class="cn-search">${ICON.search}<input id="cn-q" type="search" placeholder="Name suchen" aria-label="Name suchen" value="${esc(q)}" autocomplete="off"></label>
+    <span class="eyebrow">Gym Buddys</span>
+    <div class="cn-list">${list.map(p => `<button class="cn-row glass" data-act="chat-open" data-p="${esc(p)}">${avatar(p, 46)}<span><b>${esc(p)}</b><span class="small muted">${chatWith(p).length ? 'Chat fortsetzen' : 'Neuen Chat beginnen'}</span></span><span class="cn-go">Schreiben</span></button>`).join('') || '<div class="empty">Niemand gefunden.</div>'}</div>
+    <div class="cn-add"><span class="cn-plus">${ICON.plus.replace('width="16" height="16"', 'width="20" height="20"')}</span><span>Gym Buddy hinzufügen<br><span class="small">Kommt mit dem Freunde-System</span></span></div>
+    <button class="btn ghost" data-act="mclose">Abbrechen</button>`);
+}
+function chatSpotThumb(id, owner) {
+  const g = owner === cfg.me ? SPOT.gallery.find(x => x.id === id) : SPOT.inbox.find(x => x.id === id);
+  return g ? `<span class="cs-mini"><img src="${spotUrl(g)}" alt="Spot von ${esc(owner === cfg.me ? 'dir' : owner)}"></span>` : `<span class="cs-mini gone">Spot<br>abge&shy;laufen</span>`;
+}
+function spotLive(g, p) {
+  const age = Date.now() - new Date(g.created);
+  return age < SPOT_MAX && !(age > SPOT_LIFE && spotSeenBy(g.id, p));
+}
+function chatMsgsHTML(p) {
+  const me = cfg.me, lim = Date.now() - CHAT_DAYS * 864e5;
+  const items = chatWith(p).map(m => ({ ts: m.ts, m }));
+  SPOT.gallery.forEach(g => { if (g.person === me && g.shared && new Date(g.created).getTime() > lim) items.push({ ts: g.created, g }); });
+  items.sort((a, b) => a.ts.localeCompare(b.ts));
+  let lastDay = '', out = '';
+  items.forEach(({ ts, m, g }) => {
+    const dk = dateKey(ts);
+    if (dk !== lastDay) { lastDay = dk; out += `<div class="cday">${esc(relDay(ts) === 'heute' ? 'Heute' : relDay(ts) === 'gestern' ? 'Gestern' : fmtDate(ts))}</div>`; }
+    if (g) {
+      if (!spotLive(g, p)) { out += `<div class="cmsg me"><span class="cs-gone">${ICON.cam.replace('width="22" height="22"', 'width="14" height="14"')}Spot abgelaufen</span><span class="ctime">${fmtTime(ts)}</span></div>`; return; }
+      const seen = spotSeenBy(g.id, p), left = Math.max(1, Math.ceil((SPOT_LIFE - (Date.now() - new Date(g.created))) / 864e5));
+      out += `<div class="cmsg me"><a class="cs-spot" href="#spot-bild:${encodeURIComponent(g.id)}"><img src="${spotUrl(g)}" alt="Dein Spot">${reactBadges(g.id)}</a><span class="ctime">Spot · ${fmtTime(ts)} · ${seen ? (Date.now() - new Date(g.created) < SPOT_LIFE ? `noch ${left} ${left === 1 ? 'Tag' : 'Tage'}` : 'gesehen') : 'noch nicht gesehen'}</span></div>`;
+      return;
+    }
+    const mine = m.from === me;
+    const bub = `<div class="cbub">${esc(m.text)}</div>`;
+    const body = m.spot ? `<div class="crep">${mine ? bub + chatSpotThumb(m.spot, m.spotOwner) : chatSpotThumb(m.spot, m.spotOwner) + bub}</div>` : bub;
+    out += `<div class="cmsg ${mine ? 'me' : 'them'}">${body}<span class="ctime">${fmtTime(ts)}${m.pend ? ' · wird gesendet' : ''}</span></div>`;
+  });
+  return out || `<div class="empty" style="margin:auto 0 0">Schreib ${esc(p)} die erste Nachricht.</div>`;
+}
+function viewChat(p) {
+  if (!CHAT.loaded) loadChat();
+  CHAT.open = p;
+  return `<div class="chat-head"><div class="chat-head-in">${backBtn('chats')}${avatar(p, 36)}<span class="chat-who"><b>${esc(p)}</b><span class="lockline">${ICON.lock.replace('width="22" height="22"', 'width="12" height="12"')}verschlüsselt · ${CHAT_DAYS} Tage</span></span></div></div>
+    <main class="view chat-view"><div class="chat-msgs" id="chat-msgs">${chatMsgsHTML(p)}</div></main>
+    <form class="chat-bar" id="chatform" novalidate>
+      <a class="iconbtn" href="#kamera" aria-label="Spot aufnehmen">${ICON.cam.replace('width="22" height="22"', 'width="20" height="20"')}</a>
+      <label class="chat-in glass"><input id="chat-in" placeholder="Nachricht" aria-label="Nachricht an ${esc(p)}" autocomplete="off" enterkeyhint="send" maxlength="${CHAT_LEN}" value="${esc(CHAT.draft && CHAT.draft[p] || '')}"></label>
+      <button class="chat-send" type="submit" aria-label="Senden">${ICON.send}</button>
+    </form>`;
+}
+function chatSubmit() {
+  const p = CHAT.open, inp = $('#chat-in'); if (!p || !inp) return;
+  const t = inp.value.trim(); if (!t) return;
+  inp.value = ''; if (CHAT.draft) delete CHAT.draft[p];
+  chatSend(p, t);
+  const app = $('#app'); app.scrollTop = app.scrollHeight;
+}
+
+/* Spot mit Reaktionen als Bild: Blasen unten rechts wie in der Ansicht */
+async function spotWithReactions(g) {
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = spotUrl(g); });
+  const W = img.naturalWidth, H = img.naturalHeight, k = W / 390;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d'); x.drawImage(img, 0, 0, W, H);
+  const avImgs = {};
+  for (const p of PEOPLE) { const a = st().avatars[p]; if (a) avImgs[p] = await new Promise(res => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = a; }); }
+  const rs = spotReactions(g.id), right = W - 16 * k, maxW = 250 * k, pad = 13 * k, avR = 15 * k;
+  const lines = (t, w) => { const ws = t.split(/\s+/), out = []; let l = ''; ws.forEach(word => { const tryL = l ? l + ' ' + word : word; if (x.measureText(tryL).width > w && l) { out.push(l); l = word; } else l = tryL; }); if (l) out.push(l); return out; };
+  let y = H - 40 * k;
+  for (const r of rs.slice().reverse()) {
+    const emo = !!r.emoji;
+    x.font = emo ? `${26 * k}px system-ui, sans-serif` : `600 ${15 * k}px Geist, system-ui, sans-serif`;
+    const lh = emo ? 30 * k : 20 * k, ls = emo ? [r.emoji] : lines(r.text, maxW - 2 * pad - avR);
+    const tw = Math.max(...ls.map(l => x.measureText(l).width));
+    const bw = tw + pad + avR + 8 * k, bh = ls.length * lh + (emo ? 12 : 18) * k, bx = right - bw, by = y - bh;
+    x.fillStyle = 'rgba(0,0,0,.55)'; x.beginPath(); x.roundRect ? x.roundRect(bx, by, bw, bh, 18 * k) : x.rect(bx, by, bw, bh); x.fill();
+    x.fillStyle = '#fff'; x.textBaseline = 'middle';
+    ls.forEach((l, i) => x.fillText(l, bx + avR + 8 * k, by + (emo ? 6 : 9) * k + lh * (i + .5)));
+    const cx = bx, cy = by + bh / 2;
+    x.save(); x.beginPath(); x.arc(cx, cy, avR + 2 * k, 0, Math.PI * 2); x.fillStyle = '#000'; x.fill();
+    x.beginPath(); x.arc(cx, cy, avR, 0, Math.PI * 2); x.clip();
+    if (avImgs[r.p]) x.drawImage(avImgs[r.p], cx - avR, cy - avR, avR * 2, avR * 2);
+    else { x.fillStyle = '#2a2a2a'; x.fillRect(cx - avR, cy - avR, avR * 2, avR * 2); x.fillStyle = '#fff'; x.font = `700 ${12 * k}px Unbounded, system-ui, sans-serif`; x.textAlign = 'center'; x.fillText(r.p[0], cx, cy); x.textAlign = 'start'; }
+    x.restore();
+    y = by - 10 * k;
+  }
+  return new Promise(res => c.toBlob(b => res(b), 'image/jpeg', 0.92));
 }
 
 /* ---------- Siegel: Regel „erste Zeile bestimmt die Breite“, danach festes Bild ---------- */
@@ -1982,7 +2210,15 @@ function viewViewer() {
     <img class="sv-img" src="${spotUrl(s)}" alt="Spot von ${esc(s.person)}">
     <div class="sv-bars">${v.list.map((x, i) => `<i><b style="width:${i < v.i ? 100 : 0}%" ${i === v.i ? 'id="sv-cur"' : ''}></b></i>`).join('')}</div>
     <div class="sv-head"><a href="#profil:${esc(s.person)}" data-act="sv-prof">${avatar(s.person, 34)}</a><span style="flex:1;display:flex;flex-direction:column;line-height:1.2"><b>${esc(s.person)}</b><span class="mono small" style="opacity:.8">${relDay(s.created)}, ${fmtTime(s.created)}</span></span><button class="tool" data-act="sv-close" aria-label="Schließen">${ICON.x}</button></div>
-    <div class="sv-emo glass">${SPOT_EMOJI.map(m => `<button data-act="sv-react" data-v="${m}" aria-label="Reagieren mit ${m}" ${st().spotMyReact[s.id] === m ? 'class="on"' : ''}>${m}</button>`).join('')}</div>
+    <div class="sv-bot" id="sv-bot">
+      <div class="sv-emo glass">${SPOT_EMOJI.map(m => `<button type="button" data-act="sv-react" data-v="${m}" aria-label="Reagieren mit ${m}" ${st().spotMyReact[s.id] === m ? 'class="on"' : ''}>${m}</button>`).join('')}<i aria-hidden="true"></i><button type="button" class="sv-more ${st().spotMyReact[s.id] && !SPOT_EMOJI.includes(st().spotMyReact[s.id]) ? 'on' : ''}" data-act="sv-compose" data-v="emoji" aria-label="Mit einem anderen Emoji reagieren">${st().spotMyReact[s.id] && !SPOT_EMOJI.includes(st().spotMyReact[s.id]) ? `<span class="emo1">${esc(st().spotMyReact[s.id])}</span>` : ICON.emoplus}</button></div>
+      <span style="flex:1"></span>
+      <button type="button" class="sv-reply glass" data-act="sv-compose" data-v="text" aria-label="Antwort an ${esc(s.person)} schreiben">${ICON.chat.replace('width="20" height="20"', 'width="22" height="22"')}</button>
+    </div>
+    <form class="sv-compose" id="sv-compose" hidden novalidate>
+      <span class="small" id="sv-c-hint"></span>
+      <div class="sv-c-row"><input class="sv-c-in" id="sv-in" autocomplete="off" enterkeyhint="send"><button class="sv-c-send" type="submit" aria-label="Senden">${ICON.send}</button></div>
+    </form>
   </div>`;
 }
 function viewerShow() {
@@ -2009,11 +2245,53 @@ function viewerNext() {
 function closeViewer() {
   const v = SPOT.view; if (v) cancelAnimationFrame(v.raf);
   SPOT.view = null; location.hash = '#start';
-  // gesehene sofort aus dem Zwischenspeicher nehmen
-  (async () => { for (const x of await SDB.all('inbox')) if (spotSeenBy(x.id, cfg.me)) await SDB.del('inbox', x.id); await loadSpots(); if (view === 'start') safeRender(); })();
+  loadSpots().then(() => { if (view === 'start') safeRender(); });
+}
+// Antwort oder anderes Emoji eingeben: Spot pausiert, Eingabe sitzt über der Tastatur
+function svCompose(mode) {
+  const v = SPOT.view; if (!v) return; const s = v.list[v.i];
+  const f = $('#sv-compose'), inp = $('#sv-in'); if (!f || !inp) return;
+  v.paused = true; v.compose = mode;
+  f.hidden = false; $('#sv-bot').hidden = true;
+  inp.value = ''; inp.maxLength = mode === 'emoji' ? 16 : 1000;
+  inp.placeholder = mode === 'emoji' ? 'Emoji' : `Antwort an ${s.person}`;
+  inp.setAttribute('aria-label', mode === 'emoji' ? 'Emoji als Reaktion' : `Antwort an ${s.person}`);
+  inp.classList.toggle('emo', mode === 'emoji');
+  $('#sv-c-hint').textContent = mode === 'emoji' ? 'Tippe ein Emoji, auf der Tastatur über 😀 oder 🌐.' : `Antwort an ${s.person} · landet im Chat mit dem Spot`;
+  inp.focus();
+}
+function svComposeEnd() {
+  const v = SPOT.view; if (!v) return;
+  v.compose = null; v.paused = false;
+  const f = $('#sv-compose'); if (f) f.hidden = true; const b = $('#sv-bot'); if (b) b.hidden = false;
+  const i = $('#sv-in'); if (i) i.blur();
+}
+function svSubmit() {
+  const v = SPOT.view; if (!v || !v.compose) return; const s = v.list[v.i];
+  const val = ($('#sv-in').value || '').trim(); if (!val) { svComposeEnd(); return; }
+  if (v.compose === 'emoji') {
+    const segs = typeof Intl !== 'undefined' && Intl.Segmenter ? [...new Intl.Segmenter('de', { granularity: 'grapheme' }).segment(val)].map(x => x.segment) : [val];
+    const em = segs.find(isEmoji);
+    if (!em) { toast('Bitte ein Emoji eingeben'); return; }
+    spotReact(s, em);
+  } else {
+    chatSend(s.person, val, { spot: s.id, spotOwner: s.person });
+    toast(`Antwort an ${s.person} geschickt`);
+  }
+  svComposeEnd();
+}
+function spotReact(s, em) {
+  const cur = st().spotMyReact[s.id];
+  const next = cur === em ? '' : em;
+  addEvent('spot_react', { spot: s.id, owner: s.person, emoji: next }, next ? `Reaktion ${next} auf Spot von ${s.person}` : `Reaktion auf Spot von ${s.person} zurückgenommen`);
+  document.querySelectorAll('.sv-emo button[data-act="sv-react"]').forEach(b => b.classList.toggle('on', !!next && b.dataset.v === next));
+  const more = $('.sv-more'); if (more) { const custom = next && !SPOT_EMOJI.includes(next); more.classList.toggle('on', !!custom); more.innerHTML = custom ? `<span class="emo1">${esc(next)}</span>` : ICON.emoplus; }
+  toast(next ? `${next} an ${s.person} geschickt` : 'Reaktion zurückgenommen');
 }
 function svDown(ev) {
-  const v = SPOT.view; if (!v || ev.target.closest('.sv-emo, .sv-head')) return;
+  const v = SPOT.view; if (!v) return;
+  if (v.compose) { if (!ev.target.closest('.sv-compose')) svComposeEnd(); return; }
+  if (ev.target.closest('.sv-bot, .sv-head, .sv-compose')) return;
   v.down = { x: ev.clientX, y: ev.clientY, t: Date.now() };
   v.holdT = setTimeout(() => { if (v.down) v.paused = true; }, 220);
 }
@@ -2032,7 +2310,7 @@ function galleryHTML() {
   const g = SPOT.gallery.slice().reverse();
   const saved = LS.get('gal.key.' + cfg.me, null);
   return `<div class="sec-title"><h2>Meine Spots</h2><span class="mono muted small">${g.length} ${g.length === 1 ? 'Spot' : 'Spots'}</span></div>
-    ${g.length ? `<div class="sgrid">${g.map(x => `<a href="#spot-bild:${encodeURIComponent(x.id)}"><img src="${spotUrl(x)}" alt="Spot vom ${fmtDate(x.created)}" loading="lazy"></a>`).join('')}</div>` : `<section class="card"><div class="empty">Noch keine Spots. Über die Kamera ganz links in der Leiste machst du deinen ersten.</div></section>`}
+    ${g.length ? `<div class="sgrid">${g.map(x => `<a href="#spot-bild:${encodeURIComponent(x.id)}"><img src="${spotUrl(x)}" alt="Spot vom ${fmtDate(x.created)}" loading="lazy">${reactBadges(x.id)}</a>`).join('')}</div>` : `<section class="card"><div class="empty">Noch keine Spots. Über die Kamera ganz links in der Leiste machst du deinen ersten.</div></section>`}
     <span class="small muted">${saved ? 'Nur deine eigenen Spots. Gesichert mit deinem Vault-Schlüssel, nach einem Handywechsel kommen sie mit zurück.' : 'Nur deine eigenen Spots. Öffne einmal den Vault, dann werden sie mitgesichert.'}</span>`;
 }
 function viewSpotImage(id) {
@@ -2040,18 +2318,21 @@ function viewSpotImage(id) {
   if (!g) return `<div class="sv"><div class="sv-head"><a class="tool" href="#profil">${ICON.left}</a></div><div class="empty" style="margin-top:120px">Spot nicht gefunden.</div></div>`;
   return `<div class="sv">
     <img class="sv-img" src="${spotUrl(g)}" alt="Spot vom ${fmtDate(g.created)}">
-    <div class="sv-head" style="top:calc(var(--sat) + 14px)"><a class="tool" href="#profil" aria-label="Zurück">${ICON.left}</a><span style="flex:1;text-align:center"><span class="mono small sv-chip">${fmtDate(g.created)} · ${fmtTime(g.created)}</span></span><span style="width:44px"></span></div>
+    <div class="sv-head" style="top:calc(var(--sat) + 14px)"><a class="tool" href="${SPOT.back || '#profil'}" aria-label="Zurück">${ICON.left}</a><span style="flex:1;text-align:center"><span class="mono small sv-chip">${fmtDate(g.created)} · ${fmtTime(g.created)}</span></span><span style="width:44px"></span></div>
+    ${SPOT.galDel === id ? '' : `<div class="sv-reacts" aria-label="Reaktionen">${spotReactions(id).map(reactBubble).join('')}</div>`}
     <div class="sv-act">${SPOT.galDel === id
       ? `<div class="confirm glass" style="width:100%"><b>Spot löschen?</b><span class="small muted">Er verschwindet aus deiner Galerie${Date.now() - new Date(g.created) < SPOT_MAX ? ` und, falls noch sichtbar, bei ${esc(partner())}` : ''}.</span><div class="btnrow"><button class="btn small danger" data-act="sg-del-yes" data-id="${esc(id)}">Löschen</button><button class="btn small ghost" data-act="sg-del-no">Abbrechen</button></div></div>`
       : `<button class="btn primary" data-act="sg-save" data-id="${esc(id)}" style="flex:1">${ICON.dl} In Fotos sichern</button><button class="btn danger" data-act="sg-del" data-id="${esc(id)}" style="width:50px;padding:0" aria-label="Löschen">${ICON.x}</button>`}</div>
   </div>`;
 }
-async function saveSpotToPhotos(id) {
+async function saveSpotToPhotos(id, withReacts) {
   const g = SPOT.gallery.find(x => x.id === id); if (!g) return;
-  const name = `spot-${dateKey(g.created)}-${fmtTime(g.created).replace(':', '')}.jpg`;
-  const file = new File([g.img], name, { type: 'image/jpeg' });
+  const name = `spot-${dateKey(g.created)}-${fmtTime(g.created).replace(':', '')}${withReacts ? '-reaktionen' : ''}.jpg`;
+  let data = g.img;
+  if (withReacts) { try { data = await spotWithReactions(g); } catch (e) { toast('Reaktionen ließen sich nicht einzeichnen, sichere nur das Foto'); data = g.img; } }
+  const file = new File([data], name, { type: 'image/jpeg' });
   try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file] }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
-  const a = document.createElement('a'); a.href = spotUrl(g); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  const a = document.createElement('a'); a.href = data === g.img ? spotUrl(g) : URL.createObjectURL(data); a.download = name; document.body.appendChild(a); a.click(); a.remove();
 }
 async function deleteSpot(id, back = '#profil') {
   const g = SPOT.gallery.find(x => x.id === id); if (!g) return;
@@ -2078,7 +2359,7 @@ function bellBtn(id = 'bell') {
 }
 const gearBtn = () => `<a class="iconbtn" href="#einstellungen" aria-label="Einstellungen">${ICON.gear}</a>`;
 const backBtn = (to, label = 'Zurück') => `<a class="iconbtn" href="#${to}" aria-label="${label}">${ICON.left}</a>`;
-function head(title, big = true) { return `<header class="head" id="head"><div class="brand ${big ? 'big' : ''}">${title}</div>${bellBtn()}</header>`; }
+function head(title, big = true) { return `<header class="head" id="head"><div class="brand ${big ? 'big' : ''}">${title}</div>${chatBtn()}${bellBtn()}</header>`; }
 const subhead = (backTo = 'start', right = '') => `<header class="head" id="head">${backBtn(backTo)}<div class="brand"></div>${right}</header>`;
 function tabbar(active) {
   const t = (id, label, icon) => `<a href="#${id}" ${active === id ? 'aria-current="page"' : ''}>${icon}<span>${label}</span></a>`;
@@ -2201,6 +2482,8 @@ function render() {
     if (view === 'spot' && name !== 'spot') closeEditor();
     if (view === 'spots' && name !== 'spots' && SPOT.view) { cancelAnimationFrame(SPOT.view.raf); SPOT.view = null; }
     if (view === 'spot-bild') SPOT.galDel = null;
+    if (name === 'spot-bild') SPOT.back = view === 'chat' && CHAT.open ? '#chat:' + encodeURIComponent(CHAT.open) : view === 'start' || view === 'verlauf' ? '#' + view : '#profil';
+    if (view === 'chat') CHAT.open = null;
   }
   let html, tone = '';
   switch (name) {
@@ -2222,8 +2505,10 @@ function render() {
     case 'spot': if (!SPOT.ed) { location.hash = '#kamera'; return; } html = viewEditor(); break;
     case 'spots': if (!SPOT.view) { openViewer(); return; } html = viewViewer(); break;
     case 'spot-bild': html = viewSpotImage(arg); break;
+    case 'chats': html = subhead(draft ? 'training' : 'start') + `<main class="view">${viewChats()}</main>` + tabbar(''); break;
+    case 'chat': if (!others().includes(arg)) { location.hash = '#chats'; return; } html = viewChat(arg); break;
     case 'geschafft': html = viewDone(arg); if (!html) { location.hash = '#start'; return; } break;
-    default: html = `<header class="head" id="head"><div class="brand built">BUILT</div>${spotRing()}${bellBtn()}${gearBtn()}</header><main class="view">${viewStart()}</main>` + tabbar('start');
+    default: html = `<header class="head" id="head"><div class="brand built">BUILT</div>${spotRing()}${chatBtn()}${bellBtn()}${gearBtn()}</header><main class="view">${viewStart()}</main>` + tabbar('start');
   }
   document.body.dataset.tone = tone;
   setPage(html, tone);
@@ -2235,12 +2520,15 @@ function render() {
   if (name === 'kamera') { const v = $('#cam-v'); if (SPOT.stream && v) { v.srcObject = SPOT.stream; v.classList.toggle('mirror', SPOT.facing === 'user'); v.play().catch(() => {}); } else startCamera(); }
   if (name === 'spot') layoutEditor();
   if (name === 'spots') viewerShow();
+  if (name === 'chat') { chatMarkRead(arg); app.scrollTop = app.scrollHeight; }
   document.body.classList.toggle('fullbleed', ['kamera', 'spot', 'spots', 'spot-bild', 'geschafft'].includes(name));
 }
+// Spot-Symbol: Profilbild des Senders mit dem ältesten ungesehenen Spot, ab zwei Spots mit Zähler
 function spotRing() {
   const u = unseenSpots(); if (!u.length) return '';
-  const last = u[u.length - 1], col = last.meta && last.meta.day ? TONE_HEX[DAY_TONE[last.meta.day]] : TONE_HEX.m;
-  return `<button class="spotring" data-act="spot-open" style="--ring:${col}" aria-label="${u.length} ${u.length === 1 ? 'neuer Spot' : 'neue Spots'} von ${esc(partner())}"><span class="ring-in">${avatar(partner(), 34)}</span></button>`;
+  const first = u[0], col = first.meta && first.meta.day ? TONE_HEX[DAY_TONE[first.meta.day]] : TONE_HEX.m;
+  const who = [...new Set(u.map(x => x.person))];
+  return `<button class="spotring" data-act="spot-open" style="--ring:${col}" aria-label="${u.length} ${u.length === 1 ? 'neuer Spot' : 'neue Spots'} von ${esc(who.join(' und '))}"><span class="ring-in">${avatar(first.person, 34)}</span>${u.length > 1 ? `<span class="badge">${u.length}</span>` : ''}</button>`;
 }
 function onScroll() { const h = $('#head'); if (h) h.classList.toggle('scrolled', $('#app').scrollTop > 4); const sh = $('.sheet.full'); if (sh) sh.classList.toggle('scrolled', sh.scrollTop > 40); }
 document.addEventListener('scroll', onScroll, { passive: true, capture: true });
@@ -2338,8 +2626,10 @@ function feedItem(e) {
     t = `${dayChip(d.day, p)}<span>${who} ${me ? 'hast' : 'hat'} ${ab ? 'abgebrochen' : 'abgeschlossen'}</span>`;
     m += ` · ${duration(d.start, d.end)} · ${ab ? `${ab.done} von ${ab.plan} Sätzen` : `${n} ${n === 1 ? 'Satz' : 'Sätze'}`}`;
     const notes = (d.entries || []).filter(en => en.note).length;
-    extra = (ab ? '<span class="chip">Training abgebrochen</span>' : '') + (d.deload ? '<span class="chip dl">Deload</span>' : '')
-      + imp.map(i => `<span class="chip ${i.pr ? 'pr' : ''}">${esc(i.name.replace(/\s*\(.*\)$/, ''))} ${esc(i.label)}${i.pr ? ' · Rekord' : ''}</span>`).join('')
+    const prs = imp.filter(i => i.pr), tn = DAY_TONE[d.day] || 'y';
+    extra = (prs.length ? `<span class="recs">${prs.map(i => `<span class="rec t-${tn}" aria-label="Rekord: ${esc(i.name)} ${esc(i.label)}">${ICON.trophy}<span><b>${esc(i.name.replace(/\s*\(.*\)$/, ''))}</b> <span class="mono">${esc(i.label)}</span></span></span>`).join('')}</span>` : '')
+      + (ab ? '<span class="chip">Training abgebrochen</span>' : '') + (d.deload ? '<span class="chip dl">Deload</span>' : '')
+      + imp.filter(i => !i.pr).map(i => `<span class="chip">${esc(i.name.replace(/\s*\(.*\)$/, ''))} ${esc(i.label)}</span>`).join('')
       + (notes ? `<span class="chip">${notes} ${notes === 1 ? 'Notiz' : 'Notizen'}</span>` : '');
     href = '#training-log:' + encodeURIComponent(e.id);
   } else if (e.type === 'workout_edit') {
@@ -2351,9 +2641,14 @@ function feedItem(e) {
     t = `${dayChip(d.day, p)}<span>${who} ${me ? 'hast' : 'hat'} heute ${esc(d.fromName)} durch ${esc(d.to.name)} getauscht</span>`;
     extra = '<span class="chip">für beide</span>';
   }
-  if (e.type === 'spot_react') t = `<span>${who} ${me ? 'hast' : 'hat'} auf deinen Spot reagiert <span class="emo">${esc(d.emoji)}</span></span>`;
-  const inner = `<span class="avlink" data-act="goprof" data-p="${esc(p)}">${avatar(p, 34)}</span><div><div class="t">${t}</div><div class="m">${m}</div>${extra || wait ? `<div class="chips">${extra}${wait}</div>` : ''}</div>`;
-  return href ? `<a class="fi" href="${href}">${inner}</a>` : `<div class="fi">${inner}</div>`;
+  let th = '';
+  if (e.type === 'spot_react') {
+    t = `<span>${who} ${me ? 'hast' : 'hat'} auf deinen Spot reagiert <span class="emo">${esc(d.emoji)}</span></span>`;
+    const g = SPOT.gallery.find(x => x.id === d.spot);
+    if (g) { href = '#spot-bild:' + encodeURIComponent(g.id); th = `<span class="fi-th"><img src="${spotUrl(g)}" alt="Spot öffnen"></span>`; }
+  }
+  const inner = `<span class="avlink" data-act="goprof" data-p="${esc(p)}">${avatar(p, 34)}</span><div><div class="t">${t}</div><div class="m">${m}</div>${extra || wait ? `<div class="chips">${extra}${wait}</div>` : ''}</div>${th}`;
+  return href ? `<a class="fi ${th ? 'has-th' : ''}" href="${href}">${inner}</a>` : `<div class="fi">${inner}</div>`;
 }
 
 /* ---------- Training ---------- */
@@ -2692,11 +2987,17 @@ function swapForm(i, keep) {
   </form></div>`;
   renderPick();
 }
-function doSwap(i, x, from, by, shared) {
+// mode: 'carry' = eingetragene Werte zur neuen Übung mitnehmen und die alte ersetzen, 'both' = beide behalten
+function doSwap(i, x, from, by, shared, mode) {
   if (TIMER) tmrStop();
   const it = draft.items[i];
   const ni = newItem(x, draft.deload); ni.swappedFrom = from; ni.swapBy = by;
-  if (hasEntries(it)) draft.items.splice(i + 1, 0, ni); else draft.items.splice(i, 1, ni);
+  if (mode === 'carry') {
+    const done = it.sets.map(z => convDSet(it.ex.type, x.type, z));
+    ni.sets = done.concat(ni.sets.slice(done.length));
+    ni.note = it.note || ''; ni.feel = it.feel || ''; ni.rm = (it.rm || []).slice();
+  }
+  if (hasEntries(it) && mode !== 'carry') draft.items.splice(i + 1, 0, ni); else draft.items.splice(i, 1, ni);
   saveDraft();
   if (shared) addEvent('swap', { day: draft.day, date: todayStr(), fromId: from.id, fromName: from.name, to: x }, `${dl(draft.day)}: ${from.name} heute durch ${x.name} ersetzt (für beide)`);
 }
@@ -2709,11 +3010,36 @@ function submitSwap(form) {
   if (!sets || sets > 10 || !min || !max || min > max) return err('Bitte prüfe Sätze und Spanne.');
   const from = it.swappedFrom || { id: it.ex.id, name: it.ex.name };
   if (L.id === it.ex.id || L.id === from.id) return err('Das ist dieselbe Übung.');
-  const x = exFromLib(L, { sets, min, max });
+  const x = exFromLib(L, { sets, min, max }), shared = f.get('who') === 'both';
+  if (hasEntries(it)) { swapAsk(i, x, from, shared); return; }
   PK = null; $('#modal').innerHTML = '';
-  doSwap(i, x, from, cfg.me, f.get('who') === 'both');
+  doSwap(i, x, from, cfg.me, shared);
   render();
-  toast(f.get('who') === 'both' ? `Getauscht. ${partner()} sieht den Tausch.` : 'Getauscht');
+  toast(shared ? `Getauscht. ${partner()} sieht den Tausch.` : 'Getauscht');
+}
+// Bei der alten Übung stehen schon Werte: mitnehmen oder beide behalten?
+let SWAPQ = null;
+function swapAsk(i, x, from, shared) {
+  const it = draft.items[i], tn = DAY_TONE[draft.day];
+  SWAPQ = { i, x, from, shared };
+  const sets = it.sets.filter(z => z.done || int(z.r) > 0).map(z => `<span class="mono">${it.ex.type === 'kg' && num(z.w) ? fmtN(num(z.w)) + ' kg × ' : it.ex.type === 'bw' && num(z.w) ? (z.neg ? '−' : '+') + fmtN(num(z.w)) + ' kg × ' : ''}${it.ex.type === 'time' ? int(z.r) + ' s' : int(z.r) || '–'}</span>`);
+  const same = it.ex.type === x.type;
+  $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><div class="sheet swapask t-${tn}" role="dialog" aria-modal="true" aria-label="Werte mitnehmen?">
+    <span class="eyebrow">${esc(it.ex.name)} → ${esc(x.name)}</span>
+    <h2>Werte mitnehmen?</h2>
+    <p class="muted" style="margin:0">${sets.length ? `Bei ${esc(it.ex.name)} ${sets.length === 1 ? 'steht schon 1 Satz' : `stehen schon ${sets.length} Sätze`}: ${sets.join(', ')}.` : `Bei ${esc(it.ex.name)} steht schon eine Notiz.`}</p>
+    <button class="btn swq main" data-act="sw-carry"><b>Werte zu ${esc(x.name)} mitnehmen</b><span>${esc(it.ex.name)} fällt aus dem Training. Für dich ist ${esc(x.name)} heute die Übung.</span></button>
+    <button class="btn swq" data-act="sw-both"><b>Beide behalten</b><span>Du hast die Sätze wirklich bei ${esc(it.ex.name)} gemacht. ${esc(x.name)} kommt darunter.</span></button>
+    <span class="small muted">${same ? 'Gewicht und Wiederholungen werden übernommen.' : 'Andere Übungsart: Das Gewicht wird nicht übernommen, nur die Wiederholungen.'}</span>
+    <button class="lnk" data-act="sw-back" style="align-self:center">Zurück zur Auswahl</button>
+  </div></div>`;
+}
+function swapDo(mode) {
+  const q = SWAPQ; if (!q || !draft) return;
+  SWAPQ = null; PK = null; $('#modal').innerHTML = '';
+  doSwap(q.i, q.x, q.from, cfg.me, q.shared, mode);
+  render();
+  toast((mode === 'carry' ? 'Getauscht, Werte übernommen.' : 'Getauscht, beide bleiben.') + (q.shared ? ` ${partner()} sieht den Tausch.` : ''));
 }
 
 /* ---------- Übungsauswahl: überall dieselbe (Plan, Heute tauschen, Training bearbeiten, Zusammenführen) ---------- */
@@ -3739,13 +4065,22 @@ const actions = {
   'sp-send': () => sendSpot(),
   'sv-close': () => closeViewer(),
   'sv-prof': (t, e) => { e.preventDefault(); const p = SPOT.view && SPOT.view.list[SPOT.view.i].person; closeViewer(); if (p) location.hash = '#profil:' + p; },
-  'sv-react': t => {
-    const v = SPOT.view; if (!v) return; const s = v.list[v.i];
-    addEvent('spot_react', { spot: s.id, owner: s.person, emoji: t.dataset.v }, `Reaktion ${t.dataset.v} auf Spot von ${s.person}`);
-    document.querySelectorAll('.sv-emo button').forEach(b => b.classList.toggle('on', b === t));
-    toast(`${t.dataset.v} an ${s.person} geschickt`);
+  'sv-react': t => { const v = SPOT.view; if (!v) return; spotReact(v.list[v.i], t.dataset.v); },
+  'sv-compose': t => svCompose(t.dataset.v),
+  'sg-save': t => {
+    const id = t.dataset.id, rs = spotReactions(id);
+    if (!rs.length) { saveSpotToPhotos(id, false); return; }
+    const who = [...new Set(rs.map(r => r.p))];
+    sheet(`<h2>In Fotos sichern</h2><p class="muted" style="margin:0">${esc(who.join(' und '))} ${who.length === 1 ? 'hat' : 'haben'} auf diesen Spot reagiert. Sollen die Reaktionen mit aufs Bild?</p>
+      <div class="btnrow col"><button class="btn primary" data-act="sg-save-go" data-id="${esc(id)}" data-v="plain">Nur das Foto</button><button class="btn" data-act="sg-save-go" data-id="${esc(id)}" data-v="react">Mit Reaktionen</button></div>
+      <span class="small muted" style="text-align:center">Ohne Reaktionen fragt die App nicht nach und sichert direkt.</span>`);
   },
-  'sg-save': t => saveSpotToPhotos(t.dataset.id),
+  'sg-save-go': t => { $('#modal').innerHTML = ''; saveSpotToPhotos(t.dataset.id, t.dataset.v === 'react'); },
+  'chat-new': () => chatNewSheet(),
+  'sw-carry': () => swapDo('carry'),
+  'sw-both': () => swapDo('both'),
+  'sw-back': () => { const q = SWAPQ; SWAPQ = null; if (q && PK) swapForm(q.i, true); else $('#modal').innerHTML = ''; },
+  'chat-open': t => { $('#modal').innerHTML = ''; location.hash = '#chat:' + encodeURIComponent(t.dataset.p); },
   'sg-del': t => { SPOT.galDel = t.dataset.id; render(); },
   'sg-del-no': () => { SPOT.galDel = null; render(); },
   'sg-del-yes': t => deleteSpot(t.dataset.id),
@@ -3783,7 +4118,7 @@ const actions = {
     if (!setupMe) { err.textContent = 'Bitte wähle zuerst aus, wer du bist.'; err.hidden = false; return; }
     const ok = await testAndSave($('#u-url').value, $('#u-key').value, err);
     if (!ok) return;
-    cfg.me = setupMe; LS.set('cfg', cfg); location.hash = '#start'; render(); sync({ overlay: true });
+    cfg.me = setupMe; LS.set('cfg', cfg); loadChat(); location.hash = '#start'; render(); sync({ overlay: true });
   },
   'setup-local': () => {
     const err = $('#u-err');
@@ -3806,6 +4141,9 @@ document.addEventListener('submit', e => {
   if (e.target.id === 'libform') { e.preventDefault(); submitLib(e.target); }
   if (e.target.id === 'mergeform') { e.preventDefault(); submitMerge(); }
   if (e.target.id === 'vaultform') { e.preventDefault(); saveVaultEntry(e.target); }
+  if (e.target.id === 'sv-compose') { e.preventDefault(); svSubmit(); }
+  if (e.target.id === 'chatform') { e.preventDefault(); chatSubmit(); }
+  if (e.target.id === 'svsave-form') { e.preventDefault(); }
 });
 document.addEventListener('change', e => {
   const t = e.target;
@@ -3832,6 +4170,8 @@ document.addEventListener('input', e => {
   if (t.id === 'lf-name') { libSim(); return; }
   if (t.id === 'lib-q') { LIBV.q = t.value; const l = $('#lib-list'); if (l) l.innerHTML = libListHTML(); return; }
   if (t.id === 'me-q' && musEd) { musEd.q = t.value; musHits(); return; }
+  if (t.id === 'chat-in' && CHAT.open) { (CHAT.draft = CHAT.draft || {})[CHAT.open] = t.value; return; }
+  if (t.id === 'cn-q') { const v = t.value; chatNewSheet(v); const i = $('#cn-q'); if (i) { i.focus(); i.setSelectionRange(v.length, v.length); } return; }
   if (draftInput(t)) return;
   if ((t.dataset.b === 'title' || t.dataset.b === 'short') && builder) {
     builder.work[builder.day][t.dataset.b] = t.dataset.b === 'short' ? t.value.toUpperCase().slice(0, 6) : t.value.trimStart();
@@ -3891,7 +4231,16 @@ window.addEventListener('online', () => { if (cfg.me && cfg.url) sync({ quiet: t
 setInterval(() => {
   if (view === 'training' && draft) { const c = $('#tp-count'); if (c) c.textContent = trainCountText(); }
   if (view === 'training' && draft && cfg.url && document.visibilityState === 'visible' && !syncing && Date.now() - (setInterval.last || 0) > 60000) { setInterval.last = Date.now(); sync({ quiet: true }); }
+  // im Chat alle 15 Sekunden nach neuen Nachrichten schauen
+  if (['chat', 'chats'].includes(view) && cfg.url && document.visibilityState === 'visible') chatSync();
 }, 15000);
+/* Tastatur: Eingabeleisten (Chat, Antwort auf Spot) sitzen über der Tastatur */
+function kbOffset() {
+  const vv = window.visualViewport; if (!vv) return;
+  const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+  document.documentElement.style.setProperty('--kb', (kb > 60 ? kb : 0) + 'px');
+}
+if (window.visualViewport) { visualViewport.addEventListener('resize', kbOffset); visualViewport.addEventListener('scroll', kbOffset); }
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   const hadController = !!navigator.serviceWorker.controller;
@@ -3903,6 +4252,7 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 
 try { draft = normalizeDraft(draft); } catch (e) { draft = null; }
 if (location.hash === '#spot' || location.hash === '#spots') location.hash = '#start';
+if (cfg.me) loadChat();
 render();
 loadSpots().then(() => { if (cfg.me && ['start', 'kamera', 'profil', 'spot-bild'].includes(view)) render(); if (cfg.me && cfg.url && !syncing) spotSync(); });
 if (cfg.me && cfg.url) sync({ overlay: true });

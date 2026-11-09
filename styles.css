@@ -734,3 +734,117 @@ details.older summary { cursor: pointer; font-weight: 600; color: var(--dim); }
 .prow2 .pv.lead { color: var(--fg); font-weight: 700; }
 .prow2 .day { justify-self: start; }
 svg text.plab { font: 600 9px var(--mono); fill: rgba(255,255,255,.8); }
+
+/* ---------- 2.1 ---------- */
+/* Ladescreen: ohne Unterzeile rutscht der Status direkt über den Balken */
+.ld-sub:empty { display: none; }
+/* Rekorde in den Neuigkeiten: Kontur in Tagesfarbe */
+.recs { flex-basis: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.rec { --rc: var(--c1); display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 5px 12px 5px 9px; border-radius: 12px; border: 1.5px solid var(--c1); font-size: 13px; line-height: 1.3; }
+.rec.t-y { background: rgba(255,242,0,.12); }
+.rec.t-m { --rc: #ff4fb5; background: rgba(236,0,140,.16); }
+.rec.t-c { background: rgba(0,174,239,.14); }
+.rec svg { flex: none; color: var(--rc); }
+.rec b { font-weight: 600; }
+.rec .mono { color: var(--rc); font-weight: 600; }
+
+/* Spot-Symbol mit Zähler */
+.spotring { position: relative; }
+.spotring .badge { border: 1.5px solid #000; top: -4px; right: -4px; }
+
+/* Spots ansehen: links 3 Emojis + anderes Emoji, rechts Antwort */
+.sv-bot { position: absolute; left: 16px; right: 16px; bottom: calc(var(--sab) + 24px); display: flex; align-items: center; gap: 10px; z-index: 2; }
+.sv-bot .sv-emo { position: static; display: flex; align-items: center; gap: 2px; padding: 4px 6px; border-radius: 999px; }
+.sv-emo i { width: 1px; height: 26px; background: rgba(255,255,255,.25); margin: 0 4px; }
+.sv-emo .sv-more { color: #fff; display: grid; place-items: center; }
+.sv-emo .sv-more .emo1 { font-size: 26px; line-height: 1; }
+.sv-reply { width: 54px; height: 54px; border-radius: 50%; padding: 0; color: #fff; display: grid; place-items: center; cursor: pointer; }
+.sv-compose { position: absolute; left: 12px; right: 12px; bottom: calc(var(--kb, 0px) + 12px); z-index: 3; display: flex; flex-direction: column; gap: 6px; }
+.sv-compose .small { color: rgba(255,255,255,.85); text-shadow: 0 1px 3px rgba(0,0,0,.6); padding: 0 6px; }
+.sv-c-row { display: flex; gap: 8px; align-items: center; }
+.sv-c-in { flex: 1; min-width: 0; height: 46px; border-radius: 999px; padding: 0 16px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.35); color: #fff; font-size: 16px; outline: none; }
+.sv-c-in.emo { font-size: 24px; text-align: center; }
+.sv-c-send, .chat-send { flex: none; width: 46px; height: 46px; border-radius: 50%; border: 0; background: #fff; color: #000; display: grid; place-items: center; padding: 0; cursor: pointer; }
+
+/* Reaktionen im eigenen Spot: Blase mit Profilbild mittig auf dem linken Rand */
+.sv-reacts { position: absolute; right: 16px; bottom: calc(var(--sab) + 98px); max-width: min(300px, calc(100% - 48px)); max-height: 46vh; overflow-y: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; z-index: 2; padding-left: 16px; }
+.rbub { display: flex; align-items: center; gap: 9px; margin-left: 15px; padding: 9px 14px 9px 0; border-radius: 18px; background: rgba(0,0,0,.55); color: #fff; font-weight: 600; font-size: 15px; line-height: 1.35; word-break: break-word; }
+.rbub .av { flex: none; width: 30px !important; height: 30px !important; margin-left: -15px; border: 2px solid #000; background: #2a2a2a; }
+.rbub.emo { gap: 7px; padding: 6px 12px 6px 0; font-size: 26px; line-height: 1; font-weight: 400; }
+
+/* kleine Reaktions-Abzeichen am Bild (Galerie, Chat) */
+.sgrid a { position: relative; }
+.rbadges { position: absolute; right: 6px; bottom: 6px; display: flex; align-items: flex-end; gap: 5px; pointer-events: none; }
+.rb-tx { display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 6px; border-radius: 999px; background: rgba(0,0,0,.55); color: #fff; font: 600 10px var(--mono); }
+.rb-em { display: flex; align-items: flex-end; }
+.rb-em span { font-size: 17px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
+.rb-em span + span { margin-left: -8px; }
+.rb-em span:nth-child(even) { position: relative; top: -3px; }
+
+/* Neuigkeiten: Reaktion mit Vorschau des Spots */
+.fi.has-th { grid-template-columns: 34px minmax(0, 1fr) 40px; align-items: center; }
+.fi.has-th > .avlink { align-self: start; }
+.fi-th { width: 40px; height: 56px; border-radius: 9px; overflow: hidden; border: 1px solid rgba(255,255,255,.3); background: #111; }
+.fi-th img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Chats */
+.crow { display: flex; align-items: center; gap: 12px; padding: 12px 0; color: var(--fg); text-decoration: none; }
+.crow + .crow { border-top: 1px solid rgba(255,255,255,.12); }
+.crow .av { width: 50px; height: 50px; font-size: 17px; }
+.crow-m { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.crow-h { display: flex; align-items: baseline; gap: 8px; }
+.crow-h b { flex: 1; font-size: 16px; }
+.crow-l { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.crow-l > span:first-child { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crow-l .unread { font-weight: 600; color: var(--fg); }
+.crow-l .cnt { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--m); font: 700 11px/20px var(--mono); text-align: center; }
+.cempty { align-items: center; text-align: center; padding: 22px 18px; }
+.cempty-i { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.3); }
+.lockline { display: inline-flex; align-items: center; gap: 6px; font: 11px var(--mono); color: var(--dim); }
+.fab { position: fixed; right: max(20px, var(--sar)); top: calc(var(--H, 100vh) - 84px - var(--sab) - 76px); z-index: 31; width: 58px; height: 58px; border-radius: 50%; border: 0; background: #fff; color: #000; display: grid; place-items: center; box-shadow: 0 8px 24px rgba(0,0,0,.5); cursor: pointer; }
+.cn-search { display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.06); color: var(--dim); }
+.cn-search input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: var(--fg); font-size: 16px; }
+.cn-list { display: flex; flex-direction: column; gap: 8px; }
+.cn-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 16px; color: var(--fg); text-align: left; cursor: pointer; }
+.cn-row .av { width: 46px; height: 46px; font-size: 16px; }
+.cn-row > span:nth-child(2) { flex: 1; display: flex; flex-direction: column; }
+.cn-row b { font-size: 16px; }
+.cn-go { font-size: 14px; font-weight: 600; }
+.cn-add { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 16px; border: 1px dashed rgba(255,255,255,.3); color: var(--dim); font-size: 14px; }
+.cn-plus { flex: none; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; border: 1px dashed rgba(255,255,255,.4); }
+
+/* Einzelchat: schwarze Kopfleiste, Verlauf läuft darunter durch */
+.chat-head { position: fixed; left: 0; right: 0; top: 0; z-index: 20; background: #000; border-bottom: 1px solid rgba(255,255,255,.12); padding: calc(var(--sat) + 10px) max(16px, var(--sar)) 10px max(16px, var(--sal)); }
+.chat-head-in { display: flex; align-items: center; gap: 10px; max-width: 600px; margin: 0 auto; }
+.chat-head .av { width: 36px; height: 36px; }
+.chat-who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.chat-who b { font-size: 16px; line-height: 1.2; }
+.view.chat-view { padding-top: calc(var(--sat) + 78px); padding-bottom: calc(var(--sab) + var(--kb, 0px) + 84px); min-height: var(--H, 100vh); display: flex; flex-direction: column; }
+.chat-msgs { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; }
+.cday { align-self: center; font: 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.5); padding: 4px 0; }
+.cmsg { display: flex; flex-direction: column; gap: 3px; max-width: 82%; }
+.cmsg.me { align-self: flex-end; align-items: flex-end; }
+.cmsg.them { align-self: flex-start; align-items: flex-start; }
+.cbub { padding: 9px 13px; font-size: 15px; line-height: 1.35; white-space: pre-wrap; word-break: break-word; }
+.cmsg.them .cbub { border-radius: 18px 18px 18px 6px; background: linear-gradient(180deg, var(--g1), var(--g2)); border: 1px solid var(--gline); }
+.cmsg.me .cbub { border-radius: 18px 18px 6px 18px; background: #fff; color: #000; font-weight: 500; }
+.ctime { font: 11px var(--mono); color: rgba(255,255,255,.5); padding: 0 6px; }
+.crep { display: flex; align-items: flex-end; gap: 10px; }
+.crep .cbub { min-width: 0; }
+.cs-mini { flex: none; width: 62px; height: 110px; border-radius: 10px; overflow: hidden; border: 1px solid rgba(255,255,255,.3); background: #111; display: grid; place-items: center; }
+.cs-mini img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cs-mini.gone { border-style: dashed; font: 10px/1.3 var(--mono); color: rgba(255,255,255,.55); text-align: center; padding: 4px; }
+.cs-spot { position: relative; width: 124px; height: 220px; border-radius: 16px; overflow: hidden; border: 1px solid rgba(255,255,255,.3); background: #111; display: block; }
+.cs-spot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cs-gone { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 14px; border: 1px dashed rgba(255,255,255,.35); font: 12px var(--mono); color: rgba(255,255,255,.6); }
+.chat-bar { position: fixed; left: 0; right: 0; bottom: var(--kb, 0px); z-index: 20; display: flex; align-items: center; gap: 8px; padding: 10px max(16px, var(--sar)) calc(var(--sab) + 12px) max(16px, var(--sal)); background: linear-gradient(180deg, rgba(0,0,0,0), #000 30%); }
+.chat-in { flex: 1; min-width: 0; height: 46px; display: flex; align-items: center; padding: 0 16px; border-radius: 999px; }
+.chat-in input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: var(--fg); font-size: 16px; }
+
+/* Tauschen mit eingetragenen Werten */
+.swapask h2 { margin: 0; }
+.btn.swq { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; min-height: 64px; height: auto; padding: 10px 18px; border-radius: 22px; text-align: left; border-color: var(--c1); white-space: normal; }
+.btn.swq b { font-size: 16px; }
+.btn.swq span { font-size: 13px; font-weight: 400; opacity: .8; }
+.btn.swq.main { background: var(--c1); color: var(--ink); border-color: var(--c1); }
+.btn.swq.main span { opacity: .85; }
