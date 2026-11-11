@@ -4,7 +4,7 @@
    zuerst auf dem Handy, beim Sync in der Google-Tabelle. Der aktuelle Stand wird immer aus dem Log berechnet.
    Ausnahme: der Vault. Seine Bilder bleiben verschlüsselt nur auf diesem Handy und werden nie synchronisiert. */
 
-const APP_VERSION = '2.1.2';
+const APP_VERSION = '2.2.0';
 const SCRIPT_MIN = 2;            // benötigte Version des Google-Skripts
 const PEOPLE = ['Manu', 'Rob'];
 const DAYS = ['A', 'B', 'C'];    // interne Kennung der Trainingstage, angezeigt werden die Kürzel
@@ -383,23 +383,17 @@ function flameStats(p) {
   while ((perWeek.get(k) || []).length >= 3) { streak++; k = prevWeek(k); }
   return { counts, streak, week: perWeek.get(cur) || [] };
 }
-function weekSlots(list, right) {
-  const xs = list.slice(0, 3).map(w => `<img src="${FLAME[w.data.day]}" alt="${esc(dl(w.data.day, w.person))}">`);
-  while (xs.length < 3) xs.push('<i aria-hidden="true"></i>');
-  const more = list.length > 3 ? `<span class="mono small">+${list.length - 3}</span>` : '';
-  return `<div class="fb-wk${right ? ' r' : ''}" aria-label="${list.length} von 3 diese Woche">${right ? more + xs.join('') : xs.join('') + more}</div>`;
-}
-function flameBoard() {
-  const me = cfg.me, other = partner(), a = flameStats(me), b = flameStats(other);
-  const side = (p, x, right) => `<a class="fb-side${right ? ' r' : ''}" href="#profil${p === me ? '' : ':' + esc(p)}">
-      <span class="fb-who">${right ? `<b>${esc(p)}</b>${avatar(p, 22)}` : `${avatar(p, 22)}<b>Du</b>`}</span>
-      <span class="fb-n"><span class="display">${x.streak}</span><small class="mono muted">${x.streak === 1 ? 'Woche' : 'Wo.'}</small></span></a>`;
-  return `<div class="sec-title"><h2>Flammen</h2></div>
-    <section class="card fboard" aria-label="Wochenstreak und Flammen, du und ${esc(other)}">
-      <div class="fb-top">${side(me, a)}<div class="fb-mid"><img src="${FLAME.W}" alt="Wochenflamme"><span class="eyebrow">Streak</span></div>${side(other, b, true)}</div>
-      <div class="fb-week">${weekSlots(a.week)}<span class="eyebrow">Woche</span>${weekSlots(b.week, true)}</div>
-      <div class="fb-duel">${DAYS.map(d => `<div><b class="mono">${a.counts[d]}</b><img src="${FLAME[d]}" alt=""><span class="mono muted">${b.counts[d]}</span><i class="fb-k t-${DAY_TONE[d]}">${esc(dl(d))}</i></div>`).join('')}</div>
-    </section>`;
+/* Flammen-Liste: je Person Wochenflamme mit Streak, Antippen klappt die Tagesflammen auf */
+const FLAME_OPEN = new Set();
+function flameList() {
+  const ppl = PEOPLE.map(p => ({ p, x: flameStats(p) })).sort((a, b) => b.x.streak - a.x.streak || (a.p === cfg.me ? -1 : 1));
+  const rows = ppl.map(({ p, x }) => {
+    const open = FLAME_OPEN.has(p), n = x.week.length;
+    const wk = n >= 3 ? `${n} von 3 · Wochenflamme sicher` : `${n} von 3 diese Woche`;
+    return `<div class="fl-row"><button class="fl-head" data-act="fl-toggle" data-p="${esc(p)}" aria-expanded="${open}">${avatar(p, 36)}<span class="fl-who"><b>${p === cfg.me ? 'Du' : esc(p)}</b><span class="small muted">${wk}</span></span><span class="fl-n" aria-label="${x.streak} ${x.streak === 1 ? 'Woche' : 'Wochen'} Streak"><img src="${FLAME.W}" alt=""><b>${x.streak}</b></span></button>
+      ${open ? `<div class="fl-days">${DAYS.map(d => `<span class="fl-day"><img src="${FLAME[d]}" alt=""><span class="fl-k" style="color:${TONE_HEX[DAY_TONE[d]]}">${esc(dl(d, p))}</span><b class="mono">${x.counts[d]}</b></span>`).join('')}</div>` : ''}</div>`;
+  }).join('');
+  return `<div class="sec-title" id="flammen"><h2>Flammen</h2></div><section class="card fl-list">${rows}</section>`;
 }
 function viewDone(id) {
   const s = st(), w = s.workouts.find(x => x.id === id);
@@ -433,10 +427,23 @@ function weekStart() { const d = new Date(); return new Date(d.getFullYear(), d.
 const dl = (d, p) => { const pl = st().plans[p || cfg.me][d]; return (pl && pl.short) || DAY_SHORT[d]; };
 const dayChip = (d, p, extra = '') => `<span class="day t-${DAY_TONE[d]} ${extra}">${esc(dl(d, p))}</span>`;
 // Avatar: Profilbild oder Glas mit weißem Buchstaben
+/* Profilbild-Ersatz und Chat-Namen: je Person ein fester, entsättigter Ton aus Cyan, Magenta oder Gelb.
+   Heute aus dem Namen abgeleitet, ab 3.0 aus der Buddy-ID. Zwei Personen bekommen nie denselben Ton. */
+const AV_FILL = ['#6b6528', '#2f5f6e', '#6e2f55', '#4a7280', '#84506d', '#7d7740'];
+const AV_TEXT = ['#d6cf7c', '#7fb6c6', '#d08fb6', '#a3c9d4', '#e3b3cf', '#e9e3a8'];
+let _avIdx = null;
+function avIdx(p) {
+  if (!_avIdx) {
+    _avIdx = {}; const used = new Set();
+    PEOPLE.forEach(q => { let h = 0; for (const ch of q) h = (Math.imul(h, 31) + ch.charCodeAt(0)) >>> 0; let i = h % 6; while (used.has(i) && used.size < 6) i = (i + 1) % 6; used.add(i); _avIdx[q] = i; });
+  }
+  return _avIdx[p] ?? 0;
+}
+const nameColor = p => AV_TEXT[avIdx(p)];
 function avatar(p, size = 32) {
   const img = st().avatars[p];
   const st_ = `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.4)}px`;
-  return img ? `<img class="av" src="${esc(img)}" alt="${esc(p)}" style="${st_}">` : `<span class="av" style="${st_}" aria-hidden="true">${esc(p[0])}</span>`;
+  return img ? `<img class="av" src="${esc(img)}" alt="${esc(p)}" style="${st_}">` : `<span class="av" style="${st_};background:${AV_FILL[avIdx(p)]}" aria-hidden="true">${esc(p[0])}</span>`;
 }
 
 const ICON = {
@@ -1791,6 +1798,7 @@ function chatSync() {
       for (const id of [...tombs]) { await call({ action: 'chat_del', person: cfg.me, id }, 30000); tombs.splice(tombs.indexOf(id), 1); LS.set('chat.tomb.' + cfg.me, tombs); }
       for (const m of CHAT.msgs.filter(x => x.pend && x.from === cfg.me)) {
         const o = { text: m.text }; if (m.spot) { o.spot = m.spot; o.spotOwner = m.spotOwner; }
+        if (m.re) o.re = m.re; if (m.react) o.react = m.react;
         const enc = await encJSON(key, o);
         await call({ action: 'chat_put', person: cfg.me, to: m.to, id: m.id, ts: m.ts, data: enc.iv + '.' + b64e(enc.ct) }, 30000);
         m.pend = false; changed = true;
@@ -1806,6 +1814,8 @@ function chatSync() {
           if (typeof o.text !== 'string' || !o.text.trim()) continue;
           const m = { id: x.id, from: x.from, to: x.to, ts: x.ts, text: o.text.slice(0, CHAT_LEN) };
           if (typeof o.spot === 'string' && PEOPLE.includes(o.spotOwner)) { m.spot = o.spot.slice(0, 64); m.spotOwner = o.spotOwner; }
+          if (typeof o.re === 'string') m.re = o.re.slice(0, 64);
+          if (m.re && isEmoji(o.react)) m.react = o.react;
           CHAT.msgs.push(m); changed = true;
         } catch (e) { /* nicht lesbar (anderer Schlüssel): überspringen */ }
       }
@@ -1824,6 +1834,7 @@ function chatSend(to, text, ref = {}) {
   if (!CHAT.loaded) loadChat();
   const m = { id: uid(), from: cfg.me, to, ts: new Date().toISOString(), text, pend: true };
   if (ref.spot) { m.spot = ref.spot; m.spotOwner = ref.spotOwner; }
+  if (ref.re) m.re = ref.re; if (ref.react) m.react = ref.react;
   CHAT.msgs.push(m); saveChat(); chatChanged(); chatSync();
 }
 // Neue Nachrichten: im offenen Chat nur die Liste tauschen (Eingabe und Tastatur bleiben), sonst neu zeichnen
@@ -1863,7 +1874,7 @@ function viewChats() {
   if (!CHAT.loaded) loadChat();
   const peers = chatPeers();
   const rows = peers.map(p => {
-    const last = chatWith(p).pop(), n = chatUnread(p);
+    const last = chatWith(p).filter(m => !chatHidden().includes(m.id)).pop() || chatWith(p).pop(), n = chatUnread(p);
     return `<a class="crow" href="#chat:${encodeURIComponent(p)}">${avatar(p, 50)}<span class="crow-m"><span class="crow-h"><b>${esc(p)}</b><span class="mono small muted">${relDay(last.ts) === 'heute' ? fmtTime(last.ts) : fmtDate(last.ts)}</span></span><span class="crow-l"><span class="${n ? 'unread' : 'muted'}">${last.from === cfg.me ? 'Du: ' : ''}${last.spot ? '↩ Spot · ' : ''}${esc(last.text)}</span>${n ? `<span class="cnt">${n}</span>` : ''}</span></span></a>`;
   }).join('');
   return `<h1 class="display" style="font-size:30px">Chats</h1>
@@ -1905,6 +1916,7 @@ function chatMsgsHTML(p) {
   SPOT.gallery.forEach(g => { if (g.person === me && g.shared && new Date(g.created).getTime() > lim) items.push({ ts: g.created, g }); });
   SPOT.inbox.forEach(x => { if (x.person === p) items.push({ ts: x.created, x }); });
   items.sort((a, b) => a.ts.localeCompare(b.ts));
+  const hidden = new Set(chatHidden());
   let lastDay = '', out = '';
   items.forEach(({ ts, m, g, x }) => {
     const dk = dateKey(ts);
@@ -1920,10 +1932,12 @@ function chatMsgsHTML(p) {
       out += `<div class="cmsg me"><a class="cs-spot" href="#spot-bild:${encodeURIComponent(g.id)}"><img src="${spotUrl(g)}" alt="Dein Spot">${reactBadges(g.id)}</a><span class="ctime">Spot · ${fmtTime(ts)} · ${seen ? (Date.now() - new Date(g.created) < SPOT_LIFE ? `noch ${left} ${left === 1 ? 'Tag' : 'Tage'}` : 'gesehen') : 'noch nicht gesehen'}</span></div>`;
       return;
     }
+    if (m.react || hidden.has(m.id)) return;
     const mine = m.from === me;
-    const bub = mine ? `<button type="button" class="cbub" data-act="cm-del" data-id="${esc(m.id)}" aria-label="Nachricht: ${esc(m.text)}. Antippen zum Löschen">${esc(m.text)}</button>` : `<div class="cbub">${esc(m.text)}</div>`;
+    const bub = `<div class="cbub">${chatQuote(m)}<span class="ctext">${esc(m.text)}</span></div>`;
     const body = m.spot ? `<div class="crep">${mine ? bub + chatSpotThumb(m.spot, m.spotOwner) : chatSpotThumb(m.spot, m.spotOwner) + bub}</div>` : bub;
-    out += `<div class="cmsg ${mine ? 'me' : 'them'}">${body}<span class="ctime">${fmtTime(ts)}${m.pend ? ' · wird gesendet' : ''}</span></div>`;
+    const name = `<span class="cname" style="color:${mine ? 'var(--fg)' : nameColor(m.from)}">${mine ? 'Du' : esc(m.from)}</span>`;
+    out += `<div class="cmsg ${mine ? 'me' : 'them'}" id="cm-${esc(m.id)}" data-mid="${esc(m.id)}">${name}${body}${chatReacts(m.id)}<span class="ctime">${fmtTime(ts)}${m.pend ? ' · wird gesendet' : ''}</span></div>`;
   });
   return out || `<div class="empty" style="margin:auto 0 0">Schreib ${esc(p)} die erste Nachricht.</div>`;
 }
@@ -1932,24 +1946,120 @@ function viewChat(p) {
   CHAT.open = p;
   return `<div class="chat-head"><div class="chat-head-in">${backBtn('chats')}<a class="chat-prof" href="#profil:${encodeURIComponent(p)}" data-act="goprof" data-p="${esc(p)}" aria-label="Profil von ${esc(p)}">${avatar(p, 36)}</a><span class="chat-who"><b>${esc(p)}</b><span class="lockline">${ICON.lock.replace('width="22" height="22"', 'width="12" height="12"')}verschlüsselt · ${CHAT_DAYS} Tage</span></span></div></div>
     <main class="view chat-view"><div class="chat-msgs" id="chat-msgs">${chatMsgsHTML(p)}</div></main>
-    <form class="chat-bar" id="chatform" novalidate>
+    <form class="chat-bar" id="chatform" novalidate>${chatReplyBar(p)}
       <a class="iconbtn" href="#kamera" aria-label="Spot aufnehmen">${ICON.cam.replace('width="22" height="22"', 'width="20" height="20"')}</a>
       <label class="chat-in glass"><input id="chat-in" placeholder="Nachricht" aria-label="Nachricht an ${esc(p)}" autocomplete="off" enterkeyhint="send" maxlength="${CHAT_LEN}" value="${esc(CHAT.draft && CHAT.draft[p] || '')}"></label>
       <button class="chat-send" type="submit" aria-label="Senden">${ICON.send}</button>
     </form>`;
 }
 // Eigene Nachricht für beide löschen: verschwindet hier sofort und beim anderen mit dem nächsten Abgleich
-function chatDelete(id) {
+function chatDelete(id, quiet) {
   const m = CHAT.msgs.find(x => x.id === id); if (!m || m.from !== cfg.me) return;
-  CHAT.msgs = CHAT.msgs.filter(x => x.id !== id); saveChat();
-  if (!m.pend) { const t = LS.get('chat.tomb.' + cfg.me, []); t.push(id); LS.set('chat.tomb.' + cfg.me, t); }
-  chatChanged(); chatSync(); toast('Nachricht gelöscht');
+  // mit der Nachricht verschwinden auch die eigenen Reaktionen darauf
+  const gone = [m, ...CHAT.msgs.filter(x => x.react && x.re === id && x.from === cfg.me)];
+  CHAT.msgs = CHAT.msgs.filter(x => !gone.includes(x)); saveChat();
+  const t = LS.get('chat.tomb.' + cfg.me, []); gone.forEach(x => { if (!x.pend) t.push(x.id); }); LS.set('chat.tomb.' + cfg.me, t);
+  chatChanged(); chatSync(); if (!quiet) toast('Nachricht gelöscht');
 }
+/* Antworten: Zitat in der Blase in der Farbe der zitierten Person, eigene Nachrichten weiß. Antippen springt zum Original. */
+function chatQuote(m) {
+  if (!m.re) return '';
+  const q = CHAT.msgs.find(x => x.id === m.re && !x.react);
+  if (!q) return '<span class="cquote gone">Nachricht nicht mehr da</span>';
+  const own = q.from === cfg.me;
+  return `<button type="button" class="cquote" data-act="cm-jump" data-id="${esc(q.id)}" style="--qc:${own ? '#fff' : nameColor(q.from)};--qf:${own ? '#000' : AV_FILL[avIdx(q.from)]}"><b>${own ? 'Du' : esc(q.from)}</b><span>${esc(q.text.slice(0, 140))}</span></button>`;
+}
+// Reaktionen unter einer Nachricht: jedes Emoji einmal, ab zwei Reaktionen mit Anzahl
+function chatReacts(id) {
+  const rx = CHAT.msgs.filter(x => x.react && x.re === id); if (!rx.length) return '';
+  return `<span class="creact" aria-label="Reaktionen: ${esc(rx.map(x => (x.from === cfg.me ? 'du ' : x.from + ' ') + x.react).join(', '))}">${[...new Set(rx.map(x => x.react))].map(esc).join('')}${rx.length > 1 ? `<i>${rx.length}</i>` : ''}</span>`;
+}
+const chatHidden = () => LS.get('chat.hidden.' + cfg.me, []) || [];
+function chatReplyBar(p) {
+  const r = CHAT.reply && CHAT.reply.p === p ? CHAT.msgs.find(x => x.id === CHAT.reply.id) : null;
+  if (!r) return '';
+  const own = r.from === cfg.me;
+  return `<div class="chat-reply glass" id="chat-reply" style="--qc:${own ? '#fff' : nameColor(r.from)}"><span><b>Antwort an ${own ? 'dich' : esc(r.from)}</b><em>${esc(r.text.slice(0, 120))}</em></span><button type="button" data-act="cm-reply-x" aria-label="Antwort abbrechen">${ICON.x || '×'}</button></div>`;
+}
+function refreshReplyBar() {
+  const f = $('#chatform'); if (!f) return;
+  const old = $('#chat-reply'); if (old) old.remove();
+  f.insertAdjacentHTML('afterbegin', chatReplyBar(CHAT.open));
+}
+// Eigene Reaktion setzen, wechseln oder (gleiches Emoji noch einmal) zurücknehmen. Reist verschlüsselt wie eine Nachricht.
+function chatReact(id, emoji) {
+  const m = CHAT.msgs.find(x => x.id === id); if (!m || m.react || !isEmoji(emoji)) return;
+  const p = m.from === cfg.me ? m.to : m.from;
+  const old = CHAT.msgs.find(x => x.react && x.re === id && x.from === cfg.me);
+  if (old) chatDelete(old.id, true);
+  if (!old || old.react !== emoji) chatSend(p, emoji, { re: id, react: emoji });
+}
+/* Gedrückt halten: Reaktionen (wie in der Spot-Ansicht, + für ein eigenes Emoji), Antworten, Kopieren, Melden bzw. Löschen */
+const CM_EMOJI = ['💪', '🔥', '👏'];
+function openChatMenu(id, emojiMode) {
+  const m = CHAT.msgs.find(x => x.id === id); if (!m) return;
+  const mine = m.from === cfg.me, myR = (CHAT.msgs.find(x => x.react && x.re === id && x.from === cfg.me) || {}).react;
+  const ic = (d) => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  $('#modal').innerHTML = `<div class="cm-ov" data-act="mclose-bg"><div class="cm-box ${mine ? 'me' : 'them'}" role="dialog" aria-modal="true" aria-label="Nachricht von ${mine ? 'dir' : esc(m.from)}">
+    <div class="cm-emo" role="group" aria-label="Reagieren">${CM_EMOJI.map(e => `<button type="button" data-act="cm-react" data-id="${esc(id)}" data-v="${e}" aria-label="Reagieren mit ${e}" aria-pressed="${myR === e}">${e}</button>`).join('')}<button type="button" class="cm-plus" data-act="cm-emoji" data-id="${esc(id)}" aria-label="Eigenes Emoji wählen" aria-pressed="${!!myR && !CM_EMOJI.includes(myR)}">${myR && !CM_EMOJI.includes(myR) ? esc(myR) : ICON.plus.replace('width="16" height="16"', 'width="20" height="20"')}</button></div>
+    ${emojiMode ? `<form class="cm-emo-in" id="cm-emo-form" data-id="${esc(id)}" novalidate><input id="cm-emo-in" placeholder="Emoji tippen" aria-label="Eigenes Emoji als Reaktion" maxlength="16" autocomplete="off" enterkeyhint="send"><button class="btn small" type="submit">Senden</button></form>` : ''}
+    <div class="cm-msg">${esc(m.text)}</div>
+    ${emojiMode ? '<span class="small muted cm-hint">Tippe ein Emoji, auf der Tastatur über 😀 oder 🌐.</span>' : `<div class="cm-acts">
+      <button type="button" data-act="cm-reply" data-id="${esc(id)}">Antworten${ic('<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 5 5v6"/>')}</button>
+      <button type="button" data-act="cm-copy" data-id="${esc(id)}">Kopieren${ic('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h9"/>')}</button>
+      ${mine ? `<button type="button" class="danger-t" data-act="cm-del2" data-id="${esc(id)}">Für alle löschen${ic('<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>')}</button>`
+        : `<button type="button" class="danger-t" data-act="cm-report" data-id="${esc(id)}">Melden${ic('<path d="M5 21V4h11l-1.5 4L16 12H5"/>')}</button>`}
+    </div>`}
+  </div></div>`;
+  if (emojiMode) setTimeout(() => { const i = $('#cm-emo-in'); if (i) i.focus(); }, 30);
+}
+// Gesten im Chat: nach rechts wischen = antworten, gedrückt halten = Menü, doppelt tippen = 🔥 (nur fremde Nachrichten)
+let CG = null, CG_TAP = { id: '', t: 0 };
+function cgReset() { if (CG) { clearTimeout(CG.lp); if (CG.row) { CG.row.style.transition = 'transform .18s ease-out'; CG.row.style.transform = ''; CG.row.classList.remove('rep-ready'); } } CG = null; }
+document.addEventListener('pointerdown', ev => {
+  if (view !== 'chat' || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+  const row = ev.target.closest('.cmsg[data-mid]');
+  if (!row || ev.target.closest('a, .cs-spot, .cs-mini, .cquote')) return;
+  CG = { row, id: row.dataset.mid, x0: ev.clientX, y0: ev.clientY, dx: 0, mode: null, t0: Date.now() };
+  CG.lp = setTimeout(() => { if (CG && !CG.mode) { CG.mode = 'menu'; if (navigator.vibrate) navigator.vibrate(8); openChatMenu(CG.id); } }, 450);
+});
+document.addEventListener('pointermove', ev => {
+  if (!CG || view !== 'chat') return;
+  const dx = ev.clientX - CG.x0, dy = ev.clientY - CG.y0;
+  if (!CG.mode) {
+    if (Math.abs(dy) > 10 || dx < -10) { clearTimeout(CG.lp); CG = null; return; }
+    if (dx > 10 && dx > Math.abs(dy)) { CG.mode = 'swipe'; clearTimeout(CG.lp); } else return;
+  }
+  if (CG.mode !== 'swipe') return;
+  CG.dx = dx; const d = Math.max(0, Math.min(dx, 80));
+  CG.row.style.transition = 'none'; CG.row.style.transform = `translateX(${d}px)`; CG.row.classList.toggle('rep-ready', d > 56);
+});
+document.addEventListener('pointerup', () => {
+  if (!CG) return;
+  const c = CG; clearTimeout(c.lp);
+  if (c.mode === 'swipe' && c.dx > 56) { CHAT.reply = { p: CHAT.open, id: c.id }; refreshReplyBar(); const i = $('#chat-in'); if (i) i.focus(); }
+  if (!c.mode && Date.now() - c.t0 < 300) {
+    const m = CHAT.msgs.find(x => x.id === c.id);
+    if (m && m.from !== cfg.me && CG_TAP.id === c.id && Date.now() - CG_TAP.t < 320) { chatReact(c.id, '🔥'); CG_TAP = { id: '', t: 0 }; }
+    else CG_TAP = { id: c.id, t: Date.now() };
+  }
+  cgReset();
+});
+document.addEventListener('pointercancel', cgReset);
+document.addEventListener('submit', e => {
+  if (e.target.id !== 'cm-emo-form') return;
+  e.preventDefault();
+  const v = ($('#cm-emo-in').value || '').trim();
+  if (!isEmoji(v)) { toast('Bitte ein einzelnes Emoji eingeben'); return; }
+  chatReact(e.target.dataset.id, v); closeModal();
+});
 function chatSubmit() {
   const p = CHAT.open, inp = $('#chat-in'); if (!p || !inp) return;
   const t = inp.value.trim(); if (!t) return;
   inp.value = ''; if (CHAT.draft) delete CHAT.draft[p];
-  chatSend(p, t);
+  const re = CHAT.reply && CHAT.reply.p === p ? CHAT.reply.id : '';
+  CHAT.reply = null; refreshReplyBar();
+  chatSend(p, t, re ? { re } : {});
   const app = $('#app'); app.scrollTop = app.scrollHeight;
 }
 
@@ -2510,7 +2620,7 @@ function render() {
     if (view === 'spots' && name !== 'spots' && SPOT.view) { cancelAnimationFrame(SPOT.view.raf); SPOT.view = null; }
     if (view === 'spot-bild') SPOT.galDel = null;
     if (name === 'spot-bild') SPOT.back = view === 'chat' && CHAT.open ? '#chat:' + encodeURIComponent(CHAT.open) : view === 'start' || view === 'verlauf' ? '#' + view : '#profil';
-    if (view === 'chat') CHAT.open = null;
+    if (view === 'chat') { CHAT.open = null; CHAT.reply = null; }
   }
   let html, tone = '';
   switch (name) {
@@ -2521,6 +2631,8 @@ function render() {
     case 'notizen': html = head('Notizen') + `<main class="view">${viewNotes()}</main>` + tabbar('notizen'); break;
     case 'glocke': html = subhead(draft ? 'training' : 'start') + `<main class="view">${viewBell()}</main>` + (draft ? '' : tabbar('')); break;
     case 'einstellungen': html = subhead(draft ? 'training' : 'start') + `<main class="view nobar">${viewSettings()}</main>`; break;
+    case 'ueber': html = subhead('einstellungen') + `<main class="view nobar">${viewAbout()}</main>`; break;
+    case 'rechtliches': html = subhead('ueber') + `<main class="view nobar legal">${viewLegal(arg)}</main>`; break;
     case 'gewicht': html = subhead('profil') + `<main class="view">${viewBodyweight()}</main>` + tabbar('profil'); break;
     case 'profil': html = (arg && arg !== cfg.me ? subhead('start') : `<header class="head" id="head"><div class="brand"></div>${gearBtn()}</header>`) + `<main class="view">${viewProfile(arg && PEOPLE.includes(arg) ? arg : cfg.me)}</main>` + tabbar(arg && arg !== cfg.me ? '' : 'profil'); break;
     case 'vault': html = subhead('profil', VAULT.key && VAULT.mode === 'unlock' && !VAULT.showKey ? `<button class="btn small glass" data-act="v-lock" style="border-color:rgba(255,255,255,.3)">${ICON.lock.replace('width="22" height="22"', 'width="16" height="16"')} Sperren</button>` : '') + `<main class="view nobar">${viewVault()}</main>`; break;
@@ -2535,11 +2647,12 @@ function render() {
     case 'chats': html = subhead(draft ? 'training' : 'start') + `<main class="view">${viewChats()}</main>` + tabbar(''); break;
     case 'chat': if (!others().includes(arg)) { location.hash = '#chats'; return; } html = viewChat(arg); break;
     case 'geschafft': html = viewDone(arg); if (!html) { location.hash = '#start'; return; } break;
-    default: html = `<header class="head" id="head"><div class="brand built">BUILT</div>${spotRing()}${chatBtn()}${bellBtn()}${gearBtn()}</header><main class="view">${viewStart()}</main>` + tabbar('start');
+    default: html = `<header class="head" id="head"><div class="brand built">BUILT</div>${spotRing() || flameCap()}${chatBtn()}${bellBtn()}${gearBtn()}</header><main class="view">${viewStart()}</main>` + tabbar('start');
   }
   document.body.dataset.tone = tone;
   setPage(html, tone);
   if (name !== view) { app.scrollTop = 0; view = name; }
+  tabSlideIn();
   pendingRender = false;
   onScroll();
   if (name === 'vault') fillVaultImages();
@@ -2555,7 +2668,12 @@ function spotRing() {
   const u = unseenSpots(); if (!u.length) return '';
   const first = u[0], col = first.meta && first.meta.day ? TONE_HEX[DAY_TONE[first.meta.day]] : TONE_HEX.m;
   const who = [...new Set(u.map(x => x.person))];
-  return `<button class="spotring" data-act="spot-open" style="--ring:${col}" aria-label="${u.length} ${u.length === 1 ? 'neuer Spot' : 'neue Spots'} von ${esc(who.join(' und '))}"><span class="ring-in">${avatar(first.person, 34)}</span>${u.length > 1 ? `<span class="badge">${u.length}</span>` : ''}</button>`;
+  return `<button class="spotring" data-act="spot-open" style="--ring:${col}" aria-label="${u.length} ${u.length === 1 ? 'neuer Spot' : 'neue Spots'} von ${esc(who.join(' und '))}"><span class="ring-in">${avatar(first.person, 28)}</span>${u.length > 1 ? `<span class="badge">${u.length}</span>` : ''}</button>`;
+}
+// Ohne ungesehene Spots sitzt an derselben Stelle die Flammen-Kapsel: Wochenflamme und eigener Streak, führt zur Flammen-Liste
+function flameCap() {
+  const n = flameStats(cfg.me).streak;
+  return `<button class="fcap glass" data-act="to-flames" aria-label="Dein Wochenstreak: ${n} ${n === 1 ? 'Woche' : 'Wochen'}. Zu den Flammen"><img src="${FLAME.W}" alt=""><b>${n}</b></button>`;
 }
 function onScroll() { const h = $('#head'); if (h) h.classList.toggle('scrolled', $('#app').scrollTop > 4); const sh = $('.sheet.full'); if (sh) sh.classList.toggle('scrolled', sh.scrollTop > 40); }
 document.addEventListener('scroll', onScroll, { passive: true, capture: true });
@@ -2599,12 +2717,12 @@ function viewStart() {
   let main;
   if (draft) {
     main = `<div class="eyebrow">Training läuft${draft.deload ? ' · Deload' : ''}</div>
-      <h1 class="kurz">${esc(dl(draft.day))}</h1><div class="title">${esc(draft.title)}</div>
+      <h1 class="kurz" style="color:${TONE_HEX[DAY_TONE[draft.day]]}">${esc(dl(draft.day))}</h1><div class="title">${esc(draft.title)}</div>
       <div class="mono muted small">begonnen ${relDay(draft.start)} um ${fmtTime(draft.start)}</div>
       <div class="btnrow" style="padding-top:8px"><a class="btn primary" href="#training">Training fortsetzen</a></div>`;
   } else {
     main = `<div class="eyebrow">${dl_.active ? `Deload · Teil ${dl_.part} von 3` : `Als Nächstes · ${wd}`}</div>
-      <h1 class="kurz">${esc(dl(nd))}</h1><div class="title">${esc(plan.title)}</div>
+      <h1 class="kurz" style="color:${TONE_HEX[DAY_TONE[nd]]}">${esc(dl(nd))}</h1><div class="title">${esc(plan.title)}</div>
       <div class="mono muted small">${plan.exercises.length} Übungen · ${dl_.active ? `${plan.exercises.reduce((a, x) => a + Math.ceil((+x.sets || 1) / 2), 0)} Sätze (halbiert)` : `${nSets} Sätze`}${lastDone ? ` · zuletzt ${relDay(lastDone.ts)}` : ''}</div>
       ${regenHint(nd)}
       ${dl_.active ? `<div class="deload"><b>Deload-Woche</b><span class="muted">${esc(dl_.reason)}. Gewicht −10 %, halbe Sätze, Wiederholungen am unteren Ende. Danach geht es mit deinen bisherigen Gewichten weiter.</span></div>` : ''}
@@ -2621,15 +2739,16 @@ function viewStart() {
   }
   const install = !(navigator.standalone || matchMedia('(display-mode: standalone)').matches) && /iPhone|iPad/.test(navigator.userAgent)
     ? `<div class="install glass">Tipp: Tippe in Safari auf <b>Teilen</b> und dann <b>Zum Home-Bildschirm</b>. Dann läuft die App wie eine normale App und auch offline.</div>` : '';
-  const feed = s.feed.filter(e => Date.now() - new Date(e.ts) < 7 * 864e5).slice(0, 5);
+  // Neuigkeiten: die letzten drei Ereignisse der vergangenen 7 Tage, Neues oben. Alles Weitere über „Alle“ im Verlauf.
+  const week = s.feed.filter(e => Date.now() - new Date(e.ts) < 7 * 864e5), feed = week.slice(0, 3);
   return `${install}
     <section class="hero">${main}</section>
     <div class="rotation" aria-label="Deine Rotation">${rot}</div>
     ${syncLine()}
-    ${flameBoard()}
-    ${progressCard()}
-    <div class="sec-title"><h2>Neuigkeiten</h2>${s.feed.length ? '<a href="#verlauf">Alle</a>' : ''}</div>
-    <section class="card" style="padding:4px 16px">${feed.length ? `<div class="feed">${feed.map(feedItem).join('')}</div>` : (s.feed.length ? '<div class="empty">Diese Woche noch nichts Neues. Alles Ältere findest du im Verlauf.</div>' : '<div class="empty">Hier erscheinen eure Trainings, Steigerungen und Skips.</div>')}</section>`;
+    <div class="sec-title"><h2>Neuigkeiten${week.length > 3 ? ` <span class="mono muted sec-n">3 von ${week.length}</span>` : ''}</h2>${s.feed.length ? '<a href="#verlauf">Alle</a>' : ''}</div>
+    <section class="card" style="padding:4px 16px">${feed.length ? `<div class="feed">${feed.map(feedItem).join('')}</div>` : (s.feed.length ? '<div class="empty">Diese Woche noch nichts Neues. Alles Ältere findest du im Verlauf.</div>' : '<div class="empty">Hier erscheinen eure Trainings, Steigerungen und Skips.</div>')}</section>
+    ${flameList()}
+    ${progressCard()}`;
 }
 // Hinweis, wenn derselbe Trainingstag noch keine REGEN_H Stunden her ist (ändert nichts an den Flammen)
 function regenHint(d, small) {
@@ -2646,20 +2765,8 @@ function feedItem(e) {
   const wait = isPending(e.id) ? '<span class="chip wait">noch nicht synchronisiert</span>' : '';
   let t = '', m = fmtDate(e.ts) + ' · ' + fmtTime(e.ts), extra = '', href = '';
   const who = `<b>${me ? 'Du' : esc(p)}</b>`;
-  if (e.type === 'workout') {
-    const n = (d.entries || []).reduce((a, en) => a + en.sets.length, 0);
-    const imp = improvements(e);
-    const ab = e.abort;
-    t = `${dayChip(d.day, p)}<span>${who} ${me ? 'hast' : 'hat'} ${ab ? 'abgebrochen' : 'abgeschlossen'}</span>`;
-    m += ` · ${duration(d.start, d.end)} · ${ab ? `${ab.done} von ${ab.plan} Sätzen` : `${n} ${n === 1 ? 'Satz' : 'Sätze'}`}`;
-    const notes = (d.entries || []).filter(en => en.note).length;
-    const prs = imp.filter(i => i.pr), tn = DAY_TONE[d.day] || 'y';
-    extra = (prs.length ? `<span class="recs">${prs.map(i => `<span class="rec t-${tn}" aria-label="Rekord: ${esc(i.name)} ${esc(i.label)}">${ICON.trophy}<span><b>${esc(i.name.replace(/\s*\(.*\)$/, ''))}</b> <span class="mono">${esc(i.label)}</span></span></span>`).join('')}</span>` : '')
-      + (ab ? '<span class="chip">Training abgebrochen</span>' : '') + (d.deload ? '<span class="chip dl">Deload</span>' : '')
-      + imp.filter(i => !i.pr).map(i => `<span class="chip">${esc(i.name.replace(/\s*\(.*\)$/, ''))} ${esc(i.label)}</span>`).join('')
-      + (notes ? `<span class="chip">${notes} ${notes === 1 ? 'Notiz' : 'Notizen'}</span>` : '');
-    href = '#training-log:' + encodeURIComponent(e.id);
-  } else if (e.type === 'workout_edit') {
+  if (e.type === 'workout') return feedWorkout(e);
+  if (e.type === 'workout_edit') {
     const w = st().workouts.find(x => x.id === d.ref); if (!w) return '';
     t = `${dayChip(w.data.day, d.as)}<span>${who} ${me ? 'hast' : 'hat'} ${d.as === cfg.me ? 'dein' : esc(d.as) + 's'} Training vom ${fmtDate(w.ts)} angepasst</span>`;
     extra = (d.chg.length ? d.chg : ['Werte korrigiert']).map(c => `<span class="chip">${esc(c)}</span>`).join('');
@@ -2676,6 +2783,23 @@ function feedItem(e) {
   }
   const inner = `<span class="avlink" data-act="goprof" data-p="${esc(p)}">${avatar(p, 34)}</span><div><div class="t">${t}</div><div class="m">${m}</div>${extra || wait ? `<div class="chips">${extra}${wait}</div>` : ''}</div>${th}`;
   return href ? `<a class="fi ${th ? 'has-th' : ''}" href="${href}">${inner}</a>` : `<div class="fi">${inner}</div>`;
+}
+
+/* Training in den Neuigkeiten: wer, wann, wie lange. Darunter die Sätze und die Rekorde, eingeklappt hinter „Rekord“ in Tagesfarbe.
+   Antippen führt zu den Details. */
+const FEED_OPEN = new Set();
+function feedWorkout(e) {
+  const d = e.data || {}, p = e.person, me = p === cfg.me, ab = e.abort;
+  const n = (d.entries || []).reduce((a, en) => a + en.sets.length, 0);
+  const prs = improvements(e).filter(i => i.pr), col = TONE_HEX[DAY_TONE[d.day]] || '#fff', open = FEED_OPEN.has(e.id);
+  const wait = isPending(e.id) ? '<span class="chip wait">noch nicht synchronisiert</span>' : '';
+  const recBtn = prs.length ? `<button class="fi-rec" data-act="feed-rec" data-id="${esc(e.id)}" aria-expanded="${open}" style="color:${col}">${ICON.trophy}${prs.length === 1 ? 'Rekord' : prs.length + ' Rekorde'}<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>` : '';
+  return `<div class="fi fi-w"><span class="avlink" data-act="goprof" data-p="${esc(p)}">${avatar(p, 34)}</span><div>
+      <a class="fi-link" href="#training-log:${encodeURIComponent(e.id)}"><div class="t">${dayChip(d.day, p)}<span><b>${me ? 'Du' : esc(p)}</b> ${me ? 'hast' : 'hat'} ${ab ? 'abgebrochen' : 'abgeschlossen'}</span></div>
+      <div class="m">${fmtDate(e.ts)} · ${fmtTime(e.ts)} · ${duration(d.start, d.end)}</div></a>
+      <div class="fi-l2"><span class="muted">${ab ? `${ab.done} von ${ab.plan} Sätzen` : `${n} ${n === 1 ? 'Satz' : 'Sätze'}`}</span>${d.deload ? '<span class="chip dl">Deload</span>' : ''}${recBtn}${wait}</div>
+      ${open ? `<div class="fi-recs">${prs.map(i => `<div><span>${esc(i.name.replace(/\s*\(.*\)$/, ''))}</span><span class="mono" style="color:${col}">${esc(i.label)}</span></div>`).join('')}</div>` : ''}
+    </div></div>`;
 }
 
 /* ---------- Training ---------- */
@@ -3429,10 +3553,12 @@ function viewWorkout(id) {
   if (!e) return '<div class="empty">Training nicht gefunden.</div>';
   const d = e.data, imp = improvements(e);
   return `<div style="display:flex;flex-direction:column;gap:8px"><span class="who">${avatar(e.person, 28)}${e.person === cfg.me ? 'Du' : esc(e.person)}</span>
-      <h1 class="kurz" style="font-size:64px">${esc(dl(d.day, e.person))}</h1><div style="font-size:18px;font-weight:600">${esc(d.title)}</div>
+      <h1 class="kurz" style="font-size:64px;color:${TONE_HEX[DAY_TONE[d.day]]}">${esc(dl(d.day, e.person))}</h1><div style="font-size:18px;font-weight:600">${esc(d.title)}</div>
       <div class="mono muted small">${fmtDate(e.ts)}, ${fmtTime(d.start)}–${fmtTime(d.end)} · ${duration(d.start, d.end)}${d.deload ? ' · Deload' : ''}</div>
       ${e.abort ? `<span class="chip" style="align-self:flex-start">Abgebrochen · ${e.abort.done} von ${e.abort.plan} Sätzen</span>` : ''}
-      ${imp.length ? `<div class="chips">${imp.map(i => `<span class="chip ${i.pr ? 'pr' : ''}">${esc(i.name)} ${esc(i.label)}${i.pr ? ' · Rekord' : ''}</span>`).join('')}</div>` : ''}</div>
+      ${(() => { const prs = imp.filter(i => i.pr), rest = imp.filter(i => !i.pr), col = TONE_HEX[DAY_TONE[d.day]];
+        return (prs.length ? `<section class="card wrecs" style="border-color:${col}"><span class="wrecs-h" style="color:${col}">${ICON.trophy}${prs.length === 1 ? 'Rekord' : prs.length + ' Rekorde'}</span>${prs.map(i => `<div><span>${esc(i.name)}</span><span class="mono" style="color:${col}">${esc(i.label)}</span></div>`).join('')}</section>` : '')
+          + (rest.length ? `<div class="chips">${rest.map(i => `<span class="chip">${esc(i.name)} ${esc(i.label)}</span>`).join('')}</div>` : ''); })()}</div>
     ${d.edited ? `<span class="small muted">Nachträglich bearbeitet${d.editedBy && d.editedBy !== e.person ? ` von ${d.editedBy === cfg.me ? 'dir' : esc(d.editedBy)}` : ''} am ${fmtDate(d.edited)}, ${fmtTime(d.edited)}</span>` : ''}
     <section class="card">${d.entries.map(en => `<a class="sess" href="#uebung:${encodeURIComponent(en.exId)}"><div class="top"><b style="color:var(--fg)">${esc(en.name)}${en.from ? ` <span class="small muted" style="font-weight:400">statt ${esc(en.from.name)}</span>` : ''}</b><span class="mono">${en.sets.length} ${en.sets.length === 1 ? 'Satz' : 'Sätze'}</span></div>
       ${(() => { const ft = feelText(en); return `<div class="v">${fmtSets(en.type, en.sets)}</div>${ft ? `<div class="small muted">${esc(ft)}</div>` : ''}`; })()}${en.note ? `<p class="quote muted">${esc(en.note)}</p>` : ''}</a>`).join('')}</section>
@@ -3849,6 +3975,40 @@ function savePlan() {
 }
 
 /* ---------- Einstellungen & Einrichtung ---------- */
+/* ---------- Über BUILT und Rechtliches (Platzhalter, werden vor einem öffentlichen Start überarbeitet) ---------- */
+function viewAbout() {
+  const row = (k, l) => `<a class="row" href="#rechtliches:${k}">${l}<span class="v">›</span></a>`;
+  return `<div class="about-top"><img src="${FLAME.W}" alt=""><span><b class="display" style="font-size:24px">BUILT</b><br><span class="mono small muted">Version ${APP_VERSION}</span></span></div>
+    <div class="secl">Rechtliches</div>
+    <div class="rows glass">${row('impressum', 'Impressum')}${row('datenschutz', 'Datenschutzerklärung')}${row('nutzung', 'Nutzungsbedingungen')}</div>
+    <div class="secl">Lizenzen</div>
+    <div class="rows glass">${row('lizenzen', 'Schriften: Unbounded, Geist, Geist Mono')}</div>
+    <span class="small muted" style="padding:0 4px">Die Schriften sind in der App enthalten und werden nicht von fremden Servern geladen.</span>`;
+}
+function viewLegal(k) {
+  const T = {
+    impressum: ['Impressum', `<h3>Angaben gemäß § 5 DDG</h3><p>Vorname Nachname<br>Straße Hausnummer<br>PLZ Ort<br>Deutschland</p>
+      <h3>Kontakt</h3><p>E-Mail: kontakt@domain.de<br>Telefon oder Kontaktformular: Telefonnummer oder Link</p>
+      <h3>Inhalte melden</h3><p>Nachrichten kannst du in der App melden: Nachricht gedrückt halten und „Melden“ wählen.</p>
+      <h3>Verbraucherstreitbeilegung</h3><p>Wir sind nicht bereit und nicht verpflichtet, an Streitbeilegungsverfahren vor einer Verbraucherschlichtungsstelle teilzunehmen.</p>`],
+    datenschutz: ['Datenschutz', `<p style="color:var(--fg)">Entwurf, wird vor einem öffentlichen Start überarbeitet.</p>
+      <h3>1. Verantwortlicher</h3><p>Name, Anschrift und E-Mail siehe Impressum.</p>
+      <h3>2. Welche Daten die App verarbeitet</h3><p>Name in der App, Profilbild, Trainingspläne, Sätze, Gewichte, Notizen, Körpergewicht, Flammen. Chats und Spots werden verschlüsselt übertragen und gespeichert. Vault-Bilder sind mit deinem eigenen Schlüssel verschlüsselt, niemand sonst kann sie lesen.</p>
+      <h3>3. Wo die Daten liegen</h3><p>Auf deinem Handy und zum Abgleich in einer Google-Tabelle im Google Drive des Betreibers. Die App selbst wird über GitHub Pages ausgeliefert. Schriften und alle App-Dateien liegen in der App, es werden keine weiteren Dienste angefragt.</p>
+      <h3>4. Speicherdauer</h3><p>Spots 3 Tage, Chats 30 Tage, Trainingsdaten bis zur Löschung.</p>
+      <h3>5. Deine Rechte</h3><p>Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit, Widerspruch und Widerruf von Einwilligungen. Beschwerde bei der Datenschutz-Aufsichtsbehörde des Bundeslands.</p>
+      <h3>6. Kein Tracking</h3><p>Keine Analyse-Tools, keine Werbung, keine Weitergabe an Dritte.</p>`],
+    nutzung: ['Nutzungsbedingungen', `<p style="color:var(--fg)">Entwurf, wird vor einem öffentlichen Start überarbeitet.</p>
+      <h3>Respekt</h3><p>Keine Beleidigungen, keine Hetze, keine verbotenen Symbole oder Kürzel, weder im Namen noch in Chats oder Spots.</p>
+      <h3>Melden und Sperren</h3><p>Gemeldete Inhalte werden geprüft. Wer gegen die Regeln verstößt, kann gesperrt werden.</p>
+      <h3>Training</h3><p>BUILT ersetzt keine Trainer- oder ärztliche Beratung. Du trainierst auf eigene Verantwortung.</p>`],
+    lizenzen: ['Lizenzen', `<h3>Unbounded</h3><p>Copyright The Unbounded Project Authors. SIL Open Font License 1.1.</p>
+      <h3>Geist und Geist Mono</h3><p>Copyright The Geist Project Authors. SIL Open Font License 1.1.</p>
+      <p>Die vollständigen Lizenztexte liegen der App im Ordner „fonts“ bei. Die Schriften dürfen frei verwendet, eingebettet und weitergegeben werden, aber nicht einzeln verkauft werden.</p>`]
+  };
+  const x = T[k] || T.impressum;
+  return `<h1 class="display" style="font-size:30px">${x[0]}</h1>${x[1]}`;
+}
 function viewSettings() {
   const waiting = pending.filter(p => !seenIds.has(p.id)).length;
   const sv = scriptVersion == null ? '–' : scriptVersion >= SCRIPT_MIN ? `Version ${scriptVersion} ✓` : `Version ${scriptVersion} – bitte aktualisieren`;
@@ -3879,6 +4039,8 @@ function viewSettings() {
       <div class="row">Einträge<span class="v">${events.length} synchronisiert, ${waiting} wartend</span></div>
       <div class="row">App-Version<span class="v">${APP_VERSION}</span></div>
     </div>
+    <div class="secl">Über BUILT</div>
+    <div class="rows glass"><a class="row" href="#ueber">Impressum, Datenschutz, Lizenzen<span class="v">Version ${APP_VERSION}</span></a></div>
     <div class="secl">Gerät</div>
     <section class="card form" style="gap:12px">
       <label class="tgl"><span>Entwickleroptionen</span><input type="checkbox" role="switch" id="dev-tgl" ${LS.get('dev', false) ? 'checked' : ''}><i aria-hidden="true"></i></label>
@@ -3946,6 +4108,18 @@ function propagateDown(i, j) {
   return changed;
 }
 const actions = {
+  'to-flames': () => { const el = $('#flammen'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+  'fl-toggle': t => { const p = t.dataset.p; if (FLAME_OPEN.has(p)) FLAME_OPEN.delete(p); else FLAME_OPEN.add(p); render(); },
+  'feed-rec': (t, e) => { e.preventDefault(); e.stopPropagation(); const id = t.dataset.id; if (FEED_OPEN.has(id)) FEED_OPEN.delete(id); else FEED_OPEN.add(id); render(); },
+  'cm-react': t => { chatReact(t.dataset.id, t.dataset.v); closeModal(); },
+  'cm-emoji': t => openChatMenu(t.dataset.id, true),
+  'cm-reply': t => { CHAT.reply = { p: CHAT.open, id: t.dataset.id }; closeModal(); refreshReplyBar(); const i = $('#chat-in'); if (i) i.focus(); },
+  'cm-reply-x': () => { CHAT.reply = null; refreshReplyBar(); },
+  'cm-copy': t => { const m = CHAT.msgs.find(x => x.id === t.dataset.id); closeModal(); if (m && navigator.clipboard) navigator.clipboard.writeText(m.text).then(() => toast('Kopiert'), () => toast('Kopieren nicht möglich')); },
+  'cm-del2': t => { closeModal(); chatDelete(t.dataset.id); },
+  'cm-report': t => sheet(`<h2>Nachricht melden?</h2><span class="small muted">Die Nachricht wird für dich ausgeblendet. Ab der Version mit Konten geht eine Meldung zusätzlich zur Prüfung an die Moderation.</span><div class="btnrow"><button class="btn danger" data-act="cm-report-yes" data-id="${esc(t.dataset.id)}">Melden</button><button class="btn ghost" data-act="mclose">Abbrechen</button></div>`),
+  'cm-report-yes': t => { const h = chatHidden(); if (!h.includes(t.dataset.id)) h.push(t.dataset.id); LS.set('chat.hidden.' + cfg.me, h); closeModal(); chatChanged(); toast('Gemeldet und ausgeblendet'); },
+  'cm-jump': (t, e) => { e.stopPropagation(); const el = document.getElementById('cm-' + t.dataset.id); if (!el) { toast('Nachricht nicht mehr da'); return; } el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.remove('flash'); el.getBoundingClientRect(); el.classList.add('flash'); },
   start: () => startTraining(false),
   'start-normal': () => startTraining(true),
   'other-day': () => { otherDayAsk = true; render(); },
@@ -4248,6 +4422,75 @@ document.addEventListener('pointerup', ev => { if (view === 'spot') edPointerUp(
 document.addEventListener('pointercancel', ev => { if (view === 'spot') edPointerUp(ev); else if (view === 'spots' && SPOT.view) { SPOT.view.down = null; SPOT.view.paused = false; } });
 window.addEventListener('resize', () => { if (view === 'spot') layoutEditor(); });
 window.addEventListener('hashchange', () => { $('#modal').innerHTML = ''; render(); });
+
+/* ---------- Tabs ----------
+   Tab-Wechsel ersetzen den Verlaufseintrag, statt einen neuen anzulegen. So hat die Zurück-Geste von iOS zwischen den Tabs
+   nichts zum Zurückblättern (vorher: kurz schwarzer Bildschirm). Dafür lässt sich zwischen den Tabs wischen: Der Inhalt
+   folgt dem Finger, der nächste Tab schiebt sich herein. Kamera, Training, Spots und alles mit eigenen Wischgesten bleiben ausgenommen. */
+const TABS = ['kamera', 'start', 'verlauf', 'plan', 'notizen', 'profil'];
+const SWIPE_TABS = ['start', 'verlauf', 'plan', 'notizen', 'profil'];
+let TAB_SLIDE = 0, SW = null;
+function goTab(id, dir = 0) {
+  const cur = location.hash.slice(1) || 'start';
+  if (cur === id) { $('#app').scrollTo({ top: 0, behavior: 'smooth' }); return; }
+  TAB_SLIDE = dir; location.replace('#' + id);
+}
+function swipeTab() {
+  if (!SWIPE_TABS.includes(view) || (view === 'profil' && location.hash.includes(':'))) return null;
+  if ($('#modal').innerHTML || $('.savebar') || $('.museditor')) return null;
+  return view;
+}
+function hScroll(el) {
+  for (let n = el; n && n.id !== 'app'; n = n.parentElement) {
+    if (n.scrollWidth > n.clientWidth + 2) { const o = getComputedStyle(n).overflowX; if (o === 'auto' || o === 'scroll') return true; }
+  }
+  return false;
+}
+function tabSlideIn() {
+  const d = TAB_SLIDE; TAB_SLIDE = 0; if (!d) return;
+  const m = $('#page main.view'); if (!m) return;
+  m.style.transition = 'none'; m.style.transform = `translateX(${d * innerWidth * .3}px)`; m.style.opacity = '0';
+  m.getBoundingClientRect();
+  m.style.transition = 'transform .26s cubic-bezier(.2,.8,.2,1), opacity .2s ease-out'; m.style.transform = ''; m.style.opacity = '';
+  setTimeout(() => { m.style.transition = ''; }, 300);
+}
+document.addEventListener('click', e => {
+  const a = e.target.closest('.tabbar a[href^="#"]'); if (!a) return;
+  e.preventDefault();
+  const id = a.getAttribute('href').slice(1), i = TABS.indexOf(view), j = TABS.indexOf(id);
+  goTab(id, id !== 'kamera' && view !== 'kamera' && i >= 0 && j >= 0 ? Math.sign(j - i) : 0);
+}, true);
+document.addEventListener('touchstart', e => {
+  SW = null; const tab = swipeTab(); if (!tab || e.touches.length !== 1) return;
+  const t = e.target, x = e.touches[0].clientX;
+  if (t.closest('input, textarea, select, .tabbar, .head, [data-noswipe]') || hScroll(t) || x < 20 || x > innerWidth - 20) return;
+  SW = { tab, x0: x, y0: e.touches[0].clientY, t0: Date.now(), dx: 0, lock: null, el: $('#page main.view') };
+}, { passive: true });
+document.addEventListener('touchmove', e => {
+  if (!SW || !SW.el) return;
+  const dx = e.touches[0].clientX - SW.x0, dy = e.touches[0].clientY - SW.y0;
+  if (!SW.lock) {
+    if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.3) SW.lock = 'x';
+    else { if (Math.abs(dy) > 10) SW = null; return; }
+  }
+  e.preventDefault();
+  const i = SWIPE_TABS.indexOf(SW.tab), has = dx < 0 ? i < SWIPE_TABS.length - 1 : i > 0;
+  SW.dx = has ? dx : dx * .25;
+  SW.el.style.transition = 'none'; SW.el.style.transform = `translateX(${SW.dx}px)`;
+  SW.el.style.opacity = String(1 - Math.min(.35, Math.abs(SW.dx) / innerWidth * .5));
+}, { passive: false });
+function swipeEnd() {
+  const s = SW; SW = null; if (!s || s.lock !== 'x' || !s.el) return;
+  const i = SWIPE_TABS.indexOf(s.tab), dir = s.dx < 0 ? 1 : -1, next = SWIPE_TABS[i + dir];
+  const v = Math.abs(s.dx) / Math.max(1, Date.now() - s.t0);
+  const go = next && (Math.abs(s.dx) > innerWidth * .28 || (v > .45 && Math.abs(s.dx) > 40));
+  s.el.style.transition = 'transform .17s ease-out, opacity .17s ease-out';
+  if (!go) { s.el.style.transform = ''; s.el.style.opacity = ''; return; }
+  s.el.style.transform = `translateX(${-dir * innerWidth}px)`; s.el.style.opacity = '0';
+  setTimeout(() => goTab(next, dir), 160);
+}
+document.addEventListener('touchend', swipeEnd);
+document.addEventListener('touchcancel', swipeEnd);
 
 /* ---------- Start der App ---------- */
 let hiddenAt = Date.now();
