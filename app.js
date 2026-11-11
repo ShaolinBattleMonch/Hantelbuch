@@ -4,7 +4,7 @@
    zuerst auf dem Handy, beim Sync in der Google-Tabelle. Der aktuelle Stand wird immer aus dem Log berechnet.
    Ausnahme: der Vault. Seine Bilder bleiben verschlüsselt nur auf diesem Handy und werden nie synchronisiert. */
 
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.2.1';
 const SCRIPT_MIN = 2;            // benötigte Version des Google-Skripts
 const PEOPLE = ['Manu', 'Rob'];
 const DAYS = ['A', 'B', 'C'];    // interne Kennung der Trainingstage, angezeigt werden die Kürzel
@@ -365,8 +365,8 @@ function duration(a, b) { const m = Math.max(1, Math.round((new Date(b) - new Da
 /* ---------- Flammen & Wochenstreak ----------
    Jedes abgeschlossene Training ist eine Flamme seines Tages. Drei Trainings in einer Kalenderwoche (Mo–So) ergeben eine Wochenflamme.
    Die Wochenstreak zählt die Wochen in Folge mit mindestens drei Trainings; die laufende Woche bricht sie erst, wenn sie ohne drei Trainings endet. */
-const FLAME = { A: 'flamme-a.webp', B: 'flamme-b.webp', C: 'flamme-c.webp', W: 'flamme-woche.webp' };
-const FLAME_HERO = { A: 'flamme-hero-a.webp', B: 'flamme-hero-b.webp', C: 'flamme-hero-c.webp', W: 'flamme-hero-woche.webp' };
+const FLAME = { A: 'flammen/flamme-a.webp', B: 'flammen/flamme-b.webp', C: 'flammen/flamme-c.webp', W: 'flammen/flamme-woche.webp' };
+const FLAME_HERO = { A: 'flammen/flamme-hero-a.webp', B: 'flammen/flamme-hero-b.webp', C: 'flammen/flamme-hero-c.webp', W: 'flammen/flamme-hero-woche.webp' };
 function weekOf(ts) { const d = new Date(ts); return new Date(d.getFullYear(), d.getMonth(), d.getDate() - (d.getDay() + 6) % 7).getTime(); }
 function prevWeek(k) { const d = new Date(k); d.setDate(d.getDate() - 7); return d.getTime(); }
 function isoWeek(ts) {
