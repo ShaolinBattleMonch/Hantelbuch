@@ -4691,8 +4691,8 @@ function goalSheet() {
 /* ======================= Datenschutz, Daten, Feedback (ab 3.0) =======================
    Einwilligungen stehen in „consents“ (jede Änderung ein neuer Eintrag, der letzte gilt).
    Gesundheitsdaten (Körpergewicht, Vault-Bilder) erst nach eigener Einwilligung. Statistik nur mit Zustimmung. */
-const LEGAL = {   // Angaben für Impressum und Datenschutz: vor der Umstellung eintragen
-  name: '', street: '', city: '', mail: '', report: ''
+const LEGAL = {   // Angaben für Impressum und Datenschutz (vorerst Platzhalter wie in 2.2.1)
+  name: 'Vorname Nachname', street: 'Straße Hausnummer', city: 'PLZ Ort', mail: 'kontakt@domain.de', report: 'meldung@domain.de'
 };
 const CONSENT_V = '3.0';
 let CONSENTS = (() => { const v = LS.get('consents', null); return v && typeof v === 'object' ? v : {}; })();
@@ -4984,11 +4984,11 @@ function viewAbout() {
     <section class="card"><b>Schriften: Unbounded, Geist, Geist Mono</b><span class="small muted">SIL Open Font License 1.1. Die Schriften sind in der App enthalten und werden nicht von fremden Servern geladen.</span><a class="lnk" href="#rechtliches:lizenzen" style="align-self:flex-start">Lizenztexte anzeigen</a></section>`;
 }
 function viewLegal(k) {
-  const who = `${esc(LEGAL.name || 'Name folgt')}${LEGAL.street ? '<br>' + esc(LEGAL.street) : ''}${LEGAL.city ? '<br>' + esc(LEGAL.city) : ''}<br>Deutschland`;
+  const who = `${esc(LEGAL.name)}${LEGAL.street ? '<br>' + esc(LEGAL.street) : ''}${LEGAL.city ? '<br>' + esc(LEGAL.city) : ''}<br>Deutschland`;
   const mail = LEGAL.mail ? `<a href="mailto:${esc(LEGAL.mail)}">${esc(LEGAL.mail)}</a>` : '–';
   const T = {
     impressum: ['Impressum', `<h3>Angaben gemäß § 5 DDG</h3><p>${who}</p>
-      <h3>Kontakt</h3><p>E-Mail: ${mail}</p>
+      <h3>Kontakt</h3><p>E-Mail: ${mail}<br>Telefon oder Kontaktformular: Telefonnummer oder Link</p>
       <h3>Zentrale Kontaktstelle nach Digital Services Act</h3><p>Für Behörden und Nutzer: ${LEGAL.report ? esc(LEGAL.report) : mail}. Wir antworten auf Deutsch oder Englisch.</p>
       <h3>Inhalte melden</h3><p>Rechtswidrige Inhalte kannst du direkt in der App über „Melden“ bei einer Nachricht, einer Notiz oder einem Profil melden.</p>
       <h3>Verbraucherstreitbeilegung</h3><p>Wir sind nicht bereit und nicht verpflichtet, an Streitbeilegungsverfahren vor einer Verbraucherschlichtungsstelle teilzunehmen.</p>
