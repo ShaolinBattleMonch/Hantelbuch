@@ -1,8 +1,8 @@
 /* Hantelbuch – Service Worker: macht die App offline nutzbar.
    Bei einem Update der App-Dateien VERSION hochzählen, dann laden alle Geräte die neue Version. */
-const VERSION = 'hantelbuch-v26';
+const VERSION = 'built-v30';
 const SHELL = [
-  './', './index.html', './styles.css', './app.js', './manifest.webmanifest',
+  './', './index.html', './styles.css', './app.js', './vendor/supabase-2.118.0.js', './manifest.webmanifest',
   './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png',
   './flammen/flamme-a.webp', './flammen/flamme-b.webp', './flammen/flamme-c.webp', './flammen/flamme-woche.webp',
   './flammen/flamme-hero-a.webp', './flammen/flamme-hero-b.webp', './flammen/flamme-hero-c.webp', './flammen/flamme-hero-woche.webp',

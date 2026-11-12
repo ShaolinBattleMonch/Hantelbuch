@@ -7,11 +7,12 @@ import http from 'http'; import fs from 'fs'; import crypto from 'crypto';
 
 export async function makeDb({ importFiles = [] } = {}) {
   const db = new PGlite({ extensions: { pgcrypto } });
-  const S = new URL('../supabase/', import.meta.url).pathname;
+  const S = '/home/claude/hantelbuch-v0.01/_dev/supabase/';
   await db.exec(fs.readFileSync(new URL('prelude.sql', import.meta.url), 'utf8'));
   await db.exec(fs.readFileSync(S + '01-schema.sql', 'utf8').replace(/create extension if not exists pg_cron[^;]*;/, ''));
   await db.exec(fs.readFileSync(S + '02-anpassung.sql', 'utf8'));
   await db.exec(fs.readFileSync(S + '06-update-3.0.sql', 'utf8'));
+  await db.exec(fs.readFileSync(S + '07-anmeldung.sql', 'utf8'));
   for (const f of importFiles) await db.exec(fs.readFileSync(f, 'utf8'));
   return db;
 }

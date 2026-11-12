@@ -4,9 +4,26 @@
    zuerst auf dem Handy, beim Sync in der Google-Tabelle. Der aktuelle Stand wird immer aus dem Log berechnet.
    Ausnahme: der Vault. Seine Bilder bleiben verschlüsselt nur auf diesem Handy und werden nie synchronisiert. */
 
-const APP_VERSION = '2.2.1';
-const SCRIPT_MIN = 2;            // benötigte Version des Google-Skripts
-const PEOPLE = ['Manu', 'Rob'];
+const APP_VERSION = '3.0.0';
+const SCRIPT_MIN = 0;            // Google-Skript entfällt ab 3.0
+/* Supabase: Projekt in Frankfurt. Der Publishable Key ist öffentlich, Zugriff regeln die Zeilenrechte in der Datenbank. */
+const SB_URL = (() => { try { return localStorage.getItem('built.sb.url') || 'https://orfbfukamifoqpnpdckb.supabase.co'; } catch (e) { return 'https://orfbfukamifoqpnpdckb.supabase.co'; } })();
+const V3_SPOTS = false, V3_CHAT = false;
+const SB_KEY = 'sb_publishable_lRri8xqx8PzRR81-ZfarBg_sRJO9TSo';
+const sb = window.supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'built.auth' } });
+/* Personen: ich, dann meine Crew, dann Freunde. Kennung ist die Profil-ID, angezeigt wird der Name. */
+let PROFILES = (() => { try { return JSON.parse(localStorage.getItem('hb.profiles') || '{}'); } catch (e) { return {}; } })();
+let CREW = (() => { try { return JSON.parse(localStorage.getItem('hb.crew') || 'null'); } catch (e) { return null; } })();
+let PEOPLE = [];
+function computePeople() {
+  const me = (() => { try { return (JSON.parse(localStorage.getItem('hb.cfg') || '{}') || {}).me; } catch (e) { return null; } })();
+  const crew = CREW && Array.isArray(CREW.members) ? CREW.members : [];
+  const friends = Object.values(PROFILES).filter(p => p.friend).map(p => p.id);
+  PEOPLE = [...new Set([me, ...crew, ...friends].filter(Boolean))];
+}
+computePeople();
+const pname = p => (PROFILES[p] && PROFILES[p].name) || (p && p.length < 20 ? p : 'Buddy');
+const nm = p => esc(pname(p));
 const DAYS = ['A', 'B', 'C'];    // interne Kennung der Trainingstage, angezeigt werden die Kürzel
 const DAY_SHORT = { A: 'B&T', B: 'R&B', C: 'B&B' };
 const DAY_TONE = { A: 'y', B: 'm', C: 'c' };   // Gelb, Magenta, Cyan
@@ -447,6 +464,8 @@ function avatar(p, size = 32) {
 }
 
 const ICON = {
+  mail: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
+  copy: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg>',
   search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
   play: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5v14l12-7z"/></svg>',
   pause: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>',
@@ -570,7 +589,8 @@ function buildState() {
   // Nachträgliche Änderungen an abgeschlossenen Trainings: es gilt die jeweils letzte, nur von derselben Person
   const edits = {}, libEv = [], planHints = {};
   all.forEach(e => { if (e.type === 'workout_edit' && e.data && typeof e.data.ref === 'string') edits[e.data.ref] = e; });
-  PEOPLE.forEach(p => { s.plans[p] = clone(DEFAULT_PLAN); s.hist[p] = {}; s.last[p] = null; s.bw[p] = []; });
+  // „undefined“: Platzhalter, solange es noch keinen Buddy gibt (partner() liefert dann nichts)
+  [...PEOPLE, 'undefined'].forEach(p => { s.plans[p] = clone(DEFAULT_PLAN); s.hist[p] = {}; s.last[p] = null; s.bw[p] = []; });
   DAYS.forEach(d => DEFAULT_PLAN[d].exercises.forEach(x => { s.exInfo[x.id] = { name: x.name, type: x.type }; }));
   all.forEach((e, k) => {
     if (!PEOPLE.includes(e.person) || !e.id || !e.ts) return;
@@ -1156,35 +1176,70 @@ const mini = {
   hide() { setTimeout(() => { $('#topbar').hidden = true; this.set(0); }, 300); }
 };
 let syncing = null, syncError = null;
-async function call(body, timeout = 25000) {
-  const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), timeout);
-  try {
-    const res = await fetch(cfg.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, key: cfg.key }), signal: ctrl.signal, redirect: 'follow' });
-    let json; try { json = await res.json(); } catch (e) { throw { code: 'bad_response' }; }
-    if (!json.ok) throw { code: json.error || 'server' };
-    const v = Number(json.version) || 1;
-    if (v !== scriptVersion) { scriptVersion = v; LS.set('scriptVersion', v); }
-    return json;
-  } catch (e) {
-    if (e && e.code) throw e;
-    throw { code: 'network' };
-  } finally { clearTimeout(t); }
+/* ---------- Abgleich mit Supabase ----------
+   Bis 2.2 sprach die App mit einem Google-Skript („call“ mit action). Die Vault- und Galerie-Funktionen nutzen
+   diese Schnittstelle weiter; sie wird hier auf Supabase-Tabellen abgebildet. */
+const sbErr = e => {
+  if (!e) return { code: 'server' };
+  if (navigator.onLine === false) return { code: 'offline' };
+  const m = String(e.message || e.msg || '');
+  if (/fetch|network|Failed to/i.test(m)) return { code: 'network' };
+  if (e.code === '23505') return { code: 'duplicate', msg: m };
+  if (e.status === 401 || /JWT|not authenticated/i.test(m)) return { code: 'unauthorized' };
+  return { code: e.code || 'server', msg: m };
+};
+async function call(body) {
+  const me = cfg.me, a = body.action;
+  const q = async p => { const r = await p; if (r.error) throw sbErr(r.error); return r.data; };
+  if (a === 'vault_list') return { ok: true, entries: (await q(sb.from('vault').select('id,created').eq('user_id', me))) || [] };
+  if (a === 'vault_get') { const r = await q(sb.from('vault').select('id,body').eq('id', body.id).eq('user_id', me).maybeSingle()); if (!r) throw { code: 'not_found' }; return { ok: true, chunks: [r.body] }; }
+  if (a === 'vault_put') { await q(sb.from('vault').upsert({ user_id: me, id: body.id, created: body.created, body: body.chunks.join('') }, { onConflict: 'user_id,id' })); return { ok: true }; }
+  if (a === 'vault_del') { await q(sb.from('vault').delete().eq('user_id', me).eq('id', body.id)); return { ok: true }; }
+  // Spots und Chat laufen ab 3.0 über eigene Tabellen (Ende-zu-Ende pro Empfänger), siehe spotSync/chatSync
+  return { ok: true, spots: [], entries: [], rows: [] };
 }
 const SYNC_ERR = {
-  unauthorized: ['Sync-Schlüssel stimmt nicht', 'Prüfe den Schlüssel unter Einstellungen.'],
-  network: ['Keine Verbindung zur Tabelle', 'Deine Einträge bleiben gespeichert und werden beim nächsten Öffnen gesendet.'],
+  unauthorized: ['Abgemeldet', 'Bitte melde dich neu an.'],
+  network: ['Keine Verbindung', 'Deine Einträge bleiben gespeichert und werden beim nächsten Öffnen gesendet.'],
   offline: ['Offline', 'Deine Einträge bleiben gespeichert und werden beim nächsten Öffnen gesendet.'],
-  bad_response: ['Unerwartete Antwort', 'Prüfe die Sync-Adresse unter Einstellungen (endet auf /exec).']
+  server: ['Sync fehlgeschlagen', 'Versuch es gleich noch einmal.']
 };
+// Alte Einträge (vor 3.0) nennen Personen beim Namen, z. B. „as: Rob“. Auf Profil-IDs abbilden.
+const legacyId = n => { if (typeof n !== 'string' || n.length > 20) return n; const p = Object.values(PROFILES).find(x => x.legacy_name === n); return p ? p.id : n; };
 function addSynced(ev) {
   if (!ev || !ev.id || seenIds.has(ev.id)) { if (ev && ev.seq > lastSeq) lastSeq = ev.seq; return; }
-  if (typeof ev.data === 'string') { try { ev.data = JSON.parse(ev.data); } catch (e) { ev.data = {}; } }
-  events.push({ seq: ev.seq, id: ev.id, ts: ev.ts, person: ev.person, type: ev.type, summary: ev.summary, data: ev.data });
+  let data = ev.data; if (typeof data === 'string') { try { data = JSON.parse(data); } catch (e) { data = {}; } }
+  if (data && typeof data.as === 'string') data = { ...data, as: legacyId(data.as) };
+  events.push({ seq: ev.seq, id: ev.id, ts: ev.ts, person: ev.user_id, type: ev.type, summary: ev.summary, data: data || {}, private: !!ev.private, crew: ev.crew_id || null });
   seenIds.add(ev.id);
   if (ev.seq > lastSeq) lastSeq = ev.seq;
 }
+// Profile, Crew und Freunde laden. Liefert true, wenn sich die Personenliste geändert hat.
+async function loadPeople() {
+  const me = cfg.me; if (!me) return false;
+  const [pr, fr, cm] = await Promise.all([
+    sb.from('profiles').select('id,buddy_id,name,avatar_path,share_weight,legacy_name,week_goal,week_goal_next,week_goal_from'),
+    sb.from('friendships').select('a,b,status,requested_by'),
+    sb.from('crew_members').select('crew_id,user_id,role,joined_at')
+  ]);
+  if (pr.error) throw sbErr(pr.error);
+  const friends = new Set((fr.data || []).filter(f => f.status === 'accepted').map(f => f.a === me ? f.b : f.a));
+  const next = {};
+  (pr.data || []).forEach(p => { next[p.id] = { ...p, friend: friends.has(p.id) }; });
+  const before = PEOPLE.join();
+  PROFILES = next; LS.set('profiles', PROFILES);
+  const mem = (cm.data || []).slice().sort((x, y) => String(x.joined_at).localeCompare(String(y.joined_at)));
+  if (mem.length) {
+    const c = (await sb.from('crews').select('id,name,avatar_path,owner').eq('id', mem[0].crew_id).maybeSingle()).data;
+    CREW = { id: mem[0].crew_id, name: c ? c.name : 'Crew', avatar_path: c ? c.avatar_path : null, owner: c ? c.owner : null, members: mem.map(m => m.user_id) };
+  } else CREW = null;
+  LS.set('crew', CREW);
+  computePeople();
+  return before !== PEOPLE.join();
+}
+const evRow = e => ({ id: e.id, ts: e.ts, type: e.type, summary: e.summary || '', data: e.data || {}, private: !!e.private, crew_id: e.private ? null : (e.crew || (CREW ? CREW.id : null)) });
 function sync({ overlay = false, quiet = false } = {}) {
-  if (!cfg.url || !cfg.key) return Promise.resolve({ ok: false, code: 'nocfg' });
+  if (!cfg.me) return Promise.resolve({ ok: false, code: 'nocfg' });
   if (syncing) return syncing;
   const ui = overlay ? loader : mini;
   syncing = (async () => {
@@ -1192,72 +1247,50 @@ function sync({ overlay = false, quiet = false } = {}) {
     ui.show();
     try {
       if (navigator.onLine === false) throw { code: 'offline' };
+      ui.set(4, 'Prüfe dein Konto …', '');
+      const { data: ses } = await sb.auth.getSession();
+      if (!ses || !ses.session) throw { code: 'unauthorized' };
+      if (await loadPeople()) invalidate();
+      // senden
       const toPush = pending.filter(p => !seenIds.has(p.id));
-      const batches = []; for (let i = 0; i < toPush.length; i += 10) batches.push(toPush.slice(i, i + 10));
-      const pushShare = batches.length ? 0.4 : 0;
       let rejected = 0;
-      ui.set(4, toPush.length ? `Sende ${toPush.length} ${toPush.length === 1 ? 'Eintrag' : 'Einträge'} …` : 'Prüfe auf Neuigkeiten …', '');
-      for (let i = 0; i < batches.length; i++) {
-        const r = await call({ action: 'push', events: batches[i].map(e => ({ id: e.id, ts: e.ts, person: e.person, type: e.type, summary: e.summary || '', data: e.data })) });
-        rejected += r.rejected || 0;
-        ui.set(4 + 92 * pushShare * ((i + 1) / batches.length), null, `${Math.min((i + 1) * 10, toPush.length)} von ${toPush.length} gesendet`);
-      }
-      // Selbstprüfung: die letzte bekannte Zeile wird mit abgefragt. Passt sie nicht mehr (Zeilen in der Tabelle
-      // gelöscht oder verschoben), lädt die App den ganzen Log neu. So bleibt nichts hängen und Löschungen kommen an.
-      const lastEv = lastSeq ? events.find(e => e.seq === lastSeq) : null;
-      let check = lastEv ? lastEv.id : null;
-      let start = lastSeq, guard = 0;
-      for (let pass = 0; pass < 2; pass++) {
-      while (guard++ < 400) {
-        const since = check ? lastSeq - 1 : lastSeq;
-        const r = await call({ action: 'pull', since, limit: 200 });
-        if (check) {
-          const first = (r.events || [])[0];
-          if ((r.total || 0) < lastSeq || !first || first.id !== check) {
-            events = []; seenIds = new Set(); lastSeq = 0; start = 0; check = null; invalidate();
-            ui.set(10, 'Tabelle wurde geändert, lade alles neu …', '');
-            continue;
+      for (let i = 0; i < toPush.length; i += 20) {
+        const batch = toPush.slice(i, i + 20).map(evRow);
+        let r = await sb.from('events').upsert(batch, { onConflict: 'id', ignoreDuplicates: true });
+        if (r.error) { // einzeln versuchen, damit ein abgelehnter Eintrag (z. B. zweites Training am Tag) die anderen nicht aufhält
+          if (sbErr(r.error).code === 'network') throw { code: 'network' };
+          for (const row of batch) {
+            const r1 = await sb.from('events').upsert([row], { onConflict: 'id', ignoreDuplicates: true });
+            if (r1.error) { const c = sbErr(r1.error).code; if (c === 'network') throw { code: 'network' }; rejected++; pending = pending.filter(p => p.id !== row.id); }
           }
-          check = null;
         }
-        (r.events || []).forEach(addSynced);
-        const total = r.total || lastSeq;
-        const frac = total > start ? (lastSeq - start) / (total - start) : 1;
-        ui.set(4 + 92 * pushShare + 92 * (1 - pushShare) * frac, 'Lade Verlauf …', total > start ? `${lastSeq - start} von ${total - start} neuen Einträgen` : 'Alles aktuell');
-        if (!r.more || !(r.events || []).length) break;
+        ui.set(4 + 36 * Math.min(1, (i + 20) / toPush.length), toPush.length ? `Sende ${toPush.length} ${toPush.length === 1 ? 'Eintrag' : 'Einträge'} …` : null, '');
       }
-      // Gesendet, aber beim Abholen nicht zurückbekommen: Zählung verrutscht, einmal alles neu laden
-      if (pass === 0 && start > 0 && !rejected && toPush.some(p => !seenIds.has(p.id))) {
-        events = []; seenIds = new Set(); lastSeq = 0; start = 0; guard = 0; invalidate();
-        continue;
-      }
-      break;
+      // holen
+      const start = lastSeq; let guard = 0;
+      while (guard++ < 200) {
+        const r = await sb.from('events').select('id,seq,user_id,ts,type,summary,data,private,crew_id').gt('seq', lastSeq).order('seq', { ascending: true }).limit(500);
+        if (r.error) throw sbErr(r.error);
+        (r.data || []).forEach(addSynced);
+        ui.set(40 + 56 * Math.min(1, guard / 4), 'Lade Verlauf …', lastSeq > start ? `${events.length} Einträge` : 'Alles aktuell');
+        if ((r.data || []).length < 500) break;
       }
       pending = pending.filter(p => !seenIds.has(p.id));
       saveLog();
-      // Bibliothek aus dem Blatt (ab Skript Version 5). Ist das Blatt noch leer, trägt die App den Startbestand ein.
-      if (scriptVersion >= LIB_MIN_SCRIPT) {
-        ui.set(97, 'Lade Bibliothek …', '');
-        try {
-          let r = await call({ action: 'lib_get' });
-          if (Array.isArray(r.rows) && !r.rows.length) {
-            invalidate();
-            const grp = k => Object.keys(BODY.groups).find(g => BODY.groups[g].includes(k)) || '';
-            r = await call({ action: 'lib_seed', rows: Object.values(st().lib).filter(L => !L.del).map(libRow), muscles: Object.entries(BODY.names).map(([k, n]) => [n[0], n[1], grp(k)]) }, 45000);
-          }
-          if (Array.isArray(r.rows)) { libSheet = r.rows; LS.set('lib.sheet', libSheet); invalidate(); }
-        } catch (e) { /* Bibliothek bleibt beim letzten Stand */ }
-      }
+      // Bibliothek: fester Grundbestand (owner leer) und eigene bzw. Crew-Übungen
+      ui.set(97, 'Lade Bibliothek …', '');
+      const lr = await sb.from('library').select('id,owner,crew_id,data,deleted,updated_at');
+      if (!lr.error) { libSheet = (lr.data || []).filter(x => !x.deleted).map(libDbRow); LS.set('lib.sheet', libSheet); invalidate(); }
       lastSync = new Date().toISOString(); LS.set('lastSync', lastSync); syncError = null;
       ui.set(100, 'Fertig', '');
       if (overlay) await sleep(400);
-      if (rejected && !quiet) toast('Einige Einträge wurden abgelehnt. Bitte das Google-Skript aktualisieren.');
+      if (rejected && !quiet) toast(rejected === 1 ? 'Ein Eintrag wurde abgelehnt.' : `${rejected} Einträge wurden abgelehnt.`);
       setTimeout(() => { vaultSync().then(() => gallerySync()); spotSync().then(() => chatSync()); }, 0);
       return { ok: true };
     } catch (err) {
       const code = (err && err.code) || 'server';
       syncError = code;
-      const [t, s] = SYNC_ERR[code] || ['Sync fehlgeschlagen', `Fehler: ${code}`];
+      const [t, s] = SYNC_ERR[code] || SYNC_ERR.server;
       if (overlay) await ui.error(t, s);
       else if (!quiet) toast(t);
       return { ok: false, code };
@@ -1266,6 +1299,13 @@ function sync({ overlay = false, quiet = false } = {}) {
     }
   })();
   return syncing;
+}
+// Bibliothekszeile aus der Datenbank → Format, das libFromRow versteht (alte Blattspalten oder neue Schlüssel)
+const LIB_COL = { 'ID': 'id', 'Name': 'name', 'Art': 'art', 'Gruppe': 'gruppe', 'Hauptmuskeln': 'haupt', 'Nebenmuskeln': 'neben', 'Sätze': 'saetze', 'Spanne von': 'von', 'Spanne bis': 'bis', 'Ausführung': 'ausfuehrung', 'Video': 'video', 'Suchbegriffe': 'suche', 'Ausgeblendet': 'ausgeblendet', 'Zusammengeführt in': 'zusammen', 'Geändert am': 'geaendert', 'Geändert von': 'vonPerson' };
+function libDbRow(x) {
+  const r = {}; Object.entries(x.data || {}).forEach(([k, v]) => { r[LIB_COL[k] || k] = v; });
+  r.id = x.id; r.owner = x.owner || null; r.crew = x.crew_id || null;
+  return r;
 }
 
 /* ---------- Bilder verkleinern ---------- */
@@ -1661,6 +1701,7 @@ const chunk = str => { const out = []; for (let i = 0; i < str.length; i += VCHU
 
 let spotSyncing = null;
 function spotSync() {
+  if (!V3_SPOTS) return Promise.resolve();   // neue Spot-Verschlüsselung folgt in Schritt 4
   if (spotSyncing) return spotSyncing;
   if (!cfg.me || !cfg.url || !cfg.key || navigator.onLine === false || (scriptVersion != null && scriptVersion < 4)) return Promise.resolve();
   const me = cfg.me;
@@ -1787,6 +1828,7 @@ async function chatKey() {
 }
 let chatSyncing = null;
 function chatSync() {
+  if (!V3_CHAT) return Promise.resolve();    // neue Chat-Verschlüsselung folgt in Schritt 2/4
   if (chatSyncing) return chatSyncing;
   if (!cfg.me || !cfg.url || !cfg.key || navigator.onLine === false || !chatOk()) return Promise.resolve();
   if (!CHAT.loaded) loadChat();
@@ -4067,29 +4109,100 @@ function vaultCloudText() {
   if (c.err) return c.err === 'vault_denied' ? 'Zugang abgelehnt' : 'zuletzt fehlgeschlagen';
   return `${c.n} ${c.n === 1 ? 'Bild' : 'Bilder'} · ${fmtDate(c.at)}, ${fmtTime(c.at)}`;
 }
-let setupMe = null;
+/* ---------- Anmeldung (ab 3.0) ----------
+   E-Mail → 6-stelliger Code → (einmalig: Übernahme des alten Profils) → Zu dir → Wochenziel → Datenschutz → Buddy-ID.
+   Der Fortschritt liegt in ONB und überlebt ein Neuladen. Fertig ist man, wenn cfg.me gesetzt ist. */
+const ONB = Object.assign({ step: 'welcome', email: '', code: '', err: '', busy: false, legacy: null, claim: null, name: '', goal: 3, ok: false, buddy: '' }, LS.get('onb', {}));
+const onbSave = () => LS.set('onb', { step: ONB.step, email: ONB.email, claim: ONB.claim, name: ONB.name, goal: ONB.goal, buddy: ONB.buddy });
+const onbGo = step => { ONB.step = step; ONB.err = ''; ONB.busy = false; onbSave(); render(); setTimeout(() => { const i = $('#onb-in'); if (i) i.focus(); }, 60); };
+// 2.2.1-Gerät: cfg.me war ein Name („Manu“). Alte Einstellungen für die Übernahme beiseitelegen.
+(() => { if (cfg.me && cfg.me.length < 20) { LS.set('legacy.cfg', { name: cfg.me, url: cfg.url, key: cfg.key }); cfg = { me: null }; LS.set('cfg', cfg); } })();
+const onbSegs = (n, total = 6) => `<div class="segs" role="progressbar" aria-label="Schritt ${n} von ${total}" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${n - 1}">${Array.from({ length: total }, (_, i) => `<i class="${i + 1 < n ? 'on' : i + 1 === n ? 'cur' : ''}"></i>`).join('')}</div>`;
+const onbHead = (back, n) => `<div class="onb-head">${back ? `<button class="iconbtn" data-act="onb-back" data-v="${back}" aria-label="Zurück">${ICON.left}</button>` : ''}${n ? onbSegs(n) : `<span class="eyebrow" style="flex:1">Einmalig</span>`}</div>`;
+const onbErr = () => ONB.err ? `<div class="err" role="alert">${esc(ONB.err)}</div>` : '';
+const onbBtn = (act, label, dis) => `<button class="btn primary" data-act="${act}" ${dis || ONB.busy ? 'disabled' : ''}>${ONB.busy ? 'Moment …' : label}</button>`;
 function viewSetup() {
-  return `<div class="setup">
-    <div><div class="eyebrow">Willkommen</div><h1 class="display">Hantel&shy;buch</h1></div>
-    <p style="margin:0" class="muted">Dein Trainingsplan für Brust & Trizeps, Rücken & Bizeps und Beine & Bauch. Fortschritte von Manu und Rob werden über eine gemeinsame Google-Tabelle abgeglichen.</p>
-    <div class="form"><label>Wer bist du?</label><div class="pick">${PEOPLE.map(p => `<button data-act="setup-me" data-v="${p}" aria-pressed="${setupMe === p}">${p}</button>`).join('')}</div></div>
-    <div class="form">
-      <label>Sync-Adresse<input class="inp" id="u-url" placeholder="https://script.google.com/macros/s/…/exec" inputmode="url" autocomplete="off"></label>
-      <label>Sync-Schlüssel<input class="inp" id="u-key" autocomplete="off" autocapitalize="off" spellcheck="false"><span class="help">Beides findest du in der Google-Tabelle auf dem Blatt „Info“.</span></label>
-      <div class="err" id="u-err" hidden></div>
-      <button class="btn primary" data-act="setup-go">Verbinden</button>
-      <button class="btn ghost" data-act="setup-local">Erst ohne Sync ausprobieren</button>
-    </div></div>`;
+  const s = ONB.step;
+  if (s === 'welcome') return `<div class="onb onb-welcome"><div class="onb-body center">
+      <img src="flammen/flamme-hero-woche.webp" alt="" class="onb-hero"><h1 class="display" style="font-size:64px;letter-spacing:-.04em">BUILT</h1>
+      <p class="muted" style="margin:0;max-width:280px">Trainiere mit deiner Crew. Halte jeden Satz fest. Halte die Flamme am Brennen.</p></div>
+    <div class="onb-cta"><p>Kein Passwort nötig. Du bekommst einen Code per Mail.</p><button class="btn primary" data-act="onb-go" data-v="email">${ICON.mail || ''}Mit E-Mail fortfahren</button>
+      <div class="onb-legal"><a href="#rechtliches:impressum">Impressum</a><a href="#rechtliches:datenschutz">Datenschutz</a></div></div></div>`;
+  if (s === 'email') return `<div class="onb">${onbHead('welcome', 1)}<div class="onb-body">
+      <h1 class="display">Wie lautet deine E-Mail?</h1><p class="muted" style="margin:-8px 0 0">Deine Adresse sieht niemand außer dir, auch deine Freunde nicht.</p>
+      <label class="lbl">E-Mail-Adresse<input class="inp" id="onb-in" type="email" value="${esc(ONB.email)}" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" data-onb="email"></label>${onbErr()}</div>
+    <div class="onb-cta"><p>Neu hier oder schon dabei: Der Weg ist derselbe.</p>${onbBtn('onb-send', 'Code senden')}</div></div>`;
+  if (s === 'code') return `<div class="onb">${onbHead('email', 2)}<div class="onb-body">
+      <h1 class="display">Code eingeben</h1><p class="muted" style="margin:-8px 0 0">Wir haben einen Code an <b style="color:var(--fg)">${esc(ONB.email)}</b> geschickt. Er ist 10 Minuten gültig.</p>
+      <label class="otpwrap"><span class="otpboxes" aria-hidden="true">${Array.from({ length: 6 }, (_, i) => `<span class="codebox${i === ONB.code.length ? ' cur' : ''}">${esc(ONB.code[i] || '')}</span>`).join('')}</span>
+        <input id="onb-in" class="otp" data-onb="code" value="${esc(ONB.code)}" inputmode="numeric" autocomplete="one-time-code" maxlength="6" aria-label="6-stelliger Code"></label>${onbErr()}
+      <div class="onb-links"><button class="lnk" data-act="onb-send">Code erneut senden</button><button class="lnk" data-act="onb-go" data-v="email">Andere E-Mail</button></div></div>
+    <div class="onb-cta">${onbBtn('onb-verify', 'Weiter', ONB.code.length !== 6)}</div></div>`;
+  if (s === 'claim') return `<div class="onb">${onbHead('', 0)}<div class="onb-body">
+      <h1 class="display">Schon mit BUILT trainiert?</h1><p class="muted" style="margin:0">Wenn du BUILT schon vor den Konten benutzt hast, holst du dir hier alles zurück: Trainings, Pläne, Notizen, Vault und Chats.</p>
+      <label class="lbl">Übernahme-Code<input class="inp mono" id="onb-in" data-onb="claim" placeholder="z. B. 7KQ2 M9XA" autocapitalize="characters" autocomplete="off" spellcheck="false" style="letter-spacing:.12em;text-transform:uppercase"></label>
+      <p class="small muted" style="margin:0">Der Code funktioniert nur einmal.</p>${onbErr()}</div>
+    <div class="onb-cta">${onbBtn('onb-claim', 'Übernehmen')}<button class="btn ghost" data-act="onb-go" data-v="profile">Nein, neu starten</button></div></div>`;
+  if (s === 'claimok') { const c = ONB.claim || {}; const li = (t, x) => `<div class="onb-li">${ICON.check}<span><b>${t}</b> <span class="muted">${x}</span></span></div>`;
+    return `<div class="onb">${onbHead('', 0)}<div class="onb-body">
+      <h1 class="display">Willkommen zurück, ${esc(c.name || '')}</h1>
+      <section class="card">${li(`${c.workouts || 0} Trainings`, 'mit Plänen, Notizen und Körpergewicht')}${c.vault || c.gallery ? li('Vault und Galerie', 'öffnest du mit deinem bisherigen Code') : ''}${c.chats ? li('Chats', 'werden beim ersten Öffnen neu verschlüsselt') : ''}${li('Crew', c.crew ? 'steht, ihr seid wieder zusammen' : 'sobald dein Buddy seinen Code eingegeben hat')}</section>
+      <p class="small muted" style="margin:0">Name und Profilbild sind schon eingetragen. Du kannst sie im nächsten Schritt ändern.</p></div>
+    <div class="onb-cta"><button class="btn primary" data-act="onb-go" data-v="profile">Weiter</button></div></div>`; }
+  if (s === 'profile') { const n = ONB.name.trim(), okN = nameOk(ONB.name);
+    return `<div class="onb">${onbHead('', 3)}<div class="onb-body">
+      <h1 class="display">Zu dir</h1>
+      <div class="pf" style="align-self:center">${avatarBig()}</div>
+      <label class="lbl">Dein Name<input class="inp" id="onb-in" data-onb="name" value="${esc(ONB.name)}" maxlength="24" autocomplete="nickname"></label>
+      <p class="small ${n && !okN ? 'err' : 'muted'}" style="margin:-6px 0 0">${n && !okN ? 'Nur Buchstaben und Zahlen, 2 bis 24 Zeichen, höchstens ein Leerzeichen.' : 'So sehen dich deine Buddys. Buchstaben und Zahlen, ein Leerzeichen ist erlaubt.'}</p>${onbErr()}</div>
+    <div class="onb-cta"><p>Name und Bild kannst du später jederzeit im Profil ändern.</p>${onbBtn('onb-name', 'Weiter', !okN)}</div></div>`; }
+  if (s === 'goal') return `<div class="onb">${onbHead('profile', 4)}<div class="onb-body">
+      <h1 class="display" style="font-size:40px">Dein<br>Wochenziel</h1>
+      <div class="onb-goal"><img src="flammen/flamme-hero-woche.webp" alt=""><p class="muted">Schaffst du <b style="color:var(--fg)">${ONB.goal === 1 ? '1 Training' : ONB.goal + ' Trainings'}</b> in einer Woche, gibt es die Wochenflamme. Du kannst dein Ziel jederzeit im Profil ändern.</p></div>
+      <div class="wz" role="radiogroup" aria-label="Trainings pro Woche">${[1, 2, 3, 4, 5, 6].map(k => `<button role="radio" aria-checked="${k === ONB.goal}" class="wzb${k === ONB.goal ? ' on' : ''}" data-act="onb-goal" data-v="${k}">${k}</button>`).join('')}</div>${onbErr()}</div>
+    <div class="onb-cta">${onbBtn('onb-goalok', 'Weiter')}</div></div>`;
+  if (s === 'privacy') return `<div class="onb">${onbHead('goal', 5)}<div class="onb-body">
+      <h1 class="display">Deine Daten bleiben deine</h1>
+      <section class="card onb-facts"><div><b>Gespeichert in der EU.</b> <span class="muted">Server in Frankfurt.</span></div><div><b>Chats, Spots und Vault verschlüsselt.</b> <span class="muted">Nur du und die Empfänger können sie lesen.</span></div><div><b>Kein Tracking, keine Werbung.</b></div><div><b>Export und Löschen</b> <span class="muted">jederzeit in den Einstellungen.</span></div></section>
+      <p class="small muted" style="margin:0">Körpergewicht und Vault-Bilder gelten als Gesundheitsdaten. Dafür fragen wir dich gesondert, sobald du sie zum ersten Mal nutzt.</p>
+      <label class="chk onb-chk"><input type="checkbox" data-onb="ok" ${ONB.ok ? 'checked' : ''}><span>Ich habe die <a href="#rechtliches:datenschutz">Datenschutzerklärung</a> und die <a href="#rechtliches:nutzung">Nutzungsbedingungen</a> gelesen und bin einverstanden.</span></label>${onbErr()}</div>
+    <div class="onb-cta"><p>Danach bekommst du deine GymBuddy-ID.</p>${onbBtn('onb-privacy', 'Konto erstellen', !ONB.ok)}</div></div>`;
+  if (s === 'buddy') return `<div class="onb">${onbHead('', 6)}<div class="onb-body">
+      <h1 class="display">Deine GymBuddy-ID</h1><p class="muted" style="margin:0">Damit finden dich Freunde in BUILT. Teile sie oder lass deinen QR-Code im Profil scannen.</p>
+      <button class="buddyid" data-act="onb-copy"><span class="mono">#${esc(ONB.buddy)}</span>${ICON.copy || ''}</button></div>
+    <div class="onb-cta"><button class="btn ghost" data-act="onb-done" data-v="later">Später</button><button class="btn primary" data-act="onb-done" data-v="buddies">Ersten GymBuddy hinzufügen</button></div></div>`;
+  return '';
 }
-async function testAndSave(url, key, errEl) {
-  url = url.trim(); key = key.trim();
-  const show = m => { errEl.textContent = m; errEl.hidden = false; };
-  if (!/^https:\/\/script\.google(usercontent)?\.com\/.+/.test(url) && !/^https?:\/\/(localhost|127\.0\.0\.1)/.test(url)) { show('Die Sync-Adresse muss mit https://script.google.com/ beginnen.'); return false; }
-  if (!key) { show('Bitte gib den Sync-Schlüssel ein.'); return false; }
-  const prev = { ...cfg }; cfg.url = url; cfg.key = key;
-  try { await call({ action: 'ping' }); }
-  catch (e) { cfg.url = prev.url; cfg.key = prev.key; show(e.code === 'unauthorized' ? 'Der Sync-Schlüssel stimmt nicht.' : 'Keine Verbindung zur Tabelle. Prüfe die Adresse und deine Internetverbindung.'); return false; }
-  LS.set('cfg', cfg); return true;
+// Name: 2–24 Zeichen, Buchstaben (auch Umlaute) und Ziffern, höchstens ein Leerzeichen, nicht am Rand
+const nameOk = v => { const t = String(v || ''); return t === t.trim() && /^[\p{L}\d]+( [\p{L}\d]+)?$/u.test(t) && [...t].length >= 2 && [...t].length <= 24; };
+const avatarBig = () => `<span class="av onb-av" style="background:#7d7740">${esc((ONB.name.trim()[0] || '?').toUpperCase())}</span>`;
+const sbMsg = e => { const m = String((e && (e.message || e.msg)) || ''); if (/Code passt nicht/.test(m)) return 'Der Code passt nicht. Prüfe ihn noch einmal.'; if (/Zu viele/.test(m)) return m; if (/expired|invalid/i.test(m)) return 'Der Code stimmt nicht oder ist abgelaufen.'; if (/rate|seconds/i.test(m)) return 'Bitte warte kurz, bevor du einen neuen Code anforderst.'; if (/valid_name|check constraint/i.test(m)) return 'Dieser Name ist nicht erlaubt. Bitte wähle einen anderen.'; if (/fetch|network/i.test(m)) return 'Keine Verbindung. Prüfe dein Internet.'; return m || 'Das hat nicht geklappt.'; };
+async function onbAfterLogin() {
+  const { data: u } = await sb.auth.getUser(); const id = u && u.user && u.user.id; if (!id) throw new Error('Anmeldung fehlgeschlagen');
+  const p = (await sb.from('profiles').select('*').eq('id', id).maybeSingle()).data || {};
+  ONB.uid = id; ONB.buddy = p.buddy_id || ''; if (!ONB.name) ONB.name = p.name || '';
+  const consent = (await sb.from('consents').select('kind').eq('kind', 'privacy').limit(1)).data;
+  if (p.name && consent && consent.length) return onbFinish(id, 'later', true);   // bekanntes Konto, neues Gerät
+  const open = !p.legacy_name && (await sb.rpc('legacy_open')).data === true;
+  if (open) return onbGo('claim');
+  onbGo('profile');
+}
+// Lokale Daten eines 2.2.1-Geräts auf die neue Profil-ID umziehen (Vault-Schlüssel, Galerie, Entwurf)
+function onbMoveLocal(old, id) {
+  ['vault.', 'vault.tok.', 'vault.cloud.', 'vault.tomb.', 'gal.key.', 'gal.tomb.', 'spot.tomb.', 'chat.hidden.'].forEach(k => {
+    const v = localStorage.getItem('hb.' + k + old); if (v != null && localStorage.getItem('hb.' + k + id) == null) localStorage.setItem('hb.' + k + id, v);
+  });
+  // noch nicht gesendete eigene Einträge aus 2.2.1 behalten
+  pending = pending.filter(p => p.person === old).map(p => ({ ...p, person: id }));
+  events = []; seenIds = new Set(); lastSeq = 0; saveLog();
+}
+async function onbFinish(id, next, known) {
+  const old = LS.get('legacy.cfg', null);
+  if (old && old.name) onbMoveLocal(old.name, id); else { events = []; seenIds = new Set(); lastSeq = 0; pending = []; saveLog(); }
+  cfg = { me: id, url: SB_URL, key: 'supabase' }; LS.set('cfg', cfg); computePeople(); LS.set('onb', {}); Object.assign(ONB, { step: 'welcome', code: '', err: '' });
+  location.hash = next === 'buddies' ? '#buddies' : '#start';
+  invalidate(); render(); await sync({ overlay: true });
+  if (known) toast('Willkommen zurück');
 }
 
 /* ---------- Ereignisse ---------- */
@@ -4321,19 +4434,58 @@ const actions = {
   'reset-ask': () => { resetAsk = true; render(); },
   'reset-no': () => { resetAsk = false; render(); },
   'reset-yes': () => { events = []; pending = []; lastSeq = 0; lastSync = null; seenIds = new Set(); saveLog(); LS.set('lastSync', null); resetAsk = false; invalidate(); builder = null; sync({ overlay: true }); render(); },
-  'setup-me': t => { setupMe = t.dataset.v; render(); },
-  'setup-go': async () => {
-    const err = $('#u-err');
-    if (!setupMe) { err.textContent = 'Bitte wähle zuerst aus, wer du bist.'; err.hidden = false; return; }
-    const ok = await testAndSave($('#u-url').value, $('#u-key').value, err);
-    if (!ok) return;
-    cfg.me = setupMe; LS.set('cfg', cfg); loadChat(); loadSpots(); location.hash = '#start'; render(); sync({ overlay: true });
+  'onb-go': t => onbGo(t.dataset.v),
+  'onb-back': t => onbGo(t.dataset.v),
+  'onb-send': async () => {
+    const em = ONB.email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { ONB.err = 'Bitte gib eine gültige E-Mail-Adresse ein.'; return render(); }
+    ONB.busy = true; ONB.err = ''; render();
+    const r = await sb.auth.signInWithOtp({ email: em, options: { shouldCreateUser: true } });
+    ONB.busy = false;
+    if (r.error) { ONB.err = sbMsg(r.error); return render(); }
+    ONB.email = em; ONB.code = ''; if (ONB.step === 'code') { toast('Neuer Code ist unterwegs'); render(); } else onbGo('code');
   },
-  'setup-local': () => {
-    const err = $('#u-err');
-    if (!setupMe) { err.textContent = 'Bitte wähle zuerst aus, wer du bist.'; err.hidden = false; return; }
-    cfg = { me: setupMe, url: '', key: '' }; LS.set('cfg', cfg); location.hash = '#start'; render();
-  }
+  'onb-verify': async () => {
+    if (ONB.code.length !== 6) return;
+    ONB.busy = true; ONB.err = ''; render();
+    const r = await sb.auth.verifyOtp({ email: ONB.email, token: ONB.code, type: 'email' });
+    if (r.error) { ONB.busy = false; ONB.err = sbMsg(r.error); ONB.code = ''; return render(); }
+    try { await onbAfterLogin(); } catch (e) { ONB.busy = false; ONB.err = sbMsg(e); render(); }
+  },
+  'onb-claim': async () => {
+    const code = ($('#onb-in') || {}).value || '';
+    if (code.replace(/[^A-Za-z0-9]/g, '').length < 8) { ONB.err = 'Der Code hat mindestens 8 Zeichen.'; return render(); }
+    ONB.busy = true; ONB.err = ''; render();
+    const r = await sb.rpc('claim_by_code', { code });
+    if (r.error) { ONB.busy = false; ONB.err = sbMsg(r.error); return render(); }
+    ONB.claim = r.data; ONB.name = (r.data && r.data.name) || ONB.name; onbGo('claimok');
+  },
+  'onb-name': async () => {
+    if (!nameOk(ONB.name)) return;
+    ONB.busy = true; ONB.err = ''; render();
+    const { data: u } = await sb.auth.getUser();
+    const r = await sb.from('profiles').update({ name: ONB.name }).eq('id', u.user.id);
+    if (r.error) { ONB.busy = false; ONB.err = sbMsg(r.error); return render(); }
+    onbGo('goal');
+  },
+  'onb-goal': t => { ONB.goal = +t.dataset.v; onbSave(); render(); },
+  'onb-goalok': async () => {
+    ONB.busy = true; render();
+    const r = await sb.rpc('set_week_goal', { n: ONB.goal });
+    if (r.error) { ONB.busy = false; ONB.err = sbMsg(r.error); return render(); }
+    onbGo('privacy');
+  },
+  'onb-privacy': async () => {
+    if (!ONB.ok) return;
+    ONB.busy = true; render();
+    const r = await sb.from('consents').insert({ kind: 'privacy', version: '1', granted: true });
+    if (r.error) { ONB.busy = false; ONB.err = sbMsg(r.error); return render(); }
+    const { data: u } = await sb.auth.getUser();
+    ONB.buddy = ((await sb.from('profiles').select('buddy_id').eq('id', u.user.id).maybeSingle()).data || {}).buddy_id || '';
+    onbGo('buddy');
+  },
+  'onb-copy': () => { try { navigator.clipboard.writeText('#' + ONB.buddy); toast('Buddy-ID kopiert'); } catch (e) {} },
+  'onb-done': async t => { const { data: u } = await sb.auth.getUser(); onbFinish(u.user.id, t.dataset.v); },
 };
 document.addEventListener('click', e => {
   if (e.target.id === 'vn-file') VAULT.picking = Date.now(); // Kamera/Fotoauswahl: Vault währenddessen nicht sperren
@@ -4376,6 +4528,27 @@ document.addEventListener('change', e => {
 let draftTimer;
 document.addEventListener('input', e => {
   const t = e.target;
+  if (t.dataset.onb) {
+    const k = t.dataset.onb;
+    if (k === 'email') { ONB.email = t.value; return; }
+    if (k === 'claim') return;
+    if (k === 'ok') { ONB.ok = t.checked; render(); return; }
+    if (k === 'code') {
+      ONB.code = t.value.replace(/\D/g, '').slice(0, 6); t.value = ONB.code;
+      document.querySelectorAll('.otpboxes .codebox').forEach((b, i) => { b.textContent = ONB.code[i] || ''; b.classList.toggle('cur', i === ONB.code.length); });
+      const btn = $('[data-act="onb-verify"]'); if (btn) btn.disabled = ONB.code.length !== 6;
+      if (ONB.code.length === 6) actions['onb-verify']();
+      return;
+    }
+    if (k === 'name') {
+      ONB.name = t.value; onbSave();
+      const okN = nameOk(ONB.name), btn = $('[data-act="onb-name"]'); if (btn) btn.disabled = !okN;
+      const hint = t.closest('.onb-body').querySelector('p.small'); const bad = ONB.name.trim() && !okN;
+      if (hint) { hint.className = 'small ' + (bad ? 'err' : 'muted'); hint.textContent = bad ? 'Nur Buchstaben und Zahlen, 2 bis 24 Zeichen, höchstens ein Leerzeichen.' : 'So sehen dich deine Buddys. Buchstaben und Zahlen, ein Leerzeichen ist erlaubt.'; }
+      const avl = document.querySelector('.onb-av'); if (avl) avl.textContent = (ONB.name.trim()[0] || '?').toUpperCase();
+      return;
+    }
+  }
   if (t.id === 'sp-size' && SPOT.ed) { SPOT.ed.textSize = +t.value; layoutEditor(); return; }
   if (view === 'bearbeiten' && edraft && (t.dataset.f || t.dataset.note != null)) { withEd(() => draftInput(t)); return; }
   if (t.id === 'pk-q' && PK) { PK.q = t.value; PK.sel = ''; renderPick(); return; }
