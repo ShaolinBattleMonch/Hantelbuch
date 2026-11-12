@@ -1266,7 +1266,7 @@ function addSynced(ev) {
 async function loadPeople() {
   const me = cfg.me; if (!me) return false;
   const [pr, fr, cm] = await Promise.all([
-    sb.from('profiles').select('id,buddy_id,name,avatar_path,share_weight,legacy_name,week_goal,week_goal_next,week_goal_from'),
+    sb.from('profiles').select('id,buddy_id,name,avatar_path,share_weight,legacy_name,week_goal,week_goal_next,week_goal_from,deleted_at'),
     sb.from('friendships').select('a,b,status,requested_by'),
     sb.from('crew_members').select('crew_id,user_id,role,joined_at')
   ]);
@@ -1283,7 +1283,7 @@ async function loadPeople() {
   } else CREW = null;
   LS.set('crew', CREW);
   computePeople();
-  try { await loadSocial(fr.data || []); } catch (e) { /* nicht kritisch */ }
+  try { await loadSocial(fr.data || []); await loadConsents(); } catch (e) { /* nicht kritisch */ }
   return before !== PEOPLE.join();
 }
 const evRow = e => ({ id: e.id, ts: e.ts, type: e.type, summary: e.summary || '', data: e.data || {}, private: !!e.private, crew_id: e.private ? null : (e.crew || (CREW ? CREW.id : null)) });
@@ -1349,7 +1349,7 @@ function sync({ overlay = false, quiet = false } = {}) {
       ui.set(100, 'Fertig', '');
       if (overlay) await sleep(400);
       if (rejected && !quiet) toast(rejected === 1 ? 'Ein Eintrag wurde abgelehnt.' : `${rejected} Einträge wurden abgelehnt.`);
-      setTimeout(() => { notesSync(); vaultSync().then(() => gallerySync()); spotSync().then(() => chatSync()); }, 0);
+      setTimeout(() => { flushUsage(); notesSync(); vaultSync().then(() => gallerySync()); spotSync().then(() => chatSync()); }, 0);
       return { ok: true };
     } catch (err) {
       const code = (err && err.code) || 'server';
@@ -2888,6 +2888,9 @@ function render() {
     case 'bearbeiten': if (!edraft) { location.hash = '#verlauf'; return; } html = withEd(viewEdit); tone = DAY_TONE[edraft.day]; break;
     case 'verlauf': html = head('Verlauf') + `<main class="view">${viewVerlauf()}</main>` + tabbar('verlauf'); break;
     case 'plan': html = head('Plan') + `<main class="view">${viewPlan()}</main>` + tabbar('plan'); tone = pkind() === 'crew' && !hasCrew() ? '' : DAY_TONE[builder.day] || ''; break;
+    case 'privatsphaere': html = subhead('einstellungen') + `<main class="view nobar">${viewPrivacy()}</main>`; break;
+    case 'daten': html = subhead('einstellungen') + `<main class="view nobar">${viewData()}</main>`; break;
+    case 'feedback': html = subhead('einstellungen') + `<main class="view nobar">${viewFeedback()}</main>`; break;
     case 'buddies': html = head('Buddies') + `<main class="view">${viewBuddies()}</main>` + tabbar('buddies'); break;
     case 'crew': html = subhead('buddies') + `<main class="view">${viewCrew()}</main>` + tabbar('buddies'); break;
     case 'scanner': html = viewScanner(); break;
@@ -2922,6 +2925,9 @@ function render() {
     app.scrollTop = 0; view = name;
     if (name === 'notizen' && NOTE_FOCUS) { const c = document.getElementById('nc-' + NOTE_FOCUS.ex); if (c) { c.scrollIntoView({ block: 'center' }); NOTE_FOCUS.t = Date.now(); } }
     if (name === 'scanner') startScan();
+    trackView(name || 'start');
+    if (name === 'vault' && !vmeta() && !VAULT.restore && !hasConsent('health')) { history.replaceState(null, '', '#profil'); render(); healthSheet(() => { location.hash = '#vault'; }); return; }
+    if ((name === 'start' || name === '') && !draft && !LS.get('stats.asked', false) && CONSENTS.analytics === undefined && st().workouts.some(w => w.person === cfg.me && Date.now() - new Date(w.ts) < 864e5)) setTimeout(statsSheet, 600);
   }
   tabSlideIn();
   pendingRender = false;
@@ -4682,6 +4688,126 @@ function goalSheet() {
     <div class="btnrow col"><button class="btn primary" data-act="goal-save" data-v="${nxt}">Speichern</button><button class="btn ghost" data-act="mclose">Abbrechen</button></div>`);
 }
 
+/* ======================= Datenschutz, Daten, Feedback (ab 3.0) =======================
+   Einwilligungen stehen in „consents“ (jede Änderung ein neuer Eintrag, der letzte gilt).
+   Gesundheitsdaten (Körpergewicht, Vault-Bilder) erst nach eigener Einwilligung. Statistik nur mit Zustimmung. */
+const LEGAL = {   // Angaben für Impressum und Datenschutz: vor der Umstellung eintragen
+  name: '', street: '', city: '', mail: '', report: ''
+};
+const CONSENT_V = '3.0';
+let CONSENTS = (() => { const v = LS.get('consents', null); return v && typeof v === 'object' ? v : {}; })();
+const hasConsent = k => CONSENTS[k] === true;
+async function loadConsents() {
+  const r = await sb.from('consents').select('kind,granted,created_at').order('created_at', { ascending: true });
+  if (r.error) return;
+  const m = {}; (r.data || []).forEach(c => { m[c.kind] = !!c.granted; });
+  CONSENTS = m; LS.set('consents', CONSENTS);
+}
+async function setConsent(kind, granted) {
+  const r = await sb.from('consents').insert({ kind, version: CONSENT_V, granted });
+  if (r.error) { toast('Speichern hat nicht geklappt. Bitte später noch einmal.'); return false; }
+  CONSENTS[kind] = granted; LS.set('consents', CONSENTS); return true;
+}
+// Einwilligung für Gesundheitsdaten, einmalig vor dem ersten Eintrag
+function healthSheet(then) {
+  HEALTH_NEXT = then;
+  sheet(`<span class="eyebrow">Einmalig vor dem ersten Eintrag</span><h2>Körpergewicht speichern?</h2>
+    <p class="muted" style="margin:0">Dein Körpergewicht gilt als Gesundheitsdatum. Wir speichern es deshalb nur, wenn du ausdrücklich zustimmst.</p>
+    <ul class="dots"><li>Standardmäßig <b>privat</b>. Freunde sehen es nur, wenn du es unter „Privatsphäre“ freigibst.</li><li>Gespeichert in der EU (Frankfurt), nur für deinen Verlauf.</li><li>Jederzeit widerrufbar. Dabei kannst du alle bisherigen Einträge löschen.</li></ul>
+    <span class="small muted">Dasselbe gilt für Fortschrittsbilder im Vault. Mehr in der <a href="#rechtliches:datenschutz" data-act="mclose">Datenschutzerklärung</a>.</span>
+    <div class="btnrow col"><button class="btn primary" data-act="health-yes">Zustimmen und speichern</button><button class="btn ghost" data-act="mclose">Nicht jetzt</button></div>`);
+}
+let HEALTH_NEXT = null;
+function healthWithdrawSheet() {
+  sheet(`<h2>Einwilligung widerrufen?</h2><p class="muted" style="margin:0">Körpergewicht und Vault werden nicht mehr gespeichert. Was soll mit den bisherigen Einträgen passieren?</p>
+    <div class="btnrow col"><button class="btn danger" data-act="health-del">Widerrufen und alles löschen</button><button class="btn" data-act="health-keep">Widerrufen, Einträge behalten</button><button class="btn ghost" data-act="mclose">Abbrechen</button></div>`);
+}
+async function healthDeleteAll() {
+  closeModal();
+  const r = await sb.rpc('delete_health_data');
+  if (r.error) { toast('Löschen hat nicht geklappt. Bitte später noch einmal.'); return; }
+  CONSENTS.health = false; LS.set('consents', CONSENTS);
+  for (const x of await IDB.all(cfg.me)) await IDB.del(x.id);
+  ['vault.', 'vault.tok.', 'vault.cloud.', 'vault.tomb.'].forEach(k => localStorage.removeItem('hb.' + k + cfg.me));
+  lockVault();
+  events = events.filter(e => !(e.person === cfg.me && e.type === 'bodyweight')); pending = pending.filter(e => e.type !== 'bodyweight'); saveLog(); invalidate();
+  toast('Widerrufen. Körpergewicht und Vault-Bilder sind gelöscht.'); render();
+}
+// Nutzungsstatistik: einmal fragen, nur mitzählen, welche Bereiche genutzt werden
+function statsSheet() {
+  LS.set('stats.asked', true);
+  sheet(`<h2>Hilf mit, BUILT besser zu machen</h2><p class="muted" style="margin:0">Darf die App anonym mitzählen, welche Bereiche ihr nutzt? Das hilft zu entscheiden, was als Nächstes verbessert wird.</p>
+    <div class="card" style="gap:6px"><span class="eyebrow">Gezählt wird</span><span class="small">Welche Screens und Funktionen genutzt werden, App-Version, Gerätetyp, Tag.</span>
+      <span class="eyebrow" style="margin-top:6px">Nie</span><span class="small">Namen, Gewichte, Trainingsinhalte, Chats, Spots, Bilder. Keine fremden Dienste, die Daten bleiben in Frankfurt und werden nach 90 Tagen gelöscht.</span></div>
+    <div class="btnrow"><button class="btn ghost" data-act="stats-no">Nicht teilen</button><button class="btn primary" data-act="stats-yes">Teilen</button></div>
+    <span class="small muted">Jederzeit änderbar unter Einstellungen → Privatsphäre.</span>`);
+}
+let USAGE_Q = [];
+const usageId = () => { let v = LS.get('usage.id', ''); if (!v) { v = uid(); LS.set('usage.id', v); } return v; };
+function trackView(name) { if (hasConsent('analytics') && name && !USAGE_Q.includes(name)) USAGE_Q.push(name); }
+async function flushUsage() {
+  if (!hasConsent('analytics') || !USAGE_Q.length || navigator.onLine === false) return;
+  const day = todayStr(), sent = LS.get('usage.sent', {}), list = USAGE_Q.filter(n => sent[n] !== day); USAGE_Q = [];
+  if (!list.length) return;
+  const plat = /iPhone|iPad/.test(navigator.userAgent) ? 'iOS' : /Android/.test(navigator.userAgent) ? 'Android' : 'Web';
+  const r = await sb.from('usage_events').insert(list.map(name => ({ anon_id: usageId(), name, app_version: APP_VERSION, platform: plat })));
+  if (!r.error) { list.forEach(n => { sent[n] = day; }); LS.set('usage.sent', sent); }
+}
+/* ---------- Seiten ---------- */
+function viewPrivacy() {
+  const pr = PROFILES[cfg.me] || {};
+  const rowS = (t, sub, v) => `<div class="row" style="min-height:64px"><span style="display:flex;flex-direction:column;gap:2px"><span>${t}</span><span class="small muted">${sub}</span></span><span class="v">${v}</span></div>`;
+  return `<h1 class="display" style="font-size:30px">Privatsphäre</h1>
+    <div class="secl">Deine Freunde und Crew sehen</div>
+    <div class="rows glass">${rowS('Trainings, Rekorde, Flammen', 'Gehört zum Kern der App', 'immer')}${rowS('Profilbild und Name', 'Fremde sehen sie nur bei der Suche per ID', 'immer')}
+      <label class="row tgl" style="cursor:pointer;min-height:64px"><span style="display:flex;flex-direction:column;gap:2px"><span>Körpergewicht</span><span class="small muted">${pr.share_weight ? 'Deine Buddys sehen es' : 'Nur du siehst es'}</span></span><input type="checkbox" role="switch" id="share-w" ${pr.share_weight ? 'checked' : ''}><i aria-hidden="true"></i></label></div>
+    <span class="small muted" style="padding:0 4px">Chats, Spots und Vault sind Ende-zu-Ende-verschlüsselt. Nur du und die Empfänger können sie lesen, auch der Betreiber nicht.</span>
+    <div class="secl">Einwilligungen</div>
+    <div class="rows glass">
+      <div class="row" style="min-height:64px"><span style="display:flex;flex-direction:column;gap:2px"><span>Gesundheitsdaten</span><span class="small muted">${hasConsent('health') ? 'Erteilt: Körpergewicht und Vault' : 'Nicht erteilt'}</span></span>${hasConsent('health') ? '<button class="lnk" data-act="health-withdraw">Widerrufen</button>' : '<button class="lnk" data-act="health-ask">Erteilen</button>'}</div>
+      <label class="row tgl" style="cursor:pointer;min-height:64px"><span style="display:flex;flex-direction:column;gap:2px"><span>Nutzungsstatistik teilen</span><span class="small muted">Anonym, ohne Inhalte, 90 Tage</span></span><input type="checkbox" role="switch" id="stats-tgl" ${hasConsent('analytics') ? 'checked' : ''}><i aria-hidden="true"></i></label>
+    </div>
+    <div class="rows glass"><a class="row" href="#rechtliches:datenschutz">Datenschutzerklärung<span class="v">›</span></a><a class="row" href="#daten">Deine Daten<span class="v">›</span></a></div>`;
+}
+let DATA = { del: false, file: null };
+function viewData() {
+  const pr = PROFILES[cfg.me] || {}, until = pr.deleted_at ? new Date(new Date(pr.deleted_at).getTime() + 30 * 864e5) : null;
+  return `<h1 class="display" style="font-size:30px">Deine Daten</h1>
+    ${until ? `<section class="card" style="border-color:var(--danger)"><b style="color:var(--danger)">Löschung beantragt</b><span class="small">Dein Konto wird am <b>${until.toLocaleDateString('de-DE')}</b> endgültig gelöscht. Bis dahin kannst du es dir anders überlegen.</span><button class="btn" data-act="del-cancel">Löschung zurücknehmen</button></section>` : ''}
+    <section class="card"><b>Daten exportieren</b><span class="small muted">Profil, Trainings, Pläne, Notizen, Bibliothek, Freunde und Einwilligungen als eine Datei. Chats bleiben verschlüsselt. Vault-Bilder sicherst du im Vault über „Backup“.</span>
+      <button class="btn" data-act="data-export">Export erstellen</button>
+      ${DATA.file ? `<div class="filerow"><span class="mono small">${esc(DATA.file.name)}<br><span class="muted">${Math.max(1, Math.round(DATA.file.size / 1024))} KB</span></span><button class="lnk" data-act="data-share">Teilen</button></div>` : ''}</section>
+    ${until ? '' : `<section class="card"><b>Konto löschen</b><span class="small muted">Dein Konto und alle Daten werden nach 30 Tagen endgültig gelöscht. Bis dahin kannst du dich anmelden und die Löschung zurücknehmen.</span>
+      <button class="btn ghost danger-t" data-act="del-ask" style="border-color:var(--danger)">Konto löschen</button></section>`}`;
+}
+let FB = { kind: 'idee', meta: true };
+function viewFeedback() {
+  const K = { idee: ['Idee', 'Was fehlt dir in BUILT?', 'z. B. Ich hätte gern einen Timer für Supersätze'], fehler: ['Fehler', 'Was ist passiert? Was hast du davor gemacht?', 'z. B. Nach dem Speichern war der letzte Satz weg'], lob: ['Lob', 'Was gefällt dir?', 'z. B. Die Rekorde motivieren mich'] }, k = K[FB.kind];
+  return `<h1 class="display" style="font-size:30px">Was können wir besser machen?</h1>
+    <div class="seg" role="group" aria-label="Art">${Object.entries(K).map(([v, x]) => `<button data-act="fb-kind" data-v="${v}" aria-pressed="${FB.kind === v}">${x[0]}</button>`).join('')}</div>
+    <label class="small muted" for="fb-text">${k[1]}</label>
+    <textarea class="inp" id="fb-text" rows="7" maxlength="4000" placeholder="${esc(k[2])}"></textarea>
+    <div class="rows glass"><label class="row tgl" style="cursor:pointer"><span style="display:flex;flex-direction:column;gap:2px"><span>App-Version und Gerät mitsenden</span><span class="small muted">${APP_VERSION} · ${/iPhone/.test(navigator.userAgent) ? 'iPhone' : 'Gerät'}. Hilft bei Fehlern.</span></span><input type="checkbox" role="switch" id="fb-meta" ${FB.meta ? 'checked' : ''}><i aria-hidden="true"></i></label></div>
+    <span class="small muted">Dein Feedback wird mit deinem Konto gespeichert, damit wir nachfragen können. Keine Trainings- oder Chatinhalte.</span>
+    <button class="btn primary" data-act="fb-send">Feedback senden</button>`;
+}
+async function exportData() {
+  const r = await sb.rpc('export_my_data');
+  if (r.error) { toast('Export hat nicht geklappt. Bitte später noch einmal.'); return; }
+  const name = `BUILT-Export-${todayStr()}.json`;
+  DATA.file = new File([JSON.stringify({ app: 'BUILT', version: APP_VERSION, created: new Date().toISOString(), data: r.data }, null, 2)], name, { type: 'application/json' });
+  render();
+}
+async function shareData() {
+  const f = DATA.file; if (!f) return;
+  try { if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: 'BUILT-Export' }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+}
+function deleteSheet() {
+  sheet(`<h2>Konto wirklich löschen?</h2><ul class="dots"><li>Du wirst sofort abgemeldet und bist für Freunde nicht mehr sichtbar.</li>${isOwner() && crewMates().length ? '<li>Du verlässt die Crew, das älteste Mitglied wird Crew-Chef.</li>' : ''}<li>Innerhalb von 30 Tagen kannst du dich anmelden und die Löschung zurücknehmen. Danach ist alles endgültig weg.</li></ul>
+    <div class="btnrow col"><button class="btn danger" data-act="del-yes">Ja, Konto löschen</button><button class="btn ghost" data-act="mclose">Abbrechen</button></div>`);
+}
+
 /* ---------- Plan-Builder ----------
    Oben Mein Plan / Crew-Plan, darunter die Trainingstage als Kürzel (bis zu 6), „+ Tag“ und der Stift für Name, Kürzel und Löschen.
    Änderungen am Crew-Plan gehen als Vorschlag an die Crew (Glocke), Mein Plan gilt nur für mich. */
@@ -4851,31 +4977,40 @@ function viewAbout() {
   const row = (k, l) => `<a class="row" href="#rechtliches:${k}">${l}<span class="v">›</span></a>`;
   return `<div class="about-top"><img src="${FLAME.W}" alt=""><span><b class="display" style="font-size:24px">BUILT</b><br><span class="mono small muted">Version ${APP_VERSION}</span></span></div>
     <div class="secl">Rechtliches</div>
-    <div class="rows glass">${row('impressum', 'Impressum')}${row('datenschutz', 'Datenschutzerklärung')}${row('nutzung', 'Nutzungsbedingungen')}</div>
+    <div class="rows glass">${row('impressum', 'Impressum')}${row('datenschutz', 'Datenschutzerklärung')}${row('nutzung', 'Nutzungsbedingungen')}${LEGAL.report ? `<a class="row" href="mailto:${esc(LEGAL.report)}">Inhalte melden<span class="v">${esc(LEGAL.report)}</span></a>` : ''}</div>
+    <div class="secl">Deine Daten</div>
+    <div class="rows glass"><a class="row" href="#privatsphaere">Einwilligungen verwalten<span class="v">›</span></a><a class="row" href="#daten">Meine Daten exportieren<span class="v">›</span></a><a class="row" href="#daten" style="color:var(--danger)">Konto löschen<span class="v">›</span></a></div>
     <div class="secl">Lizenzen</div>
-    <div class="rows glass">${row('lizenzen', 'Schriften: Unbounded, Geist, Geist Mono')}</div>
-    <span class="small muted" style="padding:0 4px">Die Schriften sind in der App enthalten und werden nicht von fremden Servern geladen.</span>`;
+    <section class="card"><b>Schriften: Unbounded, Geist, Geist Mono</b><span class="small muted">SIL Open Font License 1.1. Die Schriften sind in der App enthalten und werden nicht von fremden Servern geladen.</span><a class="lnk" href="#rechtliches:lizenzen" style="align-self:flex-start">Lizenztexte anzeigen</a></section>`;
 }
 function viewLegal(k) {
+  const who = `${esc(LEGAL.name || 'Name folgt')}${LEGAL.street ? '<br>' + esc(LEGAL.street) : ''}${LEGAL.city ? '<br>' + esc(LEGAL.city) : ''}<br>Deutschland`;
+  const mail = LEGAL.mail ? `<a href="mailto:${esc(LEGAL.mail)}">${esc(LEGAL.mail)}</a>` : '–';
   const T = {
-    impressum: ['Impressum', `<h3>Angaben gemäß § 5 DDG</h3><p>Vorname Nachname<br>Straße Hausnummer<br>PLZ Ort<br>Deutschland</p>
-      <h3>Kontakt</h3><p>E-Mail: kontakt@domain.de<br>Telefon oder Kontaktformular: Telefonnummer oder Link</p>
-      <h3>Inhalte melden</h3><p>Nachrichten kannst du in der App melden: Nachricht gedrückt halten und „Melden“ wählen.</p>
-      <h3>Verbraucherstreitbeilegung</h3><p>Wir sind nicht bereit und nicht verpflichtet, an Streitbeilegungsverfahren vor einer Verbraucherschlichtungsstelle teilzunehmen.</p>`],
-    datenschutz: ['Datenschutz', `<p style="color:var(--fg)">Entwurf, wird vor einem öffentlichen Start überarbeitet.</p>
-      <h3>1. Verantwortlicher</h3><p>Name, Anschrift und E-Mail siehe Impressum.</p>
-      <h3>2. Welche Daten die App verarbeitet</h3><p>Name in der App, Profilbild, Trainingspläne, Sätze, Gewichte, Notizen, Körpergewicht, Flammen. Chats und Spots werden verschlüsselt übertragen und gespeichert. Vault-Bilder sind mit deinem eigenen Schlüssel verschlüsselt, niemand sonst kann sie lesen.</p>
-      <h3>3. Wo die Daten liegen</h3><p>Auf deinem Handy und zum Abgleich in einer Google-Tabelle im Google Drive des Betreibers. Die App selbst wird über GitHub Pages ausgeliefert. Schriften und alle App-Dateien liegen in der App, es werden keine weiteren Dienste angefragt.</p>
-      <h3>4. Speicherdauer</h3><p>Spots 3 Tage, Chats 30 Tage, Trainingsdaten bis zur Löschung.</p>
-      <h3>5. Deine Rechte</h3><p>Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit, Widerspruch und Widerruf von Einwilligungen. Beschwerde bei der Datenschutz-Aufsichtsbehörde des Bundeslands.</p>
-      <h3>6. Kein Tracking</h3><p>Keine Analyse-Tools, keine Werbung, keine Weitergabe an Dritte.</p>`],
-    nutzung: ['Nutzungsbedingungen', `<p style="color:var(--fg)">Entwurf, wird vor einem öffentlichen Start überarbeitet.</p>
-      <h3>Respekt</h3><p>Keine Beleidigungen, keine Hetze, keine verbotenen Symbole oder Kürzel, weder im Namen noch in Chats oder Spots.</p>
+    impressum: ['Impressum', `<h3>Angaben gemäß § 5 DDG</h3><p>${who}</p>
+      <h3>Kontakt</h3><p>E-Mail: ${mail}</p>
+      <h3>Zentrale Kontaktstelle nach Digital Services Act</h3><p>Für Behörden und Nutzer: ${LEGAL.report ? esc(LEGAL.report) : mail}. Wir antworten auf Deutsch oder Englisch.</p>
+      <h3>Inhalte melden</h3><p>Rechtswidrige Inhalte kannst du direkt in der App über „Melden“ bei einer Nachricht, einer Notiz oder einem Profil melden.</p>
+      <h3>Verbraucherstreitbeilegung</h3><p>Wir sind nicht bereit und nicht verpflichtet, an Streitbeilegungsverfahren vor einer Verbraucherschlichtungsstelle teilzunehmen.</p>
+      <h3>Haftung für Inhalte</h3><p>Für Inhalte, die Nutzer teilen (Chats, Spots, Notizen, Profile), sind die jeweiligen Nutzer verantwortlich. Sobald wir von einem Rechtsverstoß erfahren, entfernen wir den Inhalt.</p>`],
+    datenschutz: ['Datenschutz', `<h3>1. Verantwortlicher</h3><p>Siehe Impressum.<br>E-Mail: ${mail}</p>
+      <h3>2. Welche Daten wir verarbeiten</h3><p><b>Konto:</b> E-Mail-Adresse, Anzeigename, GymBuddy-ID, optional Profilbild, Wochenziel. <b>Training:</b> Pläne, Sätze, Gewichte, Notizen, Flammen, eigene Übungen. <b>Soziales:</b> Freundschaften, Crew-Mitgliedschaft, Reaktionen, Meldungen. <b>Chats, Spots und Vault</b> speichern wir nur verschlüsselt, wir können sie nicht lesen. Meldest du eine Nachricht, wird sie zur Prüfung lesbar mitgeschickt.</p>
+      <h3>3. Gesundheitsdaten</h3><p>Körpergewicht und Fortschrittsbilder im Vault sind Gesundheitsdaten (Art. 9 DSGVO). Wir speichern sie nur mit deiner ausdrücklichen Einwilligung, die du jederzeit unter Einstellungen → Privatsphäre widerrufen kannst. Dein Körpergewicht sehen andere nur, wenn du es freigibst.</p>
+      <h3>4. Rechtsgrundlagen</h3><p>Vertrag (Art. 6 Abs. 1 lit. b DSGVO) für Konto, Training und Buddys; Einwilligung (Art. 6 Abs. 1 lit. a, Art. 9 Abs. 2 lit. a DSGVO) für Gesundheitsdaten und Nutzungsstatistik; berechtigtes Interesse (Art. 6 Abs. 1 lit. f DSGVO) für Sicherheit, Missbrauchsschutz und Fehlerprotokolle ohne Inhalte.</p>
+      <h3>5. Dienstleister</h3><p><b>Supabase</b> (Datenbank, Anmeldung, Dateispeicher), Server in Frankfurt am Main (EU). <b>Brevo</b> (Sendinblue GmbH, Berlin) verschickt die Anmelde-Codes per E-Mail. <b>GitHub Pages</b> (GitHub Inc., USA) liefert die App-Dateien aus; dabei verarbeitet GitHub technisch deine IP-Adresse.</p>
+      <h3>6. Speicherdauer</h3><p>Chats 30 Tage, Spots bis sie gesehen wurden, höchstens 30 Tage. Nutzungsstatistik 90 Tage, Fehlerprotokolle 30 Tage. Trainingsdaten, bis du sie oder dein Konto löschst. Nach einem Löschantrag wird dein Konto nach 30 Tagen endgültig gelöscht.</p>
+      <h3>7. Kein Tracking</h3><p>Keine Werbung, keine fremden Analyse-Tools, keine Weitergabe an Dritte. Die Nutzungsstatistik ist freiwillig, anonym und enthält keine Inhalte.</p>
+      <h3>8. Deine Rechte</h3><p>Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit (Export unter „Deine Daten“), Widerspruch und Widerruf von Einwilligungen. Du kannst dich bei einer Datenschutz-Aufsichtsbehörde beschweren, zum Beispiel beim Unabhängigen Landeszentrum für Datenschutz Schleswig-Holstein.</p>`],
+    nutzung: ['Nutzungsbedingungen', `<h3>Respekt</h3><p>Keine Beleidigungen, keine Hetze, keine verbotenen Symbole oder Kürzel, weder im Namen noch in Chats, Notizen oder Spots.</p>
       <h3>Melden und Sperren</h3><p>Gemeldete Inhalte werden geprüft. Wer gegen die Regeln verstößt, kann gesperrt werden.</p>
-      <h3>Training</h3><p>BUILT ersetzt keine Trainer- oder ärztliche Beratung. Du trainierst auf eigene Verantwortung.</p>`],
+      <h3>Training</h3><p>BUILT ersetzt keine Trainer- oder ärztliche Beratung. Du trainierst auf eigene Verantwortung.</p>
+      <h3>Konto</h3><p>Ein Konto pro Person. Du kannst es jederzeit unter „Deine Daten“ löschen.</p>`],
     lizenzen: ['Lizenzen', `<h3>Unbounded</h3><p>Copyright The Unbounded Project Authors. SIL Open Font License 1.1.</p>
       <h3>Geist und Geist Mono</h3><p>Copyright The Geist Project Authors. SIL Open Font License 1.1.</p>
-      <p>Die vollständigen Lizenztexte liegen der App im Ordner „fonts“ bei. Die Schriften dürfen frei verwendet, eingebettet und weitergegeben werden, aber nicht einzeln verkauft werden.</p>`]
+      <h3>supabase-js</h3><p>Copyright Supabase. MIT License.</p>
+      <h3>QR Code Generator</h3><p>Copyright (c) 2009 Kazuhiko Arase. MIT License. „QR Code“ ist eine eingetragene Marke der DENSO WAVE INCORPORATED.</p>
+      <h3>jsQR</h3><p>Copyright Cosmo Wolfe. Apache License 2.0.</p>
+      <p>Die vollständigen Lizenztexte liegen der App in den Ordnern „fonts“ und „vendor“ bei.</p>`]
   };
   const x = T[k] || T.impressum;
   return `<h1 class="display" style="font-size:30px">${x[0]}</h1>${x[1]}`;
@@ -4904,6 +5039,8 @@ function viewSettings() {
       <div class="row">Letzter Sync<span class="v">${lastSync ? fmtDate(lastSync) + ', ' + fmtTime(lastSync) : '–'}</span></div>
       <div class="row">Einträge<span class="v">${events.length} synchronisiert, ${waiting} wartend</span></div>
     </div>
+    <div class="secl">Daten und Hilfe</div>
+    <div class="rows glass"><a class="row" href="#privatsphaere">Privatsphäre<span class="v">›</span></a><a class="row" href="#daten">Deine Daten<span class="v">Export, Löschen</span></a><a class="row" href="#feedback">Feedback geben<span class="v">›</span></a></div>
     <div class="secl">Über BUILT</div>
     <div class="rows glass"><a class="row" href="#ueber">Impressum, Datenschutz, Lizenzen<span class="v">Version ${APP_VERSION}</span></a></div>
     <div class="secl">Gerät</div>
@@ -5019,6 +5156,7 @@ async function onbFinish(id, next, known) {
   cfg = { me: id, url: SB_URL, key: 'supabase' }; LS.set('cfg', cfg); computePeople(); LS.set('onb', {}); Object.assign(ONB, { step: 'welcome', code: '', err: '' });
   location.hash = next === 'buddies' ? '#buddies' : '#start';
   invalidate(); render(); await sync({ overlay: true });
+  if ((PROFILES[id] || {}).deleted_at) { location.hash = '#daten'; toast('Für dein Konto ist eine Löschung beantragt.'); return; }
   if (known) toast('Willkommen zurück');
 }
 
@@ -5135,6 +5273,7 @@ const actions = {
   'discard-ask': () => discardSheet(),
   'discard-yes': () => { TIMER = null; clearTimeout(tmrTO); draft = null; saveDraft(); $('#modal').innerHTML = ''; toast('Training verworfen'); location.hash = '#start'; },
   'bw-save': () => {
+    if (!hasConsent('health')) { healthSheet(() => actions['bw-save']()); return; }
     const el = $('#bw-in'), v = num(el && el.value), fe = $('#bw-from');
     let from = fe && /^\d{4}-\d{2}-\d{2}$/.test(fe.value) ? fe.value : todayStr();
     if (from > todayStr()) from = todayStr();
@@ -5202,6 +5341,22 @@ const actions = {
   'goal-open': () => goalSheet(),
   'goal-pick': t => { document.querySelectorAll('.wzb').forEach(b => { const on = b === t; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); }); const s = $('[data-act="goal-save"]'); if (s) s.dataset.v = t.dataset.v; },
   'goal-save': async t => { const n = int(t.dataset.v); closeModal(); const r = await sb.rpc('set_week_goal', { n }); if (r.error) { toast('Speichern hat nicht geklappt.'); return; } toast(r.data ? `Neues Wochenziel ${n} gilt ab Montag` : `Wochenziel: ${n}`); await sync({ quiet: true }); render(); },
+  'health-yes': async () => { const ok = await setConsent('health', true); closeModal(); if (ok) { toast('Danke. Gesundheitsdaten werden gespeichert.'); const n = HEALTH_NEXT; HEALTH_NEXT = null; if (n) n(); else render(); } },
+  'health-ask': () => healthSheet(() => render()),
+  'health-withdraw': () => healthWithdrawSheet(),
+  'health-keep': async () => { closeModal(); if (await setConsent('health', false)) { toast('Widerrufen. Neue Einträge werden nicht mehr gespeichert.'); render(); } },
+  'health-del': () => healthDeleteAll(),
+  'stats-yes': async () => { closeModal(); if (await setConsent('analytics', true)) toast('Danke fürs Mithelfen'); },
+  'stats-no': async () => { closeModal(); await setConsent('analytics', false); },
+  'data-export': () => exportData(),
+  'data-share': () => shareData(),
+  'del-ask': () => deleteSheet(),
+  'del-yes': async () => { closeModal(); const r = await sb.rpc('request_account_deletion'); if (r.error) { toast('Das hat nicht geklappt. Bitte später noch einmal.'); return; } if (isOwner()) await sb.rpc('leave_crew'); toast('Löschung beantragt. Du wirst abgemeldet.'); setTimeout(() => actions['logout-yes'](), 800); },
+  'del-cancel': async () => { const r = await sb.rpc('cancel_account_deletion'); if (r.error) { toast('Das hat nicht geklappt.'); return; } toast('Löschung zurückgenommen. Schön, dass du bleibst.'); await sync({ quiet: true }); render(); },
+  'fb-kind': t => { FB.kind = t.dataset.v; const txt = ($('#fb-text') || {}).value || ''; render(); const ta = $('#fb-text'); if (ta) ta.value = txt; },
+  'fb-send': async () => { const text = ($('#fb-text').value || '').trim(); if (text.length < 3) { toast('Schreib uns kurz, worum es geht.'); return; } FB.meta = $('#fb-meta').checked;
+    const r = await sb.from('feedback').insert({ kind: FB.kind, text: text.slice(0, 4000), app_version: FB.meta ? APP_VERSION : null, platform: FB.meta ? (/iPhone|iPad/.test(navigator.userAgent) ? 'iOS' : 'Web') : null });
+    if (r.error) { toast('Senden hat nicht geklappt. Bitte später noch einmal.'); return; } toast('Danke für dein Feedback!'); location.hash = '#einstellungen'; },
   'note-more': t => { const k = t.dataset.v; if (NOTE_OPEN.has(k)) NOTE_OPEN.delete(k); else NOTE_OPEN.add(k); safeRender(); },
   'note-edit': t => openNoteMenu(t.dataset.id, 'edit'),
   'note-del': t => openNoteMenu(t.dataset.id, 'del'),
@@ -5310,7 +5465,7 @@ const actions = {
     const me = cfg.me; lockVault();
     ['chat.msgs.', 'chat.read.', 'chat.key.', 'chat.tomb.'].forEach(k => localStorage.removeItem('hb.' + k + me));
     events = []; pending = []; lastSeq = 0; lastSync = null; seenIds = new Set(); saveLog(); LS.set('lastSync', null);
-    cfg = { me: '', url: '', key: '' }; LS.set('cfg', cfg); LS.set('acct.email', ''); PROFILES = {}; CREW = null; LS.set('profiles', {}); LS.set('crew', null); computePeople(); LS.set('people.full', []); LS.set('social', null); SOCIAL = { incoming: [], outgoing: [], invites: [], crewInvites: [], crewMeta: null }; NOTES = []; saveNotes(); LIBQ = []; LS.set('lib.q', []);
+    cfg = { me: '', url: '', key: '' }; LS.set('cfg', cfg); LS.set('acct.email', ''); PROFILES = {}; CREW = null; LS.set('profiles', {}); LS.set('crew', null); computePeople(); LS.set('people.full', []); LS.set('social', null); CONSENTS = {}; LS.set('consents', {}); LS.set('stats.asked', false); SOCIAL = { incoming: [], outgoing: [], invites: [], crewInvites: [], crewMeta: null }; NOTES = []; saveNotes(); LIBQ = []; LS.set('lib.q', []);
     CHAT.msgs = []; CHAT.hold = []; CHAT.loaded = false; CK.state = 'none'; CK.for = null; logoutAsk = false; builder = null; draft = null; saveDraft(); invalidate();
     location.hash = ''; render();
   },
@@ -5398,6 +5553,8 @@ document.addEventListener('change', e => {
   const t = e.target;
   if ((t.id === 'av-file' || t.id === 'av-file2') && t.files[0]) setAvatar(t.files[0]);
   if (t.id === 'v-import' && t.files[0]) readBackupFile(t.files[0]);
+  if (t.id === 'stats-tgl') { setConsent('analytics', t.checked).then(ok => { if (!ok) t.checked = !t.checked; else toast(t.checked ? 'Danke fürs Mithelfen' : 'Statistik ausgeschaltet'); }); }
+  if (t.id === 'fb-meta') FB.meta = t.checked;
   if (t.id === 'share-w') { const v = t.checked; sb.from('profiles').update({ share_weight: v }).eq('id', cfg.me).then(r => { if (r.error) { toast('Speichern hat nicht geklappt.'); t.checked = !v; return; } if (PROFILES[cfg.me]) PROFILES[cfg.me].share_weight = v; LS.set('profiles', PROFILES); toast(v ? 'Deine Buddys sehen dein Körpergewicht' : 'Körpergewicht nur noch für dich'); }); }
   if ((t.id === 'sp-file' || t.id === 'sp-file2') && t.files[0]) openEditor(t.files[0]);
   if (t.dataset.f === 'w') { const go = () => { if (draft && draft.items[+t.dataset.i] && draft.items[+t.dataset.i].ex.type === 'bw' && propagateDown(+t.dataset.i, +t.dataset.j)) { saveDraft(); rerenderCard(+t.dataset.i); } }; if (view === 'bearbeiten' && edraft) withEd(go); else go(); }

@@ -1096,3 +1096,10 @@ body:has(#chat-reply) .view.chat-view { padding-bottom: calc(var(--sab) + var(--
 @media (prefers-reduced-motion: reduce) { .scan-l { animation: none; } }
 .fl-goal { font: 600 12px var(--mono); color: var(--dim); }
 .fi-notes { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 13px; color: var(--dim); text-decoration: none; }
+ul.dots { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+ul.dots li { position: relative; padding-left: 18px; font-size: 15px; }
+ul.dots li::before { content: ""; position: absolute; left: 2px; top: .55em; width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+.row.tgl { display: flex; align-items: center; gap: 12px; }
+.row.tgl > span:first-child { flex: 1; min-width: 0; }
+.row.tgl i { margin-left: auto; }
+.filerow { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 0; }

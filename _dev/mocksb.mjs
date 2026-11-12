@@ -13,6 +13,7 @@ export async function makeDb({ importFiles = [] } = {}) {
   await db.exec(fs.readFileSync(S + '02-anpassung.sql', 'utf8'));
   await db.exec(fs.readFileSync(S + '06-update-3.0.sql', 'utf8'));
   await db.exec(fs.readFileSync(S + '07-anmeldung.sql', 'utf8'));
+  await db.exec(fs.readFileSync(S + '08-datenschutz.sql', 'utf8'));
   for (const f of importFiles) await db.exec(fs.readFileSync(f, 'utf8'));
   return db;
 }
