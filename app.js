@@ -390,7 +390,7 @@ function flameList() {
   const rows = ppl.map(({ p, x }) => {
     const open = FLAME_OPEN.has(p), n = x.week.length;
     const wk = n >= 3 ? `${n} von 3 · Wochenflamme sicher` : `${n} von 3 diese Woche`;
-    return `<div class="fl-row"><button class="fl-head" data-act="fl-toggle" data-p="${esc(p)}" aria-expanded="${open}">${avatar(p, 36)}<span class="fl-who"><b>${p === cfg.me ? 'Du' : esc(p)}</b><span class="small muted">${wk}</span></span><span class="fl-n" aria-label="${x.streak} ${x.streak === 1 ? 'Woche' : 'Wochen'} Streak"><img src="${FLAME.W}" alt=""><b>${x.streak}</b></span></button>
+    return `<div class="fl-row"><button class="fl-head" data-act="fl-toggle" data-p="${esc(p)}" aria-expanded="${open}">${avatar(p, 36)}<span class="fl-who"><b>${p === cfg.me ? 'Du' : nm(p)}</b><span class="small muted">${wk}</span></span><span class="fl-n" aria-label="${x.streak} ${x.streak === 1 ? 'Woche' : 'Wochen'} Streak"><img src="${FLAME.W}" alt=""><b>${x.streak}</b></span></button>
       ${open ? `<div class="fl-days">${DAYS.map(d => `<span class="fl-day"><img src="${FLAME[d]}" alt=""><span class="fl-k" style="color:${TONE_HEX[DAY_TONE[d]]}">${esc(dl(d, p))}</span><b class="mono">${x.counts[d]}</b></span>`).join('')}</div>` : ''}</div>`;
   }).join('');
   return `<div class="sec-title" id="flammen"><h2>Flammen</h2></div><section class="card fl-list">${rows}</section>`;
@@ -443,7 +443,7 @@ const nameColor = p => AV_TEXT[avIdx(p)];
 function avatar(p, size = 32) {
   const img = st().avatars[p];
   const st_ = `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.4)}px`;
-  return img ? `<img class="av" src="${esc(img)}" alt="${esc(p)}" style="${st_}">` : `<span class="av" style="${st_};background:${AV_FILL[avIdx(p)]}" aria-hidden="true">${esc(p[0])}</span>`;
+  return img ? `<img class="av" src="${esc(img)}" alt="${nm(p)}" style="${st_}">` : `<span class="av" style="${st_};background:${AV_FILL[avIdx(p)]}" aria-hidden="true">${esc(p[0])}</span>`;
 }
 
 const ICON = {
@@ -1119,7 +1119,7 @@ function notices() {
     const id = 'edit-' + e.id;
     if (e.data.as !== me || ack[id] || Date.now() - new Date(e.ts) > 14 * 864e5) return;
     const w = s.workouts.find(x => x.id === e.data.ref); if (!w) return;
-    out.push({ id, kind: 'edit', ts: e.ts, wid: w.id, title: `${e.person} hat dein Training angepasst`,
+    out.push({ id, kind: 'edit', ts: e.ts, wid: w.id, title: `${pname(e.person)} hat dein Training angepasst`,
       text: `${dl(w.data.day)} vom ${fmtDate(w.ts)}: ${e.data.chg.length ? e.data.chg.join(' · ') : 'Werte korrigiert'}.` });
   });
   return out;
@@ -1867,7 +1867,7 @@ function reactBadges(id) {
   const em = rs.filter(r => r.emoji), tx = rs.filter(r => r.text).length;
   return `<span class="rbadges">${tx ? `<span class="rb-tx" aria-label="${tx} ${tx === 1 ? 'Antwort' : 'Antworten'}">${ICON.bubble}${tx}</span>` : ''}${em.length ? `<span class="rb-em" aria-label="Reaktionen ${esc(em.map(r => r.emoji).join(' '))}">${em.slice(-4).map(r => `<span>${esc(r.emoji)}</span>`).join('')}</span>` : ''}</span>`;
 }
-const reactBubble = r => `<div class="rbub ${r.emoji ? 'emo' : ''}"><a class="rb-av" href="#profil:${encodeURIComponent(r.p)}" data-act="goprof" data-p="${esc(r.p)}" aria-label="Profil von ${esc(r.p)}">${avatar(r.p, 30)}</a><span>${esc(r.emoji || r.text)}</span></div>`;
+const reactBubble = r => `<div class="rbub ${r.emoji ? 'emo' : ''}"><a class="rb-av" href="#profil:${encodeURIComponent(r.p)}" data-act="goprof" data-p="${esc(r.p)}" aria-label="Profil von ${nm(r.p)}">${avatar(r.p, 30)}</a><span>${esc(r.emoji || r.text)}</span></div>`;
 
 /* ---------- Chat: Ansichten ---------- */
 function viewChats() {
@@ -1875,7 +1875,7 @@ function viewChats() {
   const peers = chatPeers();
   const rows = peers.map(p => {
     const last = chatWith(p).filter(m => !chatHidden().includes(m.id)).pop() || chatWith(p).pop(), n = chatUnread(p);
-    return `<a class="crow" href="#chat:${encodeURIComponent(p)}">${avatar(p, 50)}<span class="crow-m"><span class="crow-h"><b>${esc(p)}</b><span class="mono small muted">${relDay(last.ts) === 'heute' ? fmtTime(last.ts) : fmtDate(last.ts)}</span></span><span class="crow-l"><span class="${n ? 'unread' : 'muted'}">${last.from === cfg.me ? 'Du: ' : ''}${last.spot ? '↩ Spot · ' : ''}${esc(last.text)}</span>${n ? `<span class="cnt">${n}</span>` : ''}</span></span></a>`;
+    return `<a class="crow" href="#chat:${encodeURIComponent(p)}">${avatar(p, 50)}<span class="crow-m"><span class="crow-h"><b>${nm(p)}</b><span class="mono small muted">${relDay(last.ts) === 'heute' ? fmtTime(last.ts) : fmtDate(last.ts)}</span></span><span class="crow-l"><span class="${n ? 'unread' : 'muted'}">${last.from === cfg.me ? 'Du: ' : ''}${last.spot ? '↩ Spot · ' : ''}${esc(last.text)}</span>${n ? `<span class="cnt">${n}</span>` : ''}</span></span></a>`;
   }).join('');
   return `<h1 class="display" style="font-size:30px">Chats</h1>
     ${chatOk() ? '' : `<section class="card notice"><b>Google-Skript aktualisieren</b><span class="small">Der Chat braucht das Skript Version ${CHAT_MIN_SCRIPT}. Bis dahin werden Nachrichten nur auf diesem Handy gespeichert.</span></section>`}
@@ -1888,7 +1888,7 @@ function chatNewSheet(q = '') {
   sheet(`<h2>Neuer Chat</h2>
     <label class="cn-search">${ICON.search.replace('<svg ', '<svg width="18" height="18" ')}<input id="cn-q" type="search" placeholder="Buddy-ID suchen" aria-label="Buddy-ID suchen" value="${esc(q)}" autocomplete="off"></label>
     <span class="eyebrow">Gym Buddys</span>
-    <div class="cn-list">${list.map(p => `<button class="cn-row glass" data-act="chat-open" data-p="${esc(p)}">${avatar(p, 46)}<span><b>${esc(p)}</b><span class="small muted">${chatWith(p).length ? 'Chat fortsetzen' : 'Neuen Chat beginnen'}</span></span><span class="cn-go">Schreiben</span></button>`).join('') || '<div class="empty">Niemand gefunden.</div>'}</div>
+    <div class="cn-list">${list.map(p => `<button class="cn-row glass" data-act="chat-open" data-p="${esc(p)}">${avatar(p, 46)}<span><b>${nm(p)}</b><span class="small muted">${chatWith(p).length ? 'Chat fortsetzen' : 'Neuen Chat beginnen'}</span></span><span class="cn-go">Schreiben</span></button>`).join('') || '<div class="empty">Niemand gefunden.</div>'}</div>
     <div class="cn-add"><span class="cn-plus">${ICON.plus.replace('width="16" height="16"', 'width="20" height="20"')}</span><span>Gym Buddy hinzufügen<br><span class="small">Kommt mit dem Freunde-System</span></span></div>
     <button class="btn ghost" data-act="mclose">Abbrechen</button>`);
 }
@@ -1923,7 +1923,7 @@ function chatMsgsHTML(p) {
     if (dk !== lastDay) { lastDay = dk; out += `<div class="cday">${esc(relDay(ts) === 'heute' ? 'Heute' : relDay(ts) === 'gestern' ? 'Gestern' : fmtDate(ts))}</div>`; }
     if (x) {
       const seen = spotSeenBy(x.id, me), left = Math.max(1, Math.ceil((SPOT_LIFE - (Date.now() - new Date(x.created))) / 864e5));
-      out += `<div class="cmsg them"><button type="button" class="cs-spot ${seen ? '' : 'new'}" data-act="spot-replay" data-id="${esc(x.id)}" aria-label="Spot von ${esc(p)} ansehen"><img src="${spotUrl(x)}" alt="">${seen ? '' : '<span class="cs-new">Neu · antippen</span>'}</button><span class="ctime">Spot · ${fmtTime(ts)}${seen ? ` · noch ${left} ${left === 1 ? 'Tag' : 'Tage'}` : ''}</span></div>`;
+      out += `<div class="cmsg them"><button type="button" class="cs-spot ${seen ? '' : 'new'}" data-act="spot-replay" data-id="${esc(x.id)}" aria-label="Spot von ${nm(p)} ansehen"><img src="${spotUrl(x)}" alt="">${seen ? '' : '<span class="cs-new">Neu · antippen</span>'}</button><span class="ctime">Spot · ${fmtTime(ts)}${seen ? ` · noch ${left} ${left === 1 ? 'Tag' : 'Tage'}` : ''}</span></div>`;
       return;
     }
     if (g) {
@@ -1939,16 +1939,16 @@ function chatMsgsHTML(p) {
     const name = `<span class="cname" style="color:${mine ? 'var(--fg)' : nameColor(m.from)}">${mine ? 'Du' : esc(m.from)}</span>`;
     out += `<div class="cmsg ${mine ? 'me' : 'them'}" id="cm-${esc(m.id)}" data-mid="${esc(m.id)}">${name}${body}${chatReacts(m.id)}<span class="ctime">${fmtTime(ts)}${m.pend ? ' · wird gesendet' : ''}</span></div>`;
   });
-  return out || `<div class="empty" style="margin:auto 0 0">Schreib ${esc(p)} die erste Nachricht.</div>`;
+  return out || `<div class="empty" style="margin:auto 0 0">Schreib ${nm(p)} die erste Nachricht.</div>`;
 }
 function viewChat(p) {
   if (!CHAT.loaded) loadChat();
   CHAT.open = p;
-  return `<div class="chat-head"><div class="chat-head-in">${backBtn('chats')}<a class="chat-prof" href="#profil:${encodeURIComponent(p)}" data-act="goprof" data-p="${esc(p)}" aria-label="Profil von ${esc(p)}">${avatar(p, 36)}</a><span class="chat-who"><b>${esc(p)}</b><span class="lockline">${ICON.lock.replace('width="22" height="22"', 'width="12" height="12"')}verschlüsselt · ${CHAT_DAYS} Tage</span></span></div></div>
+  return `<div class="chat-head"><div class="chat-head-in">${backBtn('chats')}<a class="chat-prof" href="#profil:${encodeURIComponent(p)}" data-act="goprof" data-p="${esc(p)}" aria-label="Profil von ${nm(p)}">${avatar(p, 36)}</a><span class="chat-who"><b>${nm(p)}</b><span class="lockline">${ICON.lock.replace('width="22" height="22"', 'width="12" height="12"')}verschlüsselt · ${CHAT_DAYS} Tage</span></span></div></div>
     <main class="view chat-view"><div class="chat-msgs" id="chat-msgs">${chatMsgsHTML(p)}</div></main>
     <form class="chat-bar" id="chatform" novalidate>${chatReplyBar(p)}
       <a class="iconbtn" href="#kamera" aria-label="Spot aufnehmen">${ICON.cam.replace('width="22" height="22"', 'width="20" height="20"')}</a>
-      <label class="chat-in glass"><input id="chat-in" placeholder="Nachricht" aria-label="Nachricht an ${esc(p)}" autocomplete="off" enterkeyhint="send" maxlength="${CHAT_LEN}" value="${esc(CHAT.draft && CHAT.draft[p] || '')}"></label>
+      <label class="chat-in glass"><input id="chat-in" placeholder="Nachricht" aria-label="Nachricht an ${nm(p)}" autocomplete="off" enterkeyhint="send" maxlength="${CHAT_LEN}" value="${esc(CHAT.draft && CHAT.draft[p] || '')}"></label>
       <button class="chat-send" type="submit" aria-label="Senden">${ICON.send}</button>
     </form>`;
 }
@@ -2208,7 +2208,7 @@ function viewEditor() {
     </div>
     <input type="range" class="sp-size" id="sp-size" min="0.03" max="0.11" step="0.002" value="${e.textSize}" aria-label="Textgröße" ${e.text || e.editing ? '' : 'hidden'}>
     <div class="sp-dots"><i class="${e.filter === 0 ? 'on' : ''}"></i><i class="${e.filter === 1 ? 'on' : ''}"></i></div>
-    <div class="sp-send"><button class="btn primary" data-act="sp-send" id="sp-send-b" ${scriptVersion != null && scriptVersion < 4 ? 'disabled' : ''}>Senden an ${esc(partner())} ${ICON.right}</button></div>
+    <div class="sp-send"><button class="btn primary" data-act="sp-send" id="sp-send-b" ${scriptVersion != null && scriptVersion < 4 ? 'disabled' : ''}>Senden an ${nm(partner())} ${ICON.right}</button></div>
   </div>`;
 }
 function layoutEditor() {
@@ -2326,7 +2326,7 @@ async function sendSpot() {
     const rec = { id: uid(), person: cfg.me, created: e.at.toISOString(), meta: { kind: e.filter === 1 ? e.ctx.kind : 'none', day: e.ctx.day || null }, img: await blob.arrayBuffer(), shared: false, up: false };
     await SDB.put('gallery', rec);
     closeEditor(); await loadSpots();
-    toast(cfg.url ? `Spot an ${partner()} gesendet` : 'Spot gespeichert. Ohne Sync sieht ihn nur du.');
+    toast(cfg.url ? `Spot an ${pname(partner())} gesendet` : 'Spot gespeichert. Ohne Sync sieht ihn nur du.');
     location.hash = '#kamera';
     spotSync().then(() => gallerySync());
   } catch (err) { if (b) { b.disabled = false; b.textContent = 'Senden'; } toast('Spot konnte nicht erstellt werden.'); }
@@ -2342,13 +2342,13 @@ function openViewer() {
 function viewViewer() {
   const v = SPOT.view, s = v.list[v.i];
   return `<div class="sv" id="sv">
-    <img class="sv-img" src="${spotUrl(s)}" alt="Spot von ${esc(s.person)}">
+    <img class="sv-img" src="${spotUrl(s)}" alt="Spot von ${nm(s.person)}">
     <div class="sv-bars">${v.list.map((x, i) => `<i><b style="width:${i < v.i ? 100 : 0}%" ${i === v.i ? 'id="sv-cur"' : ''}></b></i>`).join('')}</div>
-    <div class="sv-head"><a href="#profil:${esc(s.person)}" data-act="sv-prof" aria-label="Profil von ${esc(s.person)}">${avatar(s.person, 34)}</a><span style="flex:1;display:flex;flex-direction:column;line-height:1.2"><a href="#profil:${esc(s.person)}" data-act="sv-prof" style="font-weight:700;color:#fff;text-decoration:none;align-self:flex-start">${esc(s.person)}</a><span class="mono small" style="opacity:.8">${relDay(s.created)}, ${fmtTime(s.created)}</span></span><button class="tool" data-act="sv-close" aria-label="Schließen">${ICON.x}</button></div>
+    <div class="sv-head"><a href="#profil:${esc(s.person)}" data-act="sv-prof" aria-label="Profil von ${nm(s.person)}">${avatar(s.person, 34)}</a><span style="flex:1;display:flex;flex-direction:column;line-height:1.2"><a href="#profil:${esc(s.person)}" data-act="sv-prof" style="font-weight:700;color:#fff;text-decoration:none;align-self:flex-start">${nm(s.person)}</a><span class="mono small" style="opacity:.8">${relDay(s.created)}, ${fmtTime(s.created)}</span></span><button class="tool" data-act="sv-close" aria-label="Schließen">${ICON.x}</button></div>
     <div class="sv-bot" id="sv-bot">
       <div class="sv-emo glass">${SPOT_EMOJI.map(m => `<button type="button" data-act="sv-react" data-v="${m}" aria-label="Reagieren mit ${m}" ${st().spotMyReact[s.id] === m ? 'class="on"' : ''}>${m}</button>`).join('')}<i aria-hidden="true"></i><button type="button" class="sv-more ${st().spotMyReact[s.id] && !SPOT_EMOJI.includes(st().spotMyReact[s.id]) ? 'on' : ''}" data-act="sv-compose" data-v="emoji" aria-label="Mit einem anderen Emoji reagieren">${st().spotMyReact[s.id] && !SPOT_EMOJI.includes(st().spotMyReact[s.id]) ? `<span class="emo1">${esc(st().spotMyReact[s.id])}</span>` : ICON.emoplus}</button></div>
       <span style="flex:1"></span>
-      <button type="button" class="sv-reply glass" data-act="sv-compose" data-v="text" aria-label="Antwort an ${esc(s.person)} schreiben">${ICON.chat.replace('width="20" height="20"', 'width="22" height="22"')}</button>
+      <button type="button" class="sv-reply glass" data-act="sv-compose" data-v="text" aria-label="Antwort an ${nm(s.person)} schreiben">${ICON.chat.replace('width="20" height="20"', 'width="22" height="22"')}</button>
     </div>
     <form class="sv-compose" id="sv-compose" hidden novalidate>
       <span class="small" id="sv-c-hint"></span>
@@ -2458,7 +2458,7 @@ function viewSpotImage(id) {
     <div class="sv-head" style="top:calc(var(--sat) + 14px)"><a class="tool" href="${SPOT.back || '#profil'}" aria-label="Zurück">${ICON.left}</a><span style="flex:1;text-align:center"><span class="mono small sv-chip">${fmtDate(g.created)} · ${fmtTime(g.created)}</span></span><span style="width:44px"></span></div>
     ${SPOT.galDel === id ? '' : `<div class="sv-reacts" aria-label="Reaktionen">${spotReactions(id).map(reactBubble).join('')}</div>`}
     <div class="sv-act">${SPOT.galDel === id
-      ? `<div class="confirm glass" style="width:100%"><b>Spot löschen?</b><span class="small muted">Er verschwindet aus deiner Galerie${Date.now() - new Date(g.created) < SPOT_MAX ? ` und, falls noch sichtbar, bei ${esc(partner())}` : ''}.</span><div class="btnrow"><button class="btn small danger" data-act="sg-del-yes" data-id="${esc(id)}">Löschen</button><button class="btn small ghost" data-act="sg-del-no">Abbrechen</button></div></div>`
+      ? `<div class="confirm glass" style="width:100%"><b>Spot löschen?</b><span class="small muted">Er verschwindet aus deiner Galerie${Date.now() - new Date(g.created) < SPOT_MAX ? ` und, falls noch sichtbar, bei ${nm(partner())}` : ''}.</span><div class="btnrow"><button class="btn small danger" data-act="sg-del-yes" data-id="${esc(id)}">Löschen</button><button class="btn small ghost" data-act="sg-del-no">Abbrechen</button></div></div>`
       : `<button class="btn primary" data-act="sg-save" data-id="${esc(id)}" style="flex:1">${ICON.dl} In Fotos sichern</button><button class="btn danger" data-act="sg-del" data-id="${esc(id)}" style="width:50px;padding:0" aria-label="Löschen">${ICON.x}</button>`}</div>
   </div>`;
 }
@@ -2764,7 +2764,7 @@ function feedItem(e) {
   const d = e.data || {}, p = e.person, me = p === cfg.me;
   const wait = isPending(e.id) ? '<span class="chip wait">noch nicht synchronisiert</span>' : '';
   let t = '', m = fmtDate(e.ts) + ' · ' + fmtTime(e.ts), extra = '', href = '';
-  const who = `<b>${me ? 'Du' : esc(p)}</b>`;
+  const who = `<b>${me ? 'Du' : nm(p)}</b>`;
   if (e.type === 'workout') return feedWorkout(e);
   if (e.type === 'workout_edit') {
     const w = st().workouts.find(x => x.id === d.ref); if (!w) return '';
@@ -2795,7 +2795,7 @@ function feedWorkout(e) {
   const wait = isPending(e.id) ? '<span class="chip wait">noch nicht synchronisiert</span>' : '';
   const recBtn = prs.length ? `<button class="fi-rec" data-act="feed-rec" data-id="${esc(e.id)}" aria-expanded="${open}" style="color:${col}">${ICON.trophy}${prs.length === 1 ? 'Rekord' : prs.length + ' Rekorde'}<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>` : '';
   return `<div class="fi fi-w"><span class="avlink" data-act="goprof" data-p="${esc(p)}">${avatar(p, 34)}</span><div>
-      <a class="fi-link" href="#training-log:${encodeURIComponent(e.id)}"><div class="t">${dayChip(d.day, p)}<span><b>${me ? 'Du' : esc(p)}</b> ${me ? 'hast' : 'hat'} ${ab ? 'abgebrochen' : 'abgeschlossen'}</span></div>
+      <a class="fi-link" href="#training-log:${encodeURIComponent(e.id)}"><div class="t">${dayChip(d.day, p)}<span><b>${me ? 'Du' : nm(p)}</b> ${me ? 'hast' : 'hat'} ${ab ? 'abgebrochen' : 'abgeschlossen'}</span></div>
       <div class="m">${fmtDate(e.ts)} · ${fmtTime(e.ts)} · ${duration(d.start, d.end)}</div></a>
       <div class="fi-l2"><span class="muted">${ab ? `${ab.done} von ${ab.plan} Sätzen` : `${n} ${n === 1 ? 'Satz' : 'Sätze'}`}</span>${d.deload ? '<span class="chip dl">Deload</span>' : ''}${recBtn}${wait}</div>
       ${open ? `<div class="fi-recs">${prs.map(i => `<div><span>${esc(i.name.replace(/\s*\(.*\)$/, ''))}</span><span class="mono" style="color:${col}">${esc(i.label)}</span></div>`).join('')}</div>` : ''}
@@ -2921,7 +2921,7 @@ function exCard(it, i) {
       ${tags ? `<div class="tags">${tags}</div>` : ''}</div>
       <span class="tgt">${it.sets.length}×${x.min}–${x.max}${unit}</span></div>
     ${hint ? `<div class="exhint">${esc(hint)}${it.kind === 'plateau' && !draft.deload ? `<div class="btnrow"><button class="btn small" data-act="plateau-down" data-i="${i}">Heute −10 %</button></div><span class="small muted">Oder im Plan die Spanne anheben, z. B. ${x.min}–${x.max} → ${x.min + 2}–${x.max + 2}.</span>` : ''}</div>` : ''}
-    ${sw ? `<div class="swaphint"><span><b>${esc(sw.person)}</b> hat heute ${esc(sw.data.fromName)} durch <b>${esc(sw.data.to.name)}</b> getauscht.</span><div class="btnrow"><button class="btn small primary" data-act="swap-follow" data-i="${i}" data-id="${esc(sw.id)}">Auch tauschen</button><button class="btn small ghost" data-act="swap-ignore" data-id="${esc(sw.id)}">Nein</button></div></div>` : ''}
+    ${sw ? `<div class="swaphint"><span><b>${nm(sw.person)}</b> hat heute ${esc(sw.data.fromName)} durch <b>${esc(sw.data.to.name)}</b> getauscht.</span><div class="btnrow"><button class="btn small primary" data-act="swap-follow" data-i="${i}" data-id="${esc(sw.id)}">Auch tauschen</button><button class="btn small ghost" data-act="swap-ignore" data-id="${esc(sw.id)}">Nein</button></div></div>` : ''}
     ${mine && mine.note && !draft.edit ? `<div class="small muted">Deine Notiz vom letzten Mal: ${esc(mine.note)}</div>` : ''}
     <div class="howrow"><details class="how"><summary>Ausführung & Video</summary><div class="body">
       ${(() => { const Lx = libGet(x.id), cue = Lx ? Lx.cue : x.cue; return cue ? `<p style="white-space:pre-line">${esc(cue)}</p>` : '<p class="small warn-t">Noch keine Ausführungshinweise hinterlegt. Ergänzen unter Plan → Bibliothek.</p>'; })()}
@@ -3130,7 +3130,7 @@ function swapForm(i, keep) {
     ${pickBlock('Ersatzübung suchen')}
     <div class="grid3"><label>Sätze<input class="inp" id="sw-sets" name="sets" inputmode="numeric" value="${v('sets', x.sets)}"></label><label><span id="sw-unit">${isTimed(x.type) ? 'Sek. von' : 'Wdh. von'}</span><input class="inp" id="sw-min" name="min" inputmode="numeric" value="${v('min', x.min)}"></label><label>bis<input class="inp" id="sw-max" name="max" inputmode="numeric" value="${v('max', x.max)}"></label></div>
     <fieldset class="radios"><legend>Für wen?</legend>
-      <label class="chk"><input type="radio" name="who" value="both" ${pkVal('who', 'both') === 'both' ? 'checked' : ''}><span>Für uns beide heute<small>${esc(partner())} sieht den Tausch in seinem heutigen Training für ${esc(dl(draft.day))}.</small></span></label>
+      <label class="chk"><input type="radio" name="who" value="both" ${pkVal('who', 'both') === 'both' ? 'checked' : ''}><span>Für uns beide heute<small>${nm(partner())} sieht den Tausch in seinem heutigen Training für ${esc(dl(draft.day))}.</small></span></label>
       <label class="chk"><input type="radio" name="who" value="me" ${pkVal('who', 'both') === 'me' ? 'checked' : ''}><span>Nur für mich</span></label>
     </fieldset>
     <div class="err" id="sw-err" hidden></div>
@@ -3166,7 +3166,7 @@ function submitSwap(form) {
   PK = null; $('#modal').innerHTML = '';
   doSwap(i, x, from, cfg.me, shared);
   render();
-  toast(shared ? `Getauscht. ${partner()} sieht den Tausch.` : 'Getauscht');
+  toast(shared ? `Getauscht. ${pname(partner())} sieht den Tausch.` : 'Getauscht');
 }
 // Bei der alten Übung stehen schon Werte: mitnehmen oder beide behalten?
 let SWAPQ = null;
@@ -3190,7 +3190,7 @@ function swapDo(mode) {
   SWAPQ = null; PK = null; $('#modal').innerHTML = '';
   doSwap(q.i, q.x, q.from, cfg.me, q.shared, mode);
   render();
-  toast((mode === 'carry' ? 'Getauscht, Werte übernommen.' : 'Getauscht, beide bleiben.') + (q.shared ? ` ${partner()} sieht den Tausch.` : ''));
+  toast((mode === 'carry' ? 'Getauscht, Werte übernommen.' : 'Getauscht, beide bleiben.') + (q.shared ? ` ${pname(partner())} sieht den Tausch.` : ''));
 }
 
 /* ---------- Übungsauswahl: überall dieselbe (Plan, Heute tauschen, Training bearbeiten, Zusammenführen) ---------- */
@@ -3268,7 +3268,7 @@ function libForm(L, opts = {}) {
   $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet full form tone-${tk}" id="libform" novalidate>
     ${sheetHead('Bibliothek', isNew ? 'Neue Übung' : 'Übung bearbeiten')}
     <h2>${isNew ? 'Neue Übung' : esc(x.name)}</h2>
-    <p class="help" style="margin:0">${isNew ? 'Die Übung kommt in die gemeinsame Bibliothek und steht danach überall zur Auswahl.' : `Gilt für dich und ${esc(partner())}, in allen Plänen und im Verlauf.`}${!isNew ? ` <span class="mono small">${x.ts ? `Zuletzt geändert ${fmtDate(x.ts)}${x.by ? ' von ' + esc(x.by === cfg.me ? 'dir' : x.by) : ''}` : 'Startbestand'}</span>` : ''}</p>
+    <p class="help" style="margin:0">${isNew ? 'Die Übung kommt in die gemeinsame Bibliothek und steht danach überall zur Auswahl.' : `Gilt für dich und ${nm(partner())}, in allen Plänen und im Verlauf.`}${!isNew ? ` <span class="mono small">${x.ts ? `Zuletzt geändert ${fmtDate(x.ts)}${x.by ? ' von ' + esc(x.by === cfg.me ? 'dir' : x.by) : ''}` : 'Startbestand'}</span>` : ''}</p>
     <label>Name<input class="inp" id="lf-name" name="name" value="${esc(x.name)}" maxlength="80" required autocomplete="off"></label>
     <div id="lf-sim"></div>
     <fieldset class="radios"><legend>Art</legend><div class="typeseg" role="group" aria-label="Art der Übung">${Object.entries(TYPE_LABEL).map(([k, v]) => `<label class="tsb"><input type="radio" name="type" value="${k}" ${x.type === k ? 'checked' : ''} ${lockType && x.type !== k ? 'disabled' : ''}><span>${v}</span></label>`).join('')}</div>
@@ -3414,7 +3414,7 @@ function viewVerlauf() {
   };
   const days = DAYS.map(d => `<div class="sec-title"><h2 style="display:flex;gap:8px;align-items:center">${dayChip(d)} ${esc(s.plans[me][d].title)}</h2></div><section class="card" style="padding:4px 16px">${s.plans[me][d].exercises.map(row).join('') || '<div class="empty">Keine Übungen</div>'}</section>`).join('');
   const archived = Object.keys(s.exInfo).filter(id => !inPlan.has(id) && (s.hist[me][id] || s.hist[other][id]));
-  const legend = `<div class="legend"><span>oben: du</span><span>unten: ${esc(other)}</span><span>· letzte Einheit</span></div>`;
+  const legend = `<div class="legend"><span>oben: du</span><span>unten: ${nm(other)}</span><span>· letzte Einheit</span></div>`;
   return seg + legend + days + (archived.length ? `<div class="sec-title"><h2>Archiv</h2></div><div class="small muted" style="margin:0 2px">Ausgetauschte, entfernte oder spontan getauschte Übungen. Ihr Verlauf bleibt erhalten.</div><section class="card" style="padding:4px 16px">${archived.map(id => row({ id, ...s.exInfo[id] })).join('')}</section>` : '');
 }
 function viewCalendar() {
@@ -3427,7 +3427,7 @@ function viewCalendar() {
   for (let d = 1; d <= daysIn; d++) {
     const k = `${cal.y}-${pad2(cal.m + 1)}-${pad2(d)}`;
     const items = (map[k] || []).sort((a, b) => PEOPLE.indexOf(a.p) - PEOPLE.indexOf(b.p));
-    cells += `<button class="cd ${k === today ? 'today' : ''} ${k === cal.sel ? 'sel' : ''}" data-act="calday" data-v="${k}" aria-label="${d}. ${items.length ? items.length + ' Einträge' : 'kein Eintrag'}"><span class="dn">${d}</span><span class="marks">${items.map(o => `<i class="cm t-${DAY_TONE[o.day]} ${o.kind}" title="${esc(o.p)} · ${esc(dl(o.day, o.p))}">${esc(o.p[0])}</i>`).join('')}</span></button>`;
+    cells += `<button class="cd ${k === today ? 'today' : ''} ${k === cal.sel ? 'sel' : ''}" data-act="calday" data-v="${k}" aria-label="${d}. ${items.length ? items.length + ' Einträge' : 'kein Eintrag'}"><span class="dn">${d}</span><span class="marks">${items.map(o => `<i class="cm t-${DAY_TONE[o.day]} ${o.kind}" title="${nm(o.p)} · ${esc(dl(o.day, o.p))}">${esc(o.p[0])}</i>`).join('')}</span></button>`;
   }
   const sel = (map[cal.sel] || []).map(o => o.e).sort((a, b) => b.ts.localeCompare(a.ts));
   const title = first.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
@@ -3503,7 +3503,7 @@ function progressCard() {
   const cell = (v, w) => `<span class="pv ${v != null && (w == null || v >= w) ? 'lead' : ''}">${fmtPct(v)}</span>`;
   const line = (label, a, b, bold) => { const A = a.length ? avg(a) : null, B = b.length ? avg(b) : null; return `<div class="prow2 ${bold ? 'tot' : ''}">${label}${cell(A, B)}${cell(B, A)}</div>`; };
   return `<section class="card progcard"><div style="display:flex;flex-direction:column;gap:2px"><b>Fortschritt · 4 Wochen</b><span class="small muted">Durchschnitt eurer gemeinsamen Übungen</span></div>
-    <div class="pgrid"><div class="prow2 hd"><span></span><span class="who">${avatar(me, 20)}Du</span><span class="who">${avatar(other, 20)}${esc(other)}</span></div>
+    <div class="pgrid"><div class="prow2 hd"><span></span><span class="who">${avatar(me, 20)}Du</span><span class="who">${avatar(other, 20)}${nm(other)}</span></div>
       ${rows.map(r => line(dayChip(r.d, me), r.a, r.b)).join('')}${line('<b>Gesamt</b>', all('a'), all('b'), true)}</div>
     <span class="small muted">Steigerung gegenüber dem Anfang des Zeitraums. So vergleicht ihr fair, egal wie schwer oder stark jemand ist.</span></section>`;
 }
@@ -3523,8 +3523,8 @@ function viewExercise(id) {
   const series = [me, other].map(p => ({ p, color: p === me ? '#fff' : 'rgba(255,255,255,.75)', dash: p !== me, points: fort ? (prog[p] ? prog[p].pts : []) : sessionsOf(p).filter(h => h.sets.length).map(h => ({ t: +new Date(h.ts), v: absVal(h), lab: type === 'bw' ? zusLabel(h) : '' })) }));
   const best = p => { const h = sessionsOf(p).filter(x => x.sets.length); if (!h.length) return '–'; const b = h.reduce((a, x) => score(x.type, x.sets) > score(a.type, a.sets) ? x : a); return metricLabel(b.type, b.sets); };
   const card = p => fort
-    ? `<span class="val">${prog[p] && prog[p].pct != null ? fmtPct(prog[p].pct) : '–'}</span><span class="eyebrow">${prog[p] && prog[p].pct != null ? PERIODS[exPeriod][0] : prog[p] ? `zu wenig Daten (${prog[p].n} von 3)` : 'noch nicht trainiert'}</span><span class="small muted">Bestwert ${esc(best(p))}</span>`
-    : `<span class="val">${esc(best(p))}</span><span class="eyebrow">Bestwert</span>`;
+    ? `<span class="val">${prog[p] && prog[p].pct != null ? fmtPct(prog[p].pct) : '–'}</span><span class="eyebrow">${prog[p] && prog[p].pct != null ? PERIODS[exPeriod][0] : prog[p] ? `zu wenig Daten (${prog[p].n} von 3)` : 'noch nicht trainiert'}</span><span class="small muted">Bestwert ${nm(best(p))}</span>`
+    : `<span class="val">${nm(best(p))}</span><span class="eyebrow">Bestwert</span>`;
   const basis = type === 'kg' || type === 'bw' ? 'geschätzte Maximalkraft' : type === 'tr' ? 'Wdh. pro Minute' : 'Sekunden';
   const sessLine = h => { const ft = feelText(h); return `<div class="v">${fmtSets(h.type, h.sets)}</div>${ft ? `<div class="small muted">${esc(ft)}</div>` : ''}`; };
   const sessions = [...(s.hist[me][id] || []), ...(s.hist[other][id] || [])].sort((a, b) => b.ts.localeCompare(a.ts));
@@ -3539,20 +3539,20 @@ function viewExercise(id) {
     ${fort ? `<div class="chips" role="group" aria-label="Zeitraum">${Object.entries(PERIODS).map(([k, [l]]) => `<button class="pchip ${k === exPeriod ? 'tonep' : ''}" data-act="exper" data-v="${k}" aria-pressed="${k === exPeriod}">${l}</button>`).join('')}</div>` : ''}
     <div class="stat2">
       <div class="card"><span class="who">${avatar(me, 24)}Du</span>${card(me)}</div>
-      <div class="card"><span class="who">${avatar(other, 24)}${esc(other)}</span>${card(other)}</div>
+      <div class="card"><span class="who">${avatar(other, 24)}${nm(other)}</span>${card(other)}</div>
     </div>
-    <section class="card chart"><div class="rowbetween"><b>${fort ? 'Fortschritt in %' : absLabel}</b><div class="legend"><span class="ln">${LEG(false)}Du</span><span class="ln">${LEG(true)}${esc(other)}</span></div></div>
+    <section class="card chart"><div class="rowbetween"><b>${fort ? 'Fortschritt in %' : absLabel}</b><div class="legend"><span class="ln">${LEG(false)}Du</span><span class="ln">${LEG(true)}${nm(other)}</span></div></div>
       ${chartSvg(series, fort ? 'Fortschritt' : absLabel)}<span class="small muted">${fort ? `Gegenüber den ersten zwei Einheiten im Zeitraum · ${basis} · ohne Deload` : `ohne Deload-Einheiten${type === 'bw' ? ' · Zahl über dem Punkt: Zusatz (+) oder Hilfe (−) in kg' : ''}`}</span></section>
     ${L || def ? `<section class="card musc"><div class="rowbetween"><b>Muskeln</b>${L ? `<button class="lnk" data-act="lib-open" data-id="${esc(L.id)}">Bearbeiten</button>` : ''}</div>${musBlock(def || { id, name, muscles: { p: L.p, s: L.s } }, DAY_TONE[day] || 'y')}</section>` : ''}
     <div class="sec-title"><h2>Alle Einheiten</h2></div>
-    <section class="card">${sessions.length ? sessions.map(h => `<div class="sess"><div class="top"><span class="who" style="color:var(--fg)">${h.person === me ? 'Du' : esc(h.person)}</span><span class="mono">${fmtDate(h.ts)}${h.deload ? ' · Deload' : ''}</span></div>
+    <section class="card">${sessions.length ? sessions.map(h => `<div class="sess"><div class="top"><span class="who" style="color:var(--fg)">${h.person === me ? 'Du' : nm(h.person)}</span><span class="mono">${fmtDate(h.ts)}${h.deload ? ' · Deload' : ''}</span></div>
       ${sessLine(h)}${h.note ? `<p class="quote muted">${esc(h.note)}</p>` : ''}</div>`).join('') : '<div class="empty">Noch nicht trainiert.</div>'}</section>`;
 }
 function viewWorkout(id) {
   const e = st().workouts.find(w => w.id === id);
   if (!e) return '<div class="empty">Training nicht gefunden.</div>';
   const d = e.data, imp = improvements(e);
-  return `<div style="display:flex;flex-direction:column;gap:8px"><span class="who">${avatar(e.person, 28)}${e.person === cfg.me ? 'Du' : esc(e.person)}</span>
+  return `<div style="display:flex;flex-direction:column;gap:8px"><span class="who">${avatar(e.person, 28)}${e.person === cfg.me ? 'Du' : nm(e.person)}</span>
       <h1 class="kurz" style="font-size:64px;color:${TONE_HEX[DAY_TONE[d.day]]}">${esc(dl(d.day, e.person))}</h1><div style="font-size:18px;font-weight:600">${esc(d.title)}</div>
       <div class="mono muted small">${fmtDate(e.ts)}, ${fmtTime(d.start)}–${fmtTime(d.end)} · ${duration(d.start, d.end)}${d.deload ? ' · Deload' : ''}</div>
       ${e.abort ? `<span class="chip" style="align-self:flex-start">Abgebrochen · ${e.abort.done} von ${e.abort.plan} Sätzen</span>` : ''}
@@ -3563,7 +3563,7 @@ function viewWorkout(id) {
     <section class="card">${d.entries.map(en => `<a class="sess" href="#uebung:${encodeURIComponent(en.exId)}"><div class="top"><b style="color:var(--fg)">${esc(en.name)}${en.from ? ` <span class="small muted" style="font-weight:400">statt ${esc(en.from.name)}</span>` : ''}</b><span class="mono">${en.sets.length} ${en.sets.length === 1 ? 'Satz' : 'Sätze'}</span></div>
       ${(() => { const ft = feelText(en); return `<div class="v">${fmtSets(en.type, en.sets)}</div>${ft ? `<div class="small muted">${esc(ft)}</div>` : ''}`; })()}${en.note ? `<p class="quote muted">${esc(en.note)}</p>` : ''}</a>`).join('')}</section>
     ${e.person === cfg.me ? (wDelAsk === e.id
-      ? `<section class="card"><b>Training endgültig löschen?</b><span class="small muted">Es verschwindet bei dir und bei ${esc(partner())} aus Verlauf, Statistik und Rotation.</span><div class="btnrow"><button class="btn small danger" data-act="w-del-yes" data-id="${esc(e.id)}">Löschen</button><button class="btn small ghost" data-act="w-del-no">Abbrechen</button></div></section>`
+      ? `<section class="card"><b>Training endgültig löschen?</b><span class="small muted">Es verschwindet bei dir und bei ${nm(partner())} aus Verlauf, Statistik und Rotation.</span><div class="btnrow"><button class="btn small danger" data-act="w-del-yes" data-id="${esc(e.id)}">Löschen</button><button class="btn small ghost" data-act="w-del-no">Abbrechen</button></div></section>`
       : `<div class="btnrow"><button class="btn glass" data-act="w-edit" data-id="${esc(e.id)}">Bearbeiten</button><button class="btn ghost danger-t" data-act="w-del" data-id="${esc(e.id)}">Löschen</button></div>`)
       : LS.get('dev', false) ? `<div class="btnrow"><button class="btn glass" data-act="w-edit" data-id="${esc(e.id)}">Bearbeiten (Entwickleroptionen)</button></div>` : ''}`;
 }
@@ -3603,10 +3603,10 @@ function viewEdit() {
   const { done, tot } = workCount(), other = draft.person !== cfg.me;
   return `<header class="trainhead" id="head">
       <div class="row"><a class="iconbtn" href="#training-log:${encodeURIComponent(draft.ref)}" aria-label="Zurück ohne Speichern">${ICON.left}</a><span class="count" id="tp-count">${trainCountText()}</span><span style="width:44px"></span></div>
-      <div class="ttl"><div><h1 class="kurz">${esc(dl(draft.day, draft.person))}</h1><div class="sub">Bearbeiten · ${other ? esc(draft.person) + ' · ' : ''}${fmtDate(draft.start)}</div></div>${draft.deload ? '<span class="pill dl">Deload</span>' : ''}</div>
+      <div class="ttl"><div><h1 class="kurz">${esc(dl(draft.day, draft.person))}</h1><div class="sub">Bearbeiten · ${other ? nm(draft.person) + ' · ' : ''}${fmtDate(draft.start)}</div></div>${draft.deload ? '<span class="pill dl">Deload</span>' : ''}</div>
       <div class="bar"><i id="tp-bar" style="width:${tot ? done / tot * 100 : 0}%"></i></div>
     </header>
-    <main class="view notab">${other ? `<div class="small muted" style="padding:0 4px">${esc(draft.person)} sieht die Änderung in den Neuigkeiten und bekommt einen Hinweis in der Glocke.</div>` : ''}
+    <main class="view notab">${other ? `<div class="small muted" style="padding:0 4px">${nm(draft.person)} sieht die Änderung in den Neuigkeiten und bekommt einen Hinweis in der Glocke.</div>` : ''}
       ${draft.items.map((it, i) => exCard(it, i)).join('')}
       <button class="btn glass" data-act="ed-addex">${ICON.plus} Übung hinzufügen</button></main>
     <div class="trainbar"><button class="btn primary" data-act="ed-save">Änderungen speichern</button><button class="btn x" data-act="ed-cancel" aria-label="Änderungen verwerfen">${ICON.x}</button></div>`;
@@ -3617,7 +3617,7 @@ function edPickForm(i) {
   PK = { ctx: 'edit', i, x: it ? it.ex : null, day: draft.day, sel: '', q: '', group: add ? 'Alle' : 'Passend', exclude: new Set(draft.items.map(t => t.ex.id)), vals: null };
   PK.reopen = () => withEd(() => { const keep = PK; edPickForm(i); PK.sel = keep.sel; PK.q = keep.q; PK.vals = keep.vals; renderPick(); });
   $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet full form tone-${DAY_TONE[draft.day]}" id="edpick" novalidate>
-    ${sheetHead(`${draft.person !== cfg.me ? esc(draft.person) + ' · ' : ''}${esc(dl(draft.day, draft.person))} · ${fmtDate(draft.start)}`, add ? 'Übung hinzufügen' : 'Übung tauschen')}
+    ${sheetHead(`${draft.person !== cfg.me ? nm(draft.person) + ' · ' : ''}${esc(dl(draft.day, draft.person))} · ${fmtDate(draft.start)}`, add ? 'Übung hinzufügen' : 'Übung tauschen')}
     <h2>${add ? 'Übung hinzufügen' : 'Übung tauschen'}</h2>
     <p class="help" style="margin:0">${add ? 'Für eine Übung, die gemacht, aber nicht eingetragen wurde. Die Sätze danach wie im Training eintragen und abhaken.' : `Ersetzt <b>${esc(it.ex.name)}</b> nur in diesem Training. Der Plan bleibt unverändert. Sätze, Wiederholungen und Bewertungen bleiben, das Gewicht nur bei gleicher Art.`}</p>
     ${pickBlock(add ? 'Übung suchen' : 'Ersatzübung suchen')}
@@ -3669,8 +3669,8 @@ function saveEdit() {
   entries.forEach(en => { if (oldIds.has(en.exId)) return; if (en.from && oldIds.has(en.from.id) && !newIds.has(en.from.id)) { chg.push(`${en.from.name} → ${en.name}`); swapped.add(en.from.id); } else chg.push(`+ ${en.name}`); });
   old.forEach(en => { if (!newIds.has(en.exId) && !swapped.has(en.exId)) chg.push(`− ${en.name}`); });
   if (entries.some(en => { const o = old.find(x => x.exId === en.exId); return o && sig(o) !== sig(en); })) chg.push('Werte korrigiert');
-  addEvent('workout_edit', { ref, entries, chg, ...(w.person !== cfg.me ? { as: w.person } : {}) }, `${w.person !== cfg.me ? `Training von ${w.person}: ` : ''}${dl(w.data.day, w.person)} vom ${fmtDate(w.ts)} bearbeitet${chg.length ? ` (${chg.join(', ')})` : ''} · ` + entries.map(en => `${en.name}: ${fmtSets(en.type, en.sets)}${en.note ? ` (Notiz: ${en.note})` : ''}`).join(' | '));
-  toast(w.person !== cfg.me ? `Gespeichert. ${w.person} bekommt einen Hinweis.` : 'Training gespeichert');
+  addEvent('workout_edit', { ref, entries, chg, ...(w.person !== cfg.me ? { as: w.person } : {}) }, `${w.person !== cfg.me ? `Training von ${pname(w.person)}: ` : ''}${dl(w.data.day, w.person)} vom ${fmtDate(w.ts)} bearbeitet${chg.length ? ` (${chg.join(', ')})` : ''} · ` + entries.map(en => `${en.name}: ${fmtSets(en.type, en.sets)}${en.note ? ` (Notiz: ${en.note})` : ''}`).join(' | '));
+  toast(w.person !== cfg.me ? `Gespeichert. ${pname(w.person)} bekommt einen Hinweis.` : 'Training gespeichert');
   location.hash = '#training-log:' + ref;
 }
 function closeModal() {
@@ -3693,7 +3693,7 @@ function viewProfile(p) {
       <div class="daybar">${tot ? DAYS.map((d, i) => counts[i] ? `<i class="t-${DAY_TONE[d]}" style="flex:${counts[i]}"></i>` : '').join('') : ''}</div>
       <div class="legend mono">${DAYS.map((d, i) => `<span>${esc(dl(d, p))} ${counts[i]}</span>`).join('')}</div></section>`;
   if (own) {
-    return `<div class="pf">${ring}<h1 class="display">${esc(p)}</h1><span class="mono muted small">${meta}</span></div>
+    return `<div class="pf">${ring}<h1 class="display">${nm(p)}</h1><span class="mono muted small">${meta}</span></div>
       <div class="stat2">
         <div class="card"><span class="val">${tot}</span><span class="eyebrow">Trainings</span></div>
         <a class="card" href="#gewicht"><span class="val">${lb ? fmtN(lb.kg) + '<small> kg</small>' : '–'}</span><span class="eyebrow">Körpergewicht${pb ? ` · ${lb.kg - pb.kg >= 0 ? '+' : '−'}${fmtN(Math.abs(lb.kg - pb.kg))}` : ''}</span></a>
@@ -3703,7 +3703,7 @@ function viewProfile(p) {
       ${galleryHTML()}`;
   }
   const recent = ws.slice().reverse().slice(0, 3);
-  return `<div class="pf">${ring}<h1 class="display">${esc(p)}</h1><span class="mono muted small">${meta}</span></div>
+  return `<div class="pf">${ring}<h1 class="display">${nm(p)}</h1><span class="mono muted small">${meta}</span></div>
     <div class="stat2">
       <div class="card"><span class="val">${tot}</span><span class="eyebrow">Trainings</span></div>
       <div class="card"><span class="val">${ws.filter(w => new Date(w.ts) >= wk).length}<small> / 3</small></span><span class="eyebrow">Diese Woche</span></div>
@@ -3742,7 +3742,7 @@ function viewRecoveryKey() {
     <div class="rkey mono" id="rk-show">${VAULT.showKey.split('-').map(g => `<span>${g}</span>`).join('')}</div>
     <button class="btn glass" data-act="rk-copy" style="min-width:200px">Kopieren</button>
     <button class="btn primary" data-act="rk-done" style="min-width:260px">Ich habe ihn gespeichert</button>
-    <span class="small muted" style="max-width:320px">Ohne diesen Schlüssel lassen sich die Bilder bei einem Handywechsel nicht wiederherstellen. Gib ihn niemandem, auch nicht ${esc(partner())}.</span></div>`;
+    <span class="small muted" style="max-width:320px">Ohne diesen Schlüssel lassen sich die Bilder bei einem Handywechsel nicht wiederherstellen. Gib ihn niemandem, auch nicht ${nm(partner())}.</span></div>`;
 }
 function viewRestore() {
   return `<div class="form">
@@ -3780,7 +3780,7 @@ function viewVaultNew() {
     <label>Notiz<textarea id="vn-note" name="note" rows="3" maxlength="2000" placeholder="z. B. Pump nach B&T, Brust oben voller"></textarea></label>
     <div class="err" id="vn-err" hidden></div>
     <button class="btn primary" id="vn-save" type="submit">Im Vault speichern</button>
-    <span class="small muted" style="text-align:center">Wird verschlüsselt gespeichert und in eurer Tabelle gesichert. Lesbar nur mit deinem Schlüssel, ${esc(partner())} sieht es nie.</span>
+    <span class="small muted" style="text-align:center">Wird verschlüsselt gespeichert und in eurer Tabelle gesichert. Lesbar nur mit deinem Schlüssel, ${nm(partner())} sieht es nie.</span>
   </form>`;
 }
 
@@ -3804,7 +3804,7 @@ function viewBodyweight() {
       <div class="grid2"><label>Gilt ab<input class="inp mono" type="date" id="bw-from" value="${todayStr()}" max="${todayStr()}"></label>
         <label>Gewicht<span class="field"><input id="bw-in" inputmode="decimal" autocomplete="off" placeholder="z. B. 82,4" aria-label="Körpergewicht in kg"><span>kg</span></span></label></div>
       <button class="btn primary" data-act="bw-save">Eintragen</button>
-      <span class="help">Ein älteres Datum korrigiert genau diesen Zeitraum. Trainings rechnen mit dem Wert, der an ihrem Tag galt. ${esc(partner())} sieht dein Körpergewicht, weil es in die Gesamtlast im Verlauf eingeht.</span>
+      <span class="help">Ein älteres Datum korrigiert genau diesen Zeitraum. Trainings rechnen mit dem Wert, der an ihrem Tag galt. ${nm(partner())} sieht dein Körpergewicht, weil es in die Gesamtlast im Verlauf eingeht.</span>
     </section>
     ${list.length > 1 ? `<section class="card chart"><b>Verlauf (kg)</b>${chartSvg([{ color: '#fff', points: pts }], 'Körpergewicht')}</section>` : ''}
     <section class="card">${periods || '<div class="empty">Noch kein Eintrag. Körpergewichtsübungen rechnen erst mit Gesamtlast, wenn hier ein Wert steht.</div>'}</section>`;
@@ -3820,7 +3820,7 @@ function viewNotes() {
   return seg + (shown.length ? shown.map(({ w, en }) => `<a class="card" href="#uebung:${encodeURIComponent(en.exId)}" style="text-decoration:none;color:var(--fg);gap:8px">
       <div style="display:flex;align-items:center;gap:8px">${dayChip(w.data.day, w.person)}<b style="flex:1;min-width:0">${esc(en.name)}</b><span class="mono muted small">${fmtDate(w.ts)}</span></div>
       <p class="quote" style="font-size:16px">${esc(en.note)}</p>
-      <div class="who small muted">${avatar(w.person, 20)}${w.person === cfg.me ? 'Du' : esc(w.person)} · <span class="mono">${fmtSets(en.type, en.sets)}</span></div></a>`).join('')
+      <div class="who small muted">${avatar(w.person, 20)}${w.person === cfg.me ? 'Du' : nm(w.person)} · <span class="mono">${fmtSets(en.type, en.sets)}</span></div></a>`).join('')
     : '<section class="card"><div class="empty">Noch keine kommentierten Übungen. Im Training kannst du zu jeder Übung eine Notiz schreiben.</div></section>');
 }
 
@@ -3832,7 +3832,7 @@ function viewBell() {
   const items = list.map(x => {
     const c = x.pc, inDraft = draft && draft.day === x.day;
     return `<section class="card" style="gap:14px">
-      <div style="display:flex;align-items:center;gap:10px">${avatar(c.person, 36)}<div style="flex:1;display:flex;flex-direction:column"><b>${esc(c.person)}</b><span class="mono muted small">${fmtDate(c.ts)} · ${fmtTime(c.ts)}${x.status === 'diverged' ? ' · du hast den Tag danach geändert' : ''}</span></div><span class="pill ${x.status}">${label[x.status]}</span></div>
+      <div style="display:flex;align-items:center;gap:10px">${avatar(c.person, 36)}<div style="flex:1;display:flex;flex-direction:column"><b>${nm(c.person)}</b><span class="mono muted small">${fmtDate(c.ts)} · ${fmtTime(c.ts)}${x.status === 'diverged' ? ' · du hast den Tag danach geändert' : ''}</span></div><span class="pill ${x.status}">${label[x.status]}</span></div>
       <div style="display:flex;align-items:center;gap:8px">${dayChip(x.day, cfg.me, 'lg')}<b style="font-size:16px">${esc(s.plans[c.person][x.day].title)}</b></div>
       ${diffList(x.diff)}
       <span class="small muted">Deine abweichenden Übungen und persönlichen Werte bleiben erhalten.</span>
@@ -3845,11 +3845,11 @@ function viewBell() {
   const mine = DAYS.map(d => s.lastChange[cfg.me + '|' + d]).filter(Boolean);
   const mineHtml = mine.map(c => {
     const same = !sharedDiff(s.plans[other][c.data.day], s.plans[cfg.me][c.data.day]).length;
-    return `<div class="sess"><div class="top"><span style="display:flex;gap:8px;align-items:center;color:var(--fg)">${dayChip(c.data.day)}<b>${esc(c.data.title)}</b></span><span class="pill ${same ? 'accepted' : ''}">${same ? `bei ${esc(other)} gleich` : `bei ${esc(other)} offen`}</span></div><span class="mono muted small">zuletzt gespeichert ${fmtDate(c.ts)}, ${fmtTime(c.ts)}</span></div>`;
+    return `<div class="sess"><div class="top"><span style="display:flex;gap:8px;align-items:center;color:var(--fg)">${dayChip(c.data.day)}<b>${esc(c.data.title)}</b></span><span class="pill ${same ? 'accepted' : ''}">${same ? `bei ${nm(other)} gleich` : `bei ${nm(other)} offen`}</span></div><span class="mono muted small">zuletzt gespeichert ${fmtDate(c.ts)}, ${fmtTime(c.ts)}</span></div>`;
   }).join('');
   const nts = notices();
   return `${nts.length ? `<h1 class="display" style="font-size:30px">Hinweise</h1>${nts.map(noticeCard).join('')}` : ''}<h1 class="display" style="font-size:30px">Plan&shy;änderungen</h1>
-    <p class="muted small" style="margin:0">Wenn ${esc(other)} gemeinsame Übungen ändert, siehst du es hier. Abweichende Übungen und persönliche Werte lösen keine Meldung aus.</p>
+    <p class="muted small" style="margin:0">Wenn ${nm(other)} gemeinsame Übungen ändert, siehst du es hier. Abweichende Übungen und persönliche Werte lösen keine Meldung aus.</p>
     ${recent.join('') || `<section class="card"><div class="empty">${older.length ? 'Nichts Neues.' : 'Keine Unterschiede. Eure gemeinsamen Übungen sind gleich.'}</div></section>`}
     ${older.length ? `<details class="older"><summary>Ältere (${older.length})</summary><div style="display:flex;flex-direction:column;gap:12px;padding-top:12px">${older.join('')}</div></details>` : ''}
     ${mine.length ? `<div class="sec-title"><h2>Deine Änderungen</h2></div><section class="card">${mineHtml}</section>` : ''}`;
@@ -3894,7 +3894,7 @@ function viewPlan() {
     </div></section>
     <section class="card" style="padding:4px 16px 16px">${rows || '<div class="empty">Noch keine Übungen an diesem Tag.</div>'}
       <button class="btn ghost" data-act="badd" style="margin-top:8px">+ Übung hinzufügen</button></section>
-    <p class="small muted" style="margin:0 2px">${esc(other)} bekommt nur Änderungen an gemeinsamen Übungen gemeldet: Übung, Art, Reihenfolge, Sätze, Wiederholungen, Aufwärmsatz, Name und Kürzel des Tages. Steigerung, Ausführung und Links sind persönlich. Übungen mit „Nur ich“ lösen nie eine Meldung aus.</p>
+    <p class="small muted" style="margin:0 2px">${nm(other)} bekommt nur Änderungen an gemeinsamen Übungen gemeldet: Übung, Art, Reihenfolge, Sätze, Wiederholungen, Aufwärmsatz, Name und Kürzel des Tages. Steigerung, Ausführung und Links sind persönlich. Übungen mit „Nur ich“ lösen nie eine Meldung aus.</p>
     ${changes.length ? `<section class="card"><b>Ungespeicherte Änderungen</b>${diffList(changes)}</section>` : ''}
     ${b.dirty[d] ? `<div style="height:56px"></div><div class="savebar"><span>${esc(w.short || DAY_SHORT[d])} geändert</span><button class="btn ghost" data-act="bdiscard">Verwerfen</button><button class="btn primary" data-act="bsave">Speichern</button></div>` : ''}`;
 }
@@ -3919,8 +3919,8 @@ function exerciseForm(mode, i, keep) {
     <div class="grid3"><label>Sätze<input class="inp" id="f-sets" name="sets" inputmode="numeric" value="${v('sets', x.sets)}"></label>
       <label><span id="f-unit-min">${isTimed(x.type) ? 'Sek. von' : 'Wdh. von'}</span><input class="inp" id="f-min" name="min" inputmode="numeric" value="${v('min', x.min)}"></label>
       <label>bis<input class="inp" id="f-max" name="max" inputmode="numeric" value="${v('max', x.max)}"></label></div>
-    <label class="chk" id="f-warm-l" ${x.type === 'kg' ? '' : 'hidden'}><input type="checkbox" id="f-warmup" name="warmup" ${pkVal('warmup', x.warmup ? 'on' : '') === 'on' ? 'checked' : ''}><span>Aufwärmsatz<small>Ein Satz mit 60 % × 6 vor den Arbeitssätzen. Wird mit ${esc(partner())} abgeglichen.</small></span></label>
-    <label class="chk"><input type="checkbox" id="f-personal" name="personal" ${pkVal('personal', x.personal ? 'on' : '') === 'on' ? 'checked' : ''}><span>Abweichende Übung (nur ich)<small>Gehört nicht zum gemeinsamen Training und löst bei ${esc(partner())} nie eine Meldung aus.</small></span></label>
+    <label class="chk" id="f-warm-l" ${x.type === 'kg' ? '' : 'hidden'}><input type="checkbox" id="f-warmup" name="warmup" ${pkVal('warmup', x.warmup ? 'on' : '') === 'on' ? 'checked' : ''}><span>Aufwärmsatz<small>Ein Satz mit 60 % × 6 vor den Arbeitssätzen. Wird mit ${nm(partner())} abgeglichen.</small></span></label>
+    <label class="chk"><input type="checkbox" id="f-personal" name="personal" ${pkVal('personal', x.personal ? 'on' : '') === 'on' ? 'checked' : ''}><span>Abweichende Übung (nur ich)<small>Gehört nicht zum gemeinsamen Training und löst bei ${nm(partner())} nie eine Meldung aus.</small></span></label>
     <div class="persbox"><div class="eyebrow">Persönlich · wird nicht abgeglichen</div>
       <label id="f-step-l" ${isTimed(x.type) ? 'hidden' : ''}><span id="f-step-t">${x.type === 'bw' ? 'Steigerung Zusatzgewicht in kg (0 = keine)' : 'Steigerung in kg'}</span><input class="inp" id="f-step" name="step" inputmode="decimal" value="${v('step', fmtIn(x.step || 0))}"><span class="help">Wird vorgeschlagen, wenn alle Sätze die obere Wdh.-Zahl erreichen.</span></label>
       <label>Bild-Link (optional)<input class="inp" id="f-image" name="image" type="url" inputmode="url" value="${v('image', x.image || '')}" placeholder="https://…/bild.jpg"></label>
@@ -3970,7 +3970,7 @@ function savePlan() {
   const notify = sharedDiff(st().plans[cfg.me][d], w).length > 0 && sharedDiff(st().plans[partner()][d], w).length > 0;
   addEvent('plan_change', { day: d, title: w.title, short: w.short, exercises: clone(w.exercises), changes, v2: true }, `${w.short} geändert: ${changes.map(diffText).join('; ')}`);
   builder.dirty[d] = false;
-  toast(notify ? `${w.short} gespeichert. ${partner()} bekommt einen Hinweis.` : `${w.short} gespeichert.`);
+  toast(notify ? `${w.short} gespeichert. ${pname(partner())} bekommt einen Hinweis.` : `${w.short} gespeichert.`);
   render();
 }
 
@@ -4015,7 +4015,7 @@ function viewSettings() {
   const hasVault = !!vmeta();
   return `<h1 class="display" style="font-size:30px">Einstellungen</h1>
     <div class="secl">Profil</div>
-    <div class="rows glass"><label class="row" style="min-height:72px">${avatar(cfg.me, 46)}<span style="display:flex;flex-direction:column"><b>${esc(cfg.me)}</b><span class="small muted">Profilbild sehen beide</span></span><span class="v" style="color:var(--fg);font-family:var(--body);font-weight:600">Ändern</span><input type="file" id="av-file2" accept="image/*" hidden></label></div>
+    <div class="rows glass"><label class="row" style="min-height:72px">${avatar(cfg.me, 46)}<span style="display:flex;flex-direction:column"><b>${nm(cfg.me)}</b><span class="small muted">Profilbild sehen beide</span></span><span class="v" style="color:var(--fg);font-family:var(--body);font-weight:600">Ändern</span><input type="file" id="av-file2" accept="image/*" hidden></label></div>
     <div class="secl">Vault</div>
     <div class="rows glass">
       ${hasVault ? `<button class="row" data-act="v-change">Vault-Code ändern<span class="v">• • • •</span></button>
@@ -4046,8 +4046,8 @@ function viewSettings() {
       <label class="tgl"><span>Entwickleroptionen</span><input type="checkbox" role="switch" id="dev-tgl" ${LS.get('dev', false) ? 'checked' : ''}><i aria-hidden="true"></i></label>
       ${LS.get('dev', false) ? `<b>Person wechseln</b><span class="small muted">Nur nötig, wenn diese App auf dem falschen Handy eingerichtet wurde. Ein laufendes Training wird dabei verworfen, der Vault gesperrt.</span>
       <div class="pick">${PEOPLE.map(p => `<button data-act="s-me" data-v="${p}" aria-pressed="${cfg.me === p}">${p}</button>`).join('')}</div>
-      <b style="margin-top:6px">Trainings von ${esc(partner())} bearbeiten</b><span class="small muted">Zum Korrigieren falscher Einträge. ${esc(partner())} sieht die Änderung, Steigerung und Statistik rechnen damit.</span>
-      <div class="devlist">${st().workouts.filter(w => w.person === partner()).slice(-devN).reverse().map(w => `<div class="devrow">${dayChip(w.data.day, w.person)}<span class="mono small" style="flex:1">${fmtDate(w.ts)} · ${w.data.entries.reduce((a2, en) => a2 + en.sets.length, 0)} Sätze</span><button class="btn small" type="button" data-act="w-edit" data-id="${esc(w.id)}">Bearbeiten</button></div>`).join('') || `<span class="small muted">Noch keine Trainings von ${esc(partner())}.</span>`}</div>
+      <b style="margin-top:6px">Trainings von ${nm(partner())} bearbeiten</b><span class="small muted">Zum Korrigieren falscher Einträge. ${nm(partner())} sieht die Änderung, Steigerung und Statistik rechnen damit.</span>
+      <div class="devlist">${st().workouts.filter(w => w.person === partner()).slice(-devN).reverse().map(w => `<div class="devrow">${dayChip(w.data.day, w.person)}<span class="mono small" style="flex:1">${fmtDate(w.ts)} · ${w.data.entries.reduce((a2, en) => a2 + en.sets.length, 0)} Sätze</span><button class="btn small" type="button" data-act="w-edit" data-id="${esc(w.id)}">Bearbeiten</button></div>`).join('') || `<span class="small muted">Noch keine Trainings von ${nm(partner())}.</span>`}</div>
       ${st().workouts.filter(w => w.person === partner()).length > devN ? `<button class="btn small ghost" type="button" data-act="dev-more" style="align-self:flex-start">Ältere laden (${st().workouts.filter(w => w.person === partner()).length - devN} weitere)</button>` : ''}` : ''}
     </section>
     <section class="card"><b>Daten auf diesem Handy zurücksetzen</b>
@@ -4298,7 +4298,7 @@ const actions = {
     const seen = spotSeenBy(g.id, partner());
     sheet(`<div class="spdel"><img src="${spotUrl(g)}" alt="Spot vom ${fmtDate(g.created)}"><h2>Spot löschen?</h2>
       <span class="mono muted small">${relDay(g.created)} · ${fmtTime(g.created)}${seen ? ' · gesehen' : g.shared ? ' · noch nicht gesehen' : ' · noch nicht gesendet'}</span>
-      <p class="muted" style="margin:0">Der Spot verschwindet aus deiner Galerie.${!seen ? ` ${esc(partner())} bekommt ihn nicht mehr zu sehen.` : ''}</p></div>
+      <p class="muted" style="margin:0">Der Spot verschwindet aus deiner Galerie.${!seen ? ` ${nm(partner())} bekommt ihn nicht mehr zu sehen.` : ''}</p></div>
       <div class="btnrow col"><button class="btn danger" data-act="cam-del-yes" data-id="${esc(g.id)}">Löschen</button><button class="btn ghost" data-act="mclose">Abbrechen</button></div>`);
   },
   'cam-del-yes': async t => { $('#modal').innerHTML = ''; await deleteSpot(t.dataset.id, '#kamera'); },

@@ -1,0 +1,16 @@
+import { makeDb, serve } from './mocksb.mjs';
+import { createClient } from '@supabase/supabase-js';
+const db = await makeDb(); const srv = await serve(db);
+const mk = () => createClient('http://localhost:54321', 'pk', { auth: { persistSession: false } });
+const a = mk();
+console.log(await a.auth.signInWithOtp({ email: 'a@x.de' }));
+const v = await a.auth.verifyOtp({ email: 'a@x.de', token: '123456', type: 'email' });
+console.log('verify', v.error, v.data.user?.id);
+console.log(await a.from('profiles').select('*'));
+console.log(await a.from('profiles').update({ name: 'Manu' }).eq('id', v.data.user.id));
+console.log(await a.rpc('set_week_goal', { n: 4 }));
+console.log((await a.from('events').insert([{ id: 'e1', ts: new Date().toISOString(), type: 'workout', data: { date: '2026-11-12' } }])).error);
+console.log((await a.from('events').insert([{ id: 'e2', ts: new Date().toISOString(), type: 'workout', data: { date: '2026-11-12' } }])).error?.message);
+console.log((await a.from('events').upsert([{ id: 'e1', ts: new Date().toISOString(), type: 'workout', data: {} }], { onConflict: 'id', ignoreDuplicates: true })).error);
+console.log(await a.from('events').select('id,seq').gt('seq', 0).order('seq').limit(200));
+srv.close(); process.exit(0);
