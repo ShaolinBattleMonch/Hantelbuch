@@ -4691,8 +4691,8 @@ function goalSheet() {
 /* ======================= Datenschutz, Daten, Feedback (ab 3.0) =======================
    Einwilligungen stehen in „consents“ (jede Änderung ein neuer Eintrag, der letzte gilt).
    Gesundheitsdaten (Körpergewicht, Vault-Bilder) erst nach eigener Einwilligung. Statistik nur mit Zustimmung. */
-const LEGAL = {   // Angaben für Impressum und Datenschutz (vorerst Platzhalter wie in 2.2.1)
-  name: 'Vorname Nachname', street: 'Straße Hausnummer', city: 'PLZ Ort', mail: 'kontakt@domain.de', report: 'meldung@domain.de'
+const LEGAL = {   // Angaben für Impressum und Datenschutz
+  name: 'Immanuel Kalis', street: 'Schulstraße 20G', city: '21465 Reinbek', mail: 'kontakt@builtapp.de', report: 'kontakt@builtapp.de', phone: '0152 27938278'
 };
 const CONSENT_V = '3.0';
 let CONSENTS = (() => { const v = LS.get('consents', null); return v && typeof v === 'object' ? v : {}; })();
@@ -4988,7 +4988,7 @@ function viewLegal(k) {
   const mail = LEGAL.mail ? `<a href="mailto:${esc(LEGAL.mail)}">${esc(LEGAL.mail)}</a>` : '–';
   const T = {
     impressum: ['Impressum', `<h3>Angaben gemäß § 5 DDG</h3><p>${who}</p>
-      <h3>Kontakt</h3><p>E-Mail: ${mail}<br>Telefon oder Kontaktformular: Telefonnummer oder Link</p>
+      <h3>Kontakt</h3><p>E-Mail: ${mail}${LEGAL.phone ? `<br>Telefon: <a href="tel:${esc(LEGAL.phone.replace(/\s/g, ''))}">${esc(LEGAL.phone)}</a>` : ''}</p>
       <h3>Zentrale Kontaktstelle nach Digital Services Act</h3><p>Für Behörden und Nutzer: ${LEGAL.report ? esc(LEGAL.report) : mail}. Wir antworten auf Deutsch oder Englisch.</p>
       <h3>Inhalte melden</h3><p>Rechtswidrige Inhalte kannst du direkt in der App über „Melden“ bei einer Nachricht, einer Notiz oder einem Profil melden.</p>
       <h3>Verbraucherstreitbeilegung</h3><p>Wir sind nicht bereit und nicht verpflichtet, an Streitbeilegungsverfahren vor einer Verbraucherschlichtungsstelle teilzunehmen.</p>
