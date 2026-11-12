@@ -8,7 +8,7 @@ const APP_VERSION = '3.0.0';
 const SCRIPT_MIN = 0;            // Google-Skript entfällt ab 3.0
 /* Supabase: Projekt in Frankfurt. Der Publishable Key ist öffentlich, Zugriff regeln die Zeilenrechte in der Datenbank. */
 const SB_URL = (() => { try { return localStorage.getItem('built.sb.url') || 'https://orfbfukamifoqpnpdckb.supabase.co'; } catch (e) { return 'https://orfbfukamifoqpnpdckb.supabase.co'; } })();
-const V3_SPOTS = false, V3_CHAT = false;
+const V3_SPOTS = false, V3_CHAT = true;
 const SB_KEY = 'sb_publishable_lRri8xqx8PzRR81-ZfarBg_sRJO9TSo';
 const sb = window.supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'built.auth' } });
 /* Personen: ich, dann meine Crew, dann Freunde. Kennung ist die Profil-ID, angezeigt wird der Name. */
@@ -515,7 +515,7 @@ let events = LS.get('events', []);
 let pending = LS.get('pending', []);
 let lastSeq = LS.get('lastSeq', 0);
 let lastSync = LS.get('lastSync', null);
-let scriptVersion = LS.get('scriptVersion', null);
+let scriptVersion = null;   // bis 2.2: Version des Google-Skripts, ab 3.0 ohne Bedeutung
 let draft = LS.get('draft', null);   // laufendes Training (wird unten beim Start bereinigt)
 let seenIds = new Set(events.map(e => e.id));
 
@@ -1250,6 +1250,7 @@ function sync({ overlay = false, quiet = false } = {}) {
       ui.set(4, 'Prüfe dein Konto …', '');
       const { data: ses } = await sb.auth.getSession();
       if (!ses || !ses.session) throw { code: 'unauthorized' };
+      if (ses.session.user && ses.session.user.email && LS.get('acct.email', '') !== ses.session.user.email) LS.set('acct.email', ses.session.user.email);
       if (await loadPeople()) invalidate();
       // senden
       const toPush = pending.filter(p => !seenIds.has(p.id));
@@ -1401,6 +1402,7 @@ async function unlocked(res) {
   VAULT.key = res.dk; VAULT.raw = res.raw;
   if (res.token) LS.set('vault.tok.' + cfg.me, res.token);
   if (res.gk) LS.set('gal.key.' + cfg.me, res.gk);
+  if (res.raw) ckAfterUnlock();
 }
 /* Umstellung eines alten Vaults (nur mit Code verschlüsselt) auf den Wiederherstellungsschlüssel */
 async function migrateVault(pin) {
@@ -1468,8 +1470,8 @@ async function pinComplete() {
     VAULT.entries = []; VAULT.mode = 'unlock'; VAULT.restore = null;
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* optional */ }
     if (restoring) {
-      VAULT.msg = 'Lade Bilder aus der Tabelle …'; render();
-      const r = await vaultSync({ progress: (a, b) => { VAULT.msg = `Lade Bilder aus der Tabelle … ${a} von ${b}`; if (view === 'vault' && !VAULT.entries.length) render(); } });
+      VAULT.msg = 'Lade Bilder aus der Sicherung …'; render();
+      const r = await vaultSync({ progress: (a, b) => { VAULT.msg = `Lade Bilder aus der Sicherung … ${a} von ${b}`; if (view === 'vault' && !VAULT.entries.length) render(); } });
       VAULT.msg = ''; await loadVault();
       toast(r && r.ok ? `${VAULT.entries.length} ${VAULT.entries.length === 1 ? 'Bild' : 'Bilder'} wiederhergestellt` : 'Laden unterbrochen. Der Rest kommt beim nächsten Öffnen.');
       render();
@@ -1590,8 +1592,8 @@ function vaultSync({ progress } = {}) {
     let changed = false;
     try {
       let cloud = [], fresh = false;
-      try { cloud = ((await req('vault_list', {}, 30000)).entries || []).filter(c => !c.id.startsWith('g-')); }
-      catch (e) { if (e.code !== 'vault_none') throw e; fresh = true; }
+      cloud = ((await req('vault_list', {}, 30000)).entries || []).filter(c => !/^[gk]-/.test(c.id));
+      fresh = !cloud.length;   // leere Sicherung (z. B. nach der Umstellung): alles hochladen, nichts löschen
       const inCloud = new Set(cloud.map(c => c.id));
       // gelöschte Bilder auch in der Tabelle entfernen
       const tombs = LS.get('vault.tomb.' + me, []);
@@ -1637,17 +1639,21 @@ async function startRestore() {
   const err = m => { const e = $('#rk-err'); e.textContent = m; e.hidden = false; };
   const raw = rkDecode($('#rk-in').value);
   if (!raw) return err('Der Schlüssel hat 32 Zeichen (8 Gruppen à 4). Bitte prüfe deine Eingabe.');
-  if (!cfg.url || !cfg.key) return err('Verbinde zuerst die Google-Tabelle unter Einstellungen.');
   const btn = $('#rk-go'); btn.disabled = true; btn.textContent = 'Prüfe Schlüssel …';
   try {
     const k = await rawKeys(raw);
-    const r = await call({ action: 'vault_list', person: cfg.me, vtoken: k.token }, 30000);
+    const list = ((await call({ action: 'vault_list' })).entries || []).filter(c => !/^[gk]-/.test(c.id));
+    if (!list.length) throw { code: 'vault_none' };
+    // Schlüssel prüfen: der neueste Eintrag muss sich damit öffnen lassen
+    const last = list.slice().sort((a, b) => String(b.created).localeCompare(String(a.created)))[0];
+    const e = JSON.parse((await call({ action: 'vault_get', id: last.id })).chunks.join(''));
+    try { await decBytes(k.dk, e.miv, b64d(e.meta)); } catch (x) { throw { code: 'vault_denied' }; }
     // Zugang erst beim Festlegen des Codes übernehmen, damit ein abgebrochener Versuch den jetzigen Vault nicht stört
-    VAULT.restore = { raw, n: (r.entries || []).length };
+    VAULT.restore = { raw, n: list.length };
     VAULT.mode = 'set1'; location.hash = '#vault';
   } catch (e) {
     btn.disabled = false; btn.textContent = 'Weiter';
-    err(e.code === 'vault_denied' ? 'Dieser Schlüssel passt nicht zu deinem Vault.' : e.code === 'vault_none' ? 'In der Tabelle gibt es noch keine Vault-Sicherung von dir.' : e.code === 'unknown_action' || e.code === 'bad_request' ? 'Das Google-Skript muss zuerst auf Version 3 aktualisiert werden.' : 'Keine Verbindung zur Tabelle. Bitte später noch einmal versuchen.');
+    err(e.code === 'vault_denied' ? 'Dieser Schlüssel passt nicht zu deinem Vault.' : e.code === 'vault_none' ? 'Zu deinem Konto gibt es noch keine Vault-Sicherung.' : 'Keine Verbindung. Bitte später noch einmal versuchen.');
   }
 }
 
@@ -1767,7 +1773,7 @@ function gallerySync() {
     try {
       const key = await galKey();
       let cloud = [], fresh = false;
-      try { cloud = ((await req('vault_list', {}, 30000)).entries || []).filter(c => c.id.startsWith('g-')); } catch (e) { if (e.code !== 'vault_none') throw e; fresh = true; }
+      cloud = ((await req('vault_list', {}, 30000)).entries || []).filter(c => c.id.startsWith('g-')); fresh = !cloud.length;
       const inCloud = new Set(cloud.map(c => c.id));
       const tombs = LS.get('gal.tomb.' + me, []);
       for (const id of [...tombs]) { if (inCloud.has('g-' + id)) { await req('vault_del', { id: 'g-' + id }, 30000); inCloud.delete('g-' + id); } tombs.splice(tombs.indexOf(id), 1); LS.set('gal.tomb.' + me, tombs); }
@@ -1798,16 +1804,23 @@ function gallerySync() {
    Einzelchats pro Person. Nachrichten liegen verschlüsselt im Blatt „Chat“ (Schlüssel aus dem Sync-Schlüssel, wie bei
    den Spots) und verschwinden dort nach 30 Tagen. Gesendete Spots stehen im Chat, solange sie noch sichtbar sind, sie
    werden dafür nicht extra gespeichert. Textantworten auf einen Spot sind Nachrichten mit Verweis auf den Spot. */
-const CHAT_MIN_SCRIPT = 6, CHAT_DAYS = 30, CHAT_LEN = 1000;
-const CHAT = { msgs: [], loaded: false };
+const CHAT_DAYS = 30, CHAT_LEN = 1000;
+const CHAT = { msgs: [], hold: [], loaded: false };
 const chatLS = () => 'chat.msgs.' + cfg.me;
 function loadChat() {
   const raw = LS.get(chatLS(), []);
-  CHAT.msgs = (Array.isArray(raw) ? raw : []).filter(m => m && typeof m.id === 'string' && typeof m.text === 'string' && PEOPLE.includes(m.from) && PEOPLE.includes(m.to));
+  // Nachrichten aus 2.2.1 nennen Personen beim Namen: auf Profil-IDs abbilden
+  const all = (Array.isArray(raw) ? raw : []).filter(m => m && typeof m.id === 'string' && typeof m.text === 'string')
+    .map(m => ({ ...m, from: legacyId(m.from), to: legacyId(m.to), ...(m.spotOwner ? { spotOwner: legacyId(m.spotOwner) } : {}) }));
+  const known = m => PEOPLE.includes(m.from) && PEOPLE.includes(m.to);
+  CHAT.msgs = all.filter(known);
+  CHAT.hold = all.filter(m => !known(m));   // Person (noch) nicht in der Liste: aufheben, nicht verwerfen
+  const rd = chatReadMap(), rd2 = {}; Object.entries(rd).forEach(([k, v]) => { rd2[legacyId(k)] = v; });
+  if (Object.keys(rd).some(k => legacyId(k) !== k)) LS.set('chat.read.' + cfg.me, rd2);
   pruneChat(); CHAT.loaded = true;
 }
-function pruneChat() { const lim = Date.now() - CHAT_DAYS * 864e5; CHAT.msgs = CHAT.msgs.filter(m => m.pend || new Date(m.ts).getTime() > lim); }
-function saveChat() { LS.set(chatLS(), CHAT.msgs); }
+function pruneChat() { const lim = Date.now() - CHAT_DAYS * 864e5, keep = m => m.pend || new Date(m.ts).getTime() > lim; CHAT.msgs = CHAT.msgs.filter(keep); CHAT.hold = (CHAT.hold || []).filter(keep); }
+function saveChat() { LS.set(chatLS(), [...CHAT.msgs, ...(CHAT.hold || [])]); }
 const chatWith = p => CHAT.msgs.filter(m => (m.from === p && m.to === cfg.me) || (m.from === cfg.me && m.to === p));
 const chatReadMap = () => LS.get('chat.read.' + cfg.me, {}) || {};
 const chatUnread = p => { const r = chatReadMap()[p] || ''; return CHAT.msgs.filter(m => m.from === p && m.to === cfg.me && m.ts > r).length; };
@@ -1817,52 +1830,162 @@ function chatMarkRead(p) {
   const r = chatReadMap(); if (r[p] === last) return; r[p] = last; LS.set('chat.read.' + cfg.me, r);
 }
 const chatPeers = () => others().filter(p => chatWith(p).length).sort((a, b) => (chatWith(b).pop().ts).localeCompare(chatWith(a).pop().ts));
-const chatOk = () => scriptVersion == null || scriptVersion >= CHAT_MIN_SCRIPT;
 
-let _chatKey = null, _chatKeyFor = null;
-async function chatKey() {
-  if (_chatKey && _chatKeyFor === cfg.key) return _chatKey;
-  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(cfg.key), 'HKDF', false, ['deriveKey']);
-  _chatKey = await crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: new TextEncoder().encode('hantelbuch-chat'), info: new TextEncoder().encode('chat') }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-  _chatKeyFor = cfg.key; return _chatKey;
+/* ---------- Chat-Schlüssel (ab 3.0) ----------
+   Jedes Konto hat ein Schlüsselpaar (ECDH P-256). Der öffentliche Teil liegt in „keys“, der private nur auf dem Handy
+   und, mit dem Vault-Schlüssel verschlüsselt, als Eintrag „k-chat“ in der Vault-Sicherung. Ein neues Handy holt ihn
+   von dort, sobald der Vault geöffnet wird. Jede Nachricht hat einen eigenen Schlüssel, der für Absender und
+   Empfänger einzeln verpackt wird (Schlüssel aus ECDH der beiden Paare). Der Server sieht nur verschlüsselte Daten. */
+const ECDH_P = { name: 'ECDH', namedCurve: 'P-256' };
+const CK = { priv: null, pub: null, state: 'none', peers: {}, shared: {} };   // state: none | ok | vault (wartet auf Vault)
+const ckLS = () => 'chat.key.' + cfg.me;
+async function ckImport(jwk) { return crypto.subtle.importKey('jwk', jwk, ECDH_P, false, ['deriveBits']); }
+async function ckSet(o) { CK.priv = await ckImport(o.jwk); CK.pub = o.pub; CK.state = 'ok'; CK.shared = {}; }
+async function ckBackup(o) {
+  if (!VAULT.key || !VAULT.raw) return false;
+  const enc = await encJSON(VAULT.key, o);
+  const r = await sb.from('vault').upsert({ user_id: cfg.me, id: 'k-chat', created: new Date().toISOString(), body: JSON.stringify({ id: 'k-chat', pub: o.pub, iv: enc.iv, ct: b64e(enc.ct) }) }, { onConflict: 'user_id,id' });
+  if (r.error) return false;
+  LS.set(ckLS(), { ...o, backed: true }); return true;
+}
+async function ckCreate() {
+  const kp = await crypto.subtle.generateKey(ECDH_P, true, ['deriveBits']);
+  const o = { jwk: await crypto.subtle.exportKey('jwk', kp.privateKey), pub: b64e(new Uint8Array(await crypto.subtle.exportKey('raw', kp.publicKey))), backed: false };
+  const r = await sb.from('keys').upsert({ user_id: cfg.me, device_id: 'konto', public_key: o.pub, revoked_at: null }, { onConflict: 'user_id,device_id' });
+  if (r.error) throw sbErr(r.error);
+  LS.set(ckLS(), o); await ckSet(o); await ckBackup(o);
+}
+// Holt den privaten Schlüssel aus der Vault-Sicherung (nach dem Öffnen des Vaults)
+async function ckFromVault() {
+  if (!VAULT.key) return false;
+  const r = await sb.from('vault').select('body').eq('user_id', cfg.me).eq('id', 'k-chat').maybeSingle();
+  if (r.error || !r.data) return false;
+  try {
+    const b = JSON.parse(r.data.body); const o = await decJSON(VAULT.key, b.iv, b64d(b.ct));
+    if (!o || !o.jwk || o.pub !== CK.serverPub) return false;
+    LS.set(ckLS(), { ...o, backed: true }); await ckSet(o); return true;
+  } catch (e) { return false; }
+}
+async function ensureChatKey() {
+  if (CK.state === 'ok' && CK.for === cfg.me) return true;
+  CK.for = cfg.me; CK.state = 'none'; CK.peers = {}; CK.shared = {};
+  const kr = await sb.from('keys').select('public_key').eq('user_id', cfg.me).eq('device_id', 'konto').is('revoked_at', null).maybeSingle();
+  if (kr.error) throw sbErr(kr.error);
+  CK.serverPub = kr.data ? kr.data.public_key : null;
+  const local = LS.get(ckLS(), null);
+  if (local && local.jwk && local.pub === CK.serverPub) { await ckSet(local); if (!local.backed) ckBackup(local); return true; }
+  if (!CK.serverPub) { await ckCreate(); return true; }
+  // Konto hat schon einen Schlüssel, dieses Handy noch nicht: aus dem Vault holen
+  if (await ckFromVault()) return true;
+  const hasBackup = await sb.from('vault').select('id').eq('user_id', cfg.me).eq('id', 'k-chat').maybeSingle();
+  if (!hasBackup.error && !hasBackup.data) { await ckCreate(); return true; }   // keine Sicherung: neu anlegen (alte Nachrichten bleiben unlesbar)
+  CK.state = 'vault'; return false;
+}
+// nach dem Öffnen des Vaults: wartenden Schlüssel holen bzw. eine fehlende Sicherung nachholen
+async function ckAfterUnlock() {
+  try {
+    if (!cfg.me || cfg.key !== 'supabase') return;
+    if (CK.state === 'vault' && CK.for === cfg.me) { if (await ckFromVault()) { chatSync(); safeRender(); } return; }
+    const local = LS.get(ckLS(), null); if (local && local.jwk && !local.backed) await ckBackup(local);
+  } catch (e) { /* später erneut */ }
+}
+async function peerPub(p) {
+  if (CK.peers[p] !== undefined) return CK.peers[p];
+  const r = await sb.from('keys').select('public_key').eq('user_id', p).eq('device_id', 'konto').is('revoked_at', null).maybeSingle();
+  CK.peers[p] = r.error || !r.data ? null : r.data.public_key; return CK.peers[p];
+}
+async function sharedKey(pubB64) {
+  if (CK.shared[pubB64]) return CK.shared[pubB64];
+  const pub = await crypto.subtle.importKey('raw', b64d(pubB64), ECDH_P, false, []);
+  const bits = await crypto.subtle.deriveBits({ name: 'ECDH', public: pub }, CK.priv, 256);
+  const base = await crypto.subtle.importKey('raw', bits, 'HKDF', false, ['deriveKey']);
+  CK.shared[pubB64] = await crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: new TextEncoder().encode('built-chat-v3'), info: new TextEncoder().encode('nachricht') }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  return CK.shared[pubB64];
+}
+// verschlüsselt o für die Empfänger (Profil-ID → öffentlicher Schlüssel); der Absender ist immer dabei
+async function sealMsg(o, rcpts) {
+  const mk = crypto.getRandomValues(new Uint8Array(32));
+  const key = await crypto.subtle.importKey('raw', mk, 'AES-GCM', false, ['encrypt']);
+  const enc = await encJSON(key, o);
+  const keys = { _pk: CK.pub };
+  for (const [id, pub] of Object.entries({ ...rcpts, [cfg.me]: CK.pub })) { const w = await encBytes(await sharedKey(pub), mk); keys[id] = w.iv + '.' + b64e(w.ct); }
+  return { iv: enc.iv, ct: b64e(enc.ct), keys };
+}
+async function openMsg(row) {
+  const k = row.keys || {}; const w = k[cfg.me]; if (!w || !k._pk) return null;
+  const [wiv, wct] = w.split('.');
+  const mk = await decBytes(await sharedKey(k._pk), wiv, b64d(wct));
+  const key = await crypto.subtle.importKey('raw', mk, 'AES-GCM', false, ['decrypt']);
+  return decJSON(key, row.iv, b64d(row.ct));
+}
+// Alte Chats aus 2.2.1: einmalig mit dem alten Sync-Schlüssel öffnen und neu verschlüsseln (nur selbst gesendete)
+async function legacyChatKey(k) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(k), 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: new TextEncoder().encode('hantelbuch-chat'), info: new TextEncoder().encode('chat') }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function chatMigrateLegacy() {
+  const old = LS.get('legacy.cfg', null); if (!old || !old.key || LS.get('chat.legacy.' + cfg.me, false)) return;
+  const r = await sb.rpc('my_legacy_messages'); if (r.error) return;
+  const rows = r.data || []; if (!rows.length) { LS.set('chat.legacy.' + cfg.me, true); return; }
+  const key = await legacyChatKey(old.key); const lim = Date.now() - CHAT_DAYS * 864e5; let open = 0;
+  for (const x of rows) {
+    const drop = () => sb.rpc('drop_legacy_message', { mid: x.id });
+    if (new Date(x.ts).getTime() < lim) { await drop(); continue; }
+    let o; try { const [iv, ct] = String(x.body).split('.'); o = await decJSON(key, iv, b64d(ct)); } catch (e) { await drop(); continue; }
+    const pub = x.recipient ? await peerPub(x.recipient) : null;
+    if (!pub) { open++; continue; }                                  // Empfänger noch nicht übernommen: später
+    if (typeof o.spotOwner === 'string') o.spotOwner = legacyId(o.spotOwner);
+    const s = await sealMsg(o, { [x.recipient]: pub });
+    const ins = await sb.from('messages').insert({ id: x.id, recipient: x.recipient, ts: x.ts, expires_at: new Date(new Date(x.ts).getTime() + CHAT_DAYS * 864e5).toISOString(), ...s });
+    if (!ins.error || sbErr(ins.error).code === 'duplicate') await drop(); else open++;
+  }
+  if (!open) LS.set('chat.legacy.' + cfg.me, true);
 }
 let chatSyncing = null;
 function chatSync() {
-  if (!V3_CHAT) return Promise.resolve();    // neue Chat-Verschlüsselung folgt in Schritt 2/4
+  if (!V3_CHAT) return Promise.resolve();
   if (chatSyncing) return chatSyncing;
-  if (!cfg.me || !cfg.url || !cfg.key || navigator.onLine === false || !chatOk()) return Promise.resolve();
+  if (!cfg.me || cfg.key !== 'supabase' || navigator.onLine === false) return Promise.resolve();
   if (!CHAT.loaded) loadChat();
+  else if (CHAT.hold.length) { saveChat(); loadChat(); }   // inzwischen bekannte Personen übernehmen
   chatSyncing = (async () => {
     let changed = false;
     try {
-      const key = await chatKey();
+      if (!(await ensureChatKey())) return;
+      await chatMigrateLegacy();
       const tombs = LS.get('chat.tomb.' + cfg.me, []);
-      for (const id of [...tombs]) { await call({ action: 'chat_del', person: cfg.me, id }, 30000); tombs.splice(tombs.indexOf(id), 1); LS.set('chat.tomb.' + cfg.me, tombs); }
+      for (const id of [...tombs]) { const r = await sb.from('messages').delete().eq('id', id).eq('sender', cfg.me); if (r.error) throw sbErr(r.error); tombs.splice(tombs.indexOf(id), 1); LS.set('chat.tomb.' + cfg.me, tombs); }
       for (const m of CHAT.msgs.filter(x => x.pend && x.from === cfg.me)) {
+        const pub = await peerPub(m.to); if (!pub) continue;              // Empfänger hat noch keinen Schlüssel: bleibt wartend
         const o = { text: m.text }; if (m.spot) { o.spot = m.spot; o.spotOwner = m.spotOwner; }
         if (m.re) o.re = m.re; if (m.react) o.react = m.react;
-        const enc = await encJSON(key, o);
-        await call({ action: 'chat_put', person: cfg.me, to: m.to, id: m.id, ts: m.ts, data: enc.iv + '.' + b64e(enc.ct) }, 30000);
-        m.pend = false; changed = true;
+        const s = await sealMsg(o, { [m.to]: pub });
+        const r = await sb.from('messages').insert({ id: m.id, recipient: m.to, ts: m.ts, ...s });
+        if (r.error && sbErr(r.error).code !== 'duplicate') { const c = sbErr(r.error).code; if (c === 'network') throw r.error; m.fail = true; changed = true; continue; }
+        m.pend = false; m.sv = true; delete m.fail; changed = true;
       }
       if (changed) saveChat();
-      const list = (await call({ action: 'chat_list', person: cfg.me }, 30000)).msgs || [];
-      const have = new Set(CHAT.msgs.map(m => m.id)), inSheet = new Set(list.map(x => x.id));
+      const since = new Date(Date.now() - CHAT_DAYS * 864e5).toISOString();
+      const lr = await sb.from('messages').select('id,sender,recipient,ts,iv,ct,keys').is('crew_id', null).gt('ts', since).order('ts', { ascending: true });
+      if (lr.error) throw sbErr(lr.error);
+      const list = lr.data || [];
+      const have = new Set(CHAT.msgs.map(m => m.id)), onServer = new Set(list.map(x => x.id));
       for (const x of list) {
-        if (have.has(x.id) || !PEOPLE.includes(x.from) || !PEOPLE.includes(x.to) || typeof x.data !== 'string') continue;
+        if (have.has(x.id)) { const m = CHAT.msgs.find(y => y.id === x.id); if (m && !m.sv) { m.sv = true; changed = true; } continue; }
+        if (!PEOPLE.includes(x.sender) || !PEOPLE.includes(x.recipient)) continue;
         try {
-          const [iv, ct] = x.data.split('.');
-          const o = await decJSON(key, iv, b64d(ct));
-          if (typeof o.text !== 'string' || !o.text.trim()) continue;
-          const m = { id: x.id, from: x.from, to: x.to, ts: x.ts, text: o.text.slice(0, CHAT_LEN) };
+          const o = await openMsg(x);
+          if (!o || typeof o.text !== 'string' || !o.text.trim()) continue;
+          const m = { id: x.id, from: x.sender, to: x.recipient, ts: new Date(x.ts).toISOString(), text: o.text.slice(0, CHAT_LEN), sv: true };
           if (typeof o.spot === 'string' && PEOPLE.includes(o.spotOwner)) { m.spot = o.spot.slice(0, 64); m.spotOwner = o.spotOwner; }
           if (typeof o.re === 'string') m.re = o.re.slice(0, 64);
           if (m.re && isEmoji(o.react)) m.react = o.react;
           CHAT.msgs.push(m); changed = true;
         } catch (e) { /* nicht lesbar (anderer Schlüssel): überspringen */ }
       }
+      // Was schon auf dem Server war und dort fehlt, wurde vom Absender gelöscht. Lokale Altnachrichten (ohne sv) bleiben.
       const n = CHAT.msgs.length;
-      CHAT.msgs = CHAT.msgs.filter(m => m.pend || inSheet.has(m.id));
+      CHAT.msgs = CHAT.msgs.filter(m => m.pend || !m.sv || onServer.has(m.id));
       if (CHAT.msgs.length !== n) changed = true;
       CHAT.msgs.sort((a, b) => a.ts.localeCompare(b.ts)); pruneChat();
       if (changed) saveChat();
@@ -1920,13 +2043,13 @@ function viewChats() {
     return `<a class="crow" href="#chat:${encodeURIComponent(p)}">${avatar(p, 50)}<span class="crow-m"><span class="crow-h"><b>${nm(p)}</b><span class="mono small muted">${relDay(last.ts) === 'heute' ? fmtTime(last.ts) : fmtDate(last.ts)}</span></span><span class="crow-l"><span class="${n ? 'unread' : 'muted'}">${last.from === cfg.me ? 'Du: ' : ''}${last.spot ? '↩ Spot · ' : ''}${esc(last.text)}</span>${n ? `<span class="cnt">${n}</span>` : ''}</span></span></a>`;
   }).join('');
   return `<h1 class="display" style="font-size:30px">Chats</h1>
-    ${chatOk() ? '' : `<section class="card notice"><b>Google-Skript aktualisieren</b><span class="small">Der Chat braucht das Skript Version ${CHAT_MIN_SCRIPT}. Bis dahin werden Nachrichten nur auf diesem Handy gespeichert.</span></section>`}
+    ${CK.state === 'vault' ? `<section class="card notice"><b>Vault öffnen</b><span class="small">Deine Chats sind mit deinem Vault gesichert. Öffne einmal den Vault, dann kannst du sie auch auf diesem Handy lesen und schreiben.</span><a class="btn small" href="#vault" style="align-self:flex-start">Vault öffnen</a></section>` : ''}
     ${peers.length ? `<section class="card" style="padding:2px 16px;gap:0">${rows}</section>` : `<section class="card cempty"><span class="cempty-i">${ICON.chat.replace('width="20" height="20"', 'width="24" height="24"')}</span><b>Noch keine Chats</b><span class="small muted">Tippe auf +, um deinem Gym Buddy zu schreiben. Ein Chat erscheint hier, sobald die erste Nachricht da ist.</span></section>`}
     <span class="lockline">${ICON.lock.replace('width="22" height="22"', 'width="12" height="12"')}Verschlüsselt · Nachrichten verschwinden nach ${CHAT_DAYS} Tagen</span>
     <button class="fab" data-act="chat-new" aria-label="Neuer Chat">${ICON.plus.replace('width="16" height="16"', 'width="24" height="24"')}</button>`;
 }
 function chatNewSheet(q = '') {
-  const list = others().filter(p => !q || p.toLowerCase().includes(q.toLowerCase()));
+  const list = others().filter(p => !q || pname(p).toLowerCase().includes(q.toLowerCase()));
   sheet(`<h2>Neuer Chat</h2>
     <label class="cn-search">${ICON.search.replace('<svg ', '<svg width="18" height="18" ')}<input id="cn-q" type="search" placeholder="Buddy-ID suchen" aria-label="Buddy-ID suchen" value="${esc(q)}" autocomplete="off"></label>
     <span class="eyebrow">Gym Buddys</span>
@@ -1978,8 +2101,8 @@ function chatMsgsHTML(p) {
     const mine = m.from === me;
     const bub = `<div class="cbub">${chatQuote(m)}<span class="ctext">${esc(m.text)}</span></div>`;
     const body = m.spot ? `<div class="crep">${mine ? bub + chatSpotThumb(m.spot, m.spotOwner) : chatSpotThumb(m.spot, m.spotOwner) + bub}</div>` : bub;
-    const name = `<span class="cname" style="color:${mine ? 'var(--fg)' : nameColor(m.from)}">${mine ? 'Du' : esc(m.from)}</span>`;
-    out += `<div class="cmsg ${mine ? 'me' : 'them'}" id="cm-${esc(m.id)}" data-mid="${esc(m.id)}">${name}${body}${chatReacts(m.id)}<span class="ctime">${fmtTime(ts)}${m.pend ? ' · wird gesendet' : ''}</span></div>`;
+    const name = `<span class="cname" style="color:${mine ? 'var(--fg)' : nameColor(m.from)}">${mine ? 'Du' : nm(m.from)}</span>`;
+    out += `<div class="cmsg ${mine ? 'me' : 'them'}" id="cm-${esc(m.id)}" data-mid="${esc(m.id)}">${name}${body}${chatReacts(m.id)}<span class="ctime">${fmtTime(ts)}${m.fail ? ' · nicht zugestellt' : m.pend ? ' · wird gesendet' : ''}</span></div>`;
   });
   return out || `<div class="empty" style="margin:auto 0 0">Schreib ${nm(p)} die erste Nachricht.</div>`;
 }
@@ -2009,7 +2132,7 @@ function chatQuote(m) {
   const q = CHAT.msgs.find(x => x.id === m.re && !x.react);
   if (!q) return '<span class="cquote gone">Nachricht nicht mehr da</span>';
   const own = q.from === cfg.me;
-  return `<button type="button" class="cquote" data-act="cm-jump" data-id="${esc(q.id)}" style="--qc:${own ? '#fff' : nameColor(q.from)};--qf:${own ? '#000' : AV_FILL[avIdx(q.from)]}"><b>${own ? 'Du' : esc(q.from)}</b><span>${esc(q.text.slice(0, 140))}</span></button>`;
+  return `<button type="button" class="cquote" data-act="cm-jump" data-id="${esc(q.id)}" style="--qc:${own ? '#fff' : nameColor(q.from)};--qf:${own ? '#000' : AV_FILL[avIdx(q.from)]}"><b>${own ? 'Du' : nm(q.from)}</b><span>${esc(q.text.slice(0, 140))}</span></button>`;
 }
 // Reaktionen unter einer Nachricht: jedes Emoji einmal, ab zwei Reaktionen mit Anzahl
 function chatReacts(id) {
@@ -2042,7 +2165,7 @@ function openChatMenu(id, emojiMode) {
   const m = CHAT.msgs.find(x => x.id === id); if (!m) return;
   const mine = m.from === cfg.me, myR = (CHAT.msgs.find(x => x.react && x.re === id && x.from === cfg.me) || {}).react;
   const ic = (d) => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
-  $('#modal').innerHTML = `<div class="cm-ov" data-act="mclose-bg"><div class="cm-box ${mine ? 'me' : 'them'}" role="dialog" aria-modal="true" aria-label="Nachricht von ${mine ? 'dir' : esc(m.from)}">
+  $('#modal').innerHTML = `<div class="cm-ov" data-act="mclose-bg"><div class="cm-box ${mine ? 'me' : 'them'}" role="dialog" aria-modal="true" aria-label="Nachricht von ${mine ? 'dir' : nm(m.from)}">
     <div class="cm-emo" role="group" aria-label="Reagieren">${CM_EMOJI.map(e => `<button type="button" data-act="cm-react" data-id="${esc(id)}" data-v="${e}" aria-label="Reagieren mit ${e}" aria-pressed="${myR === e}">${e}</button>`).join('')}<button type="button" class="cm-plus" data-act="cm-emoji" data-id="${esc(id)}" aria-label="Eigenes Emoji wählen" aria-pressed="${!!myR && !CM_EMOJI.includes(myR)}">${myR && !CM_EMOJI.includes(myR) ? esc(myR) : ICON.plus.replace('width="16" height="16"', 'width="20" height="20"')}</button></div>
     ${emojiMode ? `<form class="cm-emo-in" id="cm-emo-form" data-id="${esc(id)}" novalidate><input id="cm-emo-in" placeholder="Emoji tippen" aria-label="Eigenes Emoji als Reaktion" maxlength="16" autocomplete="off" enterkeyhint="send"><button class="btn small" type="submit">Senden</button></form>` : ''}
     <div class="cm-msg">${esc(m.text)}</div>
@@ -2525,7 +2648,7 @@ async function deleteSpot(id, back = '#profil') {
 
 /* ---------- Oberfläche ---------- */
 let otherDayAsk = false;
-let view = '', verlaufTab = 'aktiv', notesFilter = 'Alle', builder = null, resetAsk = false, pendingRender = false;
+let view = '', verlaufTab = 'aktiv', notesFilter = 'Alle', builder = null, resetAsk = false, logoutAsk = false, pendingRender = false;
 const cal = { y: new Date().getFullYear(), m: new Date().getMonth(), sel: todayStr() };
 
 function toast(msg) {
@@ -2656,7 +2779,7 @@ function render() {
   const h = decodeURIComponent(location.hash.slice(1)) || 'start';
   const [name, arg] = h.includes(':') ? [h.slice(0, h.indexOf(':')), h.slice(h.indexOf(':') + 1)] : [h, ''];
   if (name !== view) {
-    resetAsk = otherDayAsk = false; if (view.startsWith('vault') && !name.startsWith('vault')) lockVault();
+    resetAsk = logoutAsk = otherDayAsk = false; if (view.startsWith('vault') && !name.startsWith('vault')) lockVault();
     if (view === 'kamera') stopCamera();
     if (view === 'spot' && name !== 'spot') closeEditor();
     if (view === 'spots' && name !== 'spots' && SPOT.view) { cancelAnimationFrame(SPOT.view.raf); SPOT.view = null; }
@@ -3789,7 +3912,7 @@ function viewRecoveryKey() {
 function viewRestore() {
   return `<div class="form">
     <h1 class="display" style="font-size:30px">Vault wieder&shy;herstellen</h1>
-    <p class="muted" style="margin:0">Gib deinen Wiederherstellungsschlüssel ein. Danach legst du einen Code für dieses Handy fest und deine Bilder werden aus der Tabelle geladen.</p>
+    <p class="muted" style="margin:0">Gib deinen Wiederherstellungsschlüssel ein. Danach legst du einen Code für dieses Handy fest und deine Bilder werden aus der Sicherung geladen.</p>
     ${vmeta() ? `<section class="card notice"><b>Ersetzt den Vault auf diesem Handy</b><span class="small">Der jetzige Vault und sein Schlüssel werden ersetzt. Bilder, die du nur darin gespeichert hast, gehen verloren. Die Sicherung in der Tabelle bleibt unangetastet, bis der neue Code festgelegt ist.</span></section>` : ''}
     <label>Wiederherstellungsschlüssel<textarea class="inp mono" id="rk-in" rows="2" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"></textarea></label>
     <div class="err" id="rk-err" hidden></div>
@@ -3822,7 +3945,7 @@ function viewVaultNew() {
     <label>Notiz<textarea id="vn-note" name="note" rows="3" maxlength="2000" placeholder="z. B. Pump nach B&T, Brust oben voller"></textarea></label>
     <div class="err" id="vn-err" hidden></div>
     <button class="btn primary" id="vn-save" type="submit">Im Vault speichern</button>
-    <span class="small muted" style="text-align:center">Wird verschlüsselt gespeichert und in eurer Tabelle gesichert. Lesbar nur mit deinem Schlüssel, ${nm(partner())} sieht es nie.</span>
+    <span class="small muted" style="text-align:center">Wird verschlüsselt gespeichert und in deinem Konto gesichert. Lesbar nur mit deinem Schlüssel, sonst sieht es niemand.</span>
   </form>`;
 }
 
@@ -4053,48 +4176,37 @@ function viewLegal(k) {
 }
 function viewSettings() {
   const waiting = pending.filter(p => !seenIds.has(p.id)).length;
-  const sv = scriptVersion == null ? '–' : scriptVersion >= SCRIPT_MIN ? `Version ${scriptVersion} ✓` : `Version ${scriptVersion} – bitte aktualisieren`;
   const hasVault = !!vmeta();
   return `<h1 class="display" style="font-size:30px">Einstellungen</h1>
     <div class="secl">Profil</div>
-    <div class="rows glass"><label class="row" style="min-height:72px">${avatar(cfg.me, 46)}<span style="display:flex;flex-direction:column"><b>${nm(cfg.me)}</b><span class="small muted">Profilbild sehen beide</span></span><span class="v" style="color:var(--fg);font-family:var(--body);font-weight:600">Ändern</span><input type="file" id="av-file2" accept="image/*" hidden></label></div>
+    <div class="rows glass"><label class="row" style="min-height:72px">${avatar(cfg.me, 46)}<span style="display:flex;flex-direction:column"><b>${nm(cfg.me)}</b><span class="small muted">Profilbild sehen deine Buddies</span></span><span class="v" style="color:var(--fg);font-family:var(--body);font-weight:600">Ändern</span><input type="file" id="av-file2" accept="image/*" hidden></label></div>
     <div class="secl">Vault</div>
     <div class="rows glass">
       ${hasVault ? `<button class="row" data-act="v-change">Vault-Code ändern<span class="v">• • • •</span></button>
       <button class="row" data-act="v-showkey">Wiederherstellungsschlüssel<span class="v"${vmeta().saved ? '' : ' style="color:var(--warn)"'}>${vmeta().saved ? 'anzeigen' : 'noch nicht notiert'}</span></button>
-      <div class="row">Sicherung in der Tabelle<span class="v">${vaultCloudText()}</span></div>
+      <div class="row">Sicherung im Konto<span class="v">${vaultCloudText()}</span></div>
       <button class="row" data-act="v-export">Backup als Datei<span class="v">sichern</span></button>
       <a class="row" href="#vault-wiederherstellen">Mit anderem Schlüssel wiederherstellen<span class="v">ersetzen</span></a>` : `<a class="row" href="#vault">Vault einrichten<span class="v">Code festlegen</span></a>
       <a class="row" href="#vault-wiederherstellen">Vault wiederherstellen<span class="v">mit Schlüssel</span></a>`}
       <label class="row">Backup-Datei laden<span class="v">Datei wählen</span><input type="file" id="v-import" accept="application/json,.json" hidden></label>
     </div>
-    <div class="secl">Sync mit Google-Tabelle</div>
-    <section class="card form">
-      <label>Sync-Adresse<input class="inp" id="s-url" value="${esc(cfg.url)}" placeholder="https://script.google.com/macros/s/…/exec" inputmode="url" autocomplete="off"></label>
-      <label>Sync-Schlüssel<input class="inp" id="s-key" value="${esc(cfg.key)}" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
-      <div class="err" id="s-err" hidden></div>
-      <button class="btn primary" data-act="s-save">Speichern & synchronisieren</button>
-    </section>
+    <div class="secl">Konto</div>
     <div class="rows glass">
-      <div class="row">Google-Skript<span class="v">${sv}</span></div>
+      <div class="row">E-Mail<span class="v">${esc(LS.get('acct.email', '') || '–')}</span></div>
+      ${PROFILES[cfg.me] && PROFILES[cfg.me].buddy_id ? `<button class="row" data-act="acct-copy">Buddy-ID<span class="v mono">#${esc(PROFILES[cfg.me].buddy_id)}</span></button>` : ''}
       <div class="row">Letzter Sync<span class="v">${lastSync ? fmtDate(lastSync) + ', ' + fmtTime(lastSync) : '–'}</span></div>
       <div class="row">Einträge<span class="v">${events.length} synchronisiert, ${waiting} wartend</span></div>
-      <div class="row">App-Version<span class="v">${APP_VERSION}</span></div>
     </div>
     <div class="secl">Über BUILT</div>
     <div class="rows glass"><a class="row" href="#ueber">Impressum, Datenschutz, Lizenzen<span class="v">Version ${APP_VERSION}</span></a></div>
     <div class="secl">Gerät</div>
-    <section class="card form" style="gap:12px">
-      <label class="tgl"><span>Entwickleroptionen</span><input type="checkbox" role="switch" id="dev-tgl" ${LS.get('dev', false) ? 'checked' : ''}><i aria-hidden="true"></i></label>
-      ${LS.get('dev', false) ? `<b>Person wechseln</b><span class="small muted">Nur nötig, wenn diese App auf dem falschen Handy eingerichtet wurde. Ein laufendes Training wird dabei verworfen, der Vault gesperrt.</span>
-      <div class="pick">${PEOPLE.map(p => `<button data-act="s-me" data-v="${p}" aria-pressed="${cfg.me === p}">${p}</button>`).join('')}</div>
-      <b style="margin-top:6px">Trainings von ${nm(partner())} bearbeiten</b><span class="small muted">Zum Korrigieren falscher Einträge. ${nm(partner())} sieht die Änderung, Steigerung und Statistik rechnen damit.</span>
-      <div class="devlist">${st().workouts.filter(w => w.person === partner()).slice(-devN).reverse().map(w => `<div class="devrow">${dayChip(w.data.day, w.person)}<span class="mono small" style="flex:1">${fmtDate(w.ts)} · ${w.data.entries.reduce((a2, en) => a2 + en.sets.length, 0)} Sätze</span><button class="btn small" type="button" data-act="w-edit" data-id="${esc(w.id)}">Bearbeiten</button></div>`).join('') || `<span class="small muted">Noch keine Trainings von ${nm(partner())}.</span>`}</div>
-      ${st().workouts.filter(w => w.person === partner()).length > devN ? `<button class="btn small ghost" type="button" data-act="dev-more" style="align-self:flex-start">Ältere laden (${st().workouts.filter(w => w.person === partner()).length - devN} weitere)</button>` : ''}` : ''}
-    </section>
     <section class="card"><b>Daten auf diesem Handy zurücksetzen</b>
-      <span class="small muted">Löscht nur die Kopie des Trainingslogs auf diesem Handy. Beim nächsten Sync wird alles aus der Tabelle neu geladen. Der Vault bleibt erhalten.${waiting ? ` <b>${waiting} noch nicht gesendete Einträge gehen dabei verloren.</b>` : ''}</span>
+      <span class="small muted">Löscht nur die Kopie des Trainingslogs auf diesem Handy. Beim nächsten Sync wird alles aus deinem Konto neu geladen. Der Vault bleibt erhalten.${waiting ? ` <b>${waiting} noch nicht gesendete Einträge gehen dabei verloren.</b>` : ''}</span>
       ${resetAsk ? `<div class="btnrow"><button class="btn small danger" data-act="reset-yes">Ja, zurücksetzen</button><button class="btn small ghost" data-act="reset-no">Abbrechen</button></div>` : `<button class="btn danger" data-act="reset-ask">Zurücksetzen</button>`}
+    </section>
+    <section class="card"><b>Abmelden</b>
+      <span class="small muted">Meldet dieses Handy von deinem Konto ab und entfernt deine Trainingsdaten und Chats von diesem Handy. In deinem Konto bleibt alles erhalten. Der Vault bleibt verschlüsselt auf dem Handy.${waiting ? ` <b>${waiting} noch nicht gesendete Einträge gehen dabei verloren.</b>` : ''}</span>
+      ${logoutAsk ? `<div class="btnrow"><button class="btn small danger" data-act="logout-yes">Ja, abmelden</button><button class="btn small ghost" data-act="logout-no">Abbrechen</button></div>` : `<button class="btn ghost" data-act="logout-ask">Abmelden</button>`}
     </section>`;
 }
 const musOpen = new Set();
@@ -4102,11 +4214,9 @@ document.addEventListener('toggle', e => { const d = e.target; if (d && d.matche
 function vaultCloudText() {
   const m = vmeta(), c = vcloud();
   if (!m || m.v !== 2) return 'nach dem nächsten Öffnen';
-  if (!cfg.url) return 'Tabelle nicht verbunden';
-  if (scriptVersion != null && scriptVersion < 3) return 'Skript-Version 3 nötig';
   if (vaultSyncing) return 'läuft …';
   if (!c) return 'noch nicht gesichert';
-  if (c.err) return c.err === 'vault_denied' ? 'Zugang abgelehnt' : 'zuletzt fehlgeschlagen';
+  if (c.err) return c.err === 'network' || c.err === 'offline' ? 'offline, folgt' : 'zuletzt fehlgeschlagen';
   return `${c.n} ${c.n === 1 ? 'Bild' : 'Bilder'} · ${fmtDate(c.at)}, ${fmtTime(c.at)}`;
 }
 /* ---------- Anmeldung (ab 3.0) ----------
@@ -4189,7 +4299,7 @@ async function onbAfterLogin() {
 }
 // Lokale Daten eines 2.2.1-Geräts auf die neue Profil-ID umziehen (Vault-Schlüssel, Galerie, Entwurf)
 function onbMoveLocal(old, id) {
-  ['vault.', 'vault.tok.', 'vault.cloud.', 'vault.tomb.', 'gal.key.', 'gal.tomb.', 'spot.tomb.', 'chat.hidden.'].forEach(k => {
+  ['vault.', 'vault.tok.', 'vault.cloud.', 'vault.tomb.', 'gal.key.', 'gal.tomb.', 'spot.tomb.', 'chat.hidden.', 'chat.msgs.', 'chat.read.'].forEach(k => {
     const v = localStorage.getItem('hb.' + k + old); if (v != null && localStorage.getItem('hb.' + k + id) == null) localStorage.setItem('hb.' + k + id, v);
   });
   // noch nicht gesendete eigene Einträge aus 2.2.1 behalten
@@ -4360,7 +4470,6 @@ const actions = {
   'pk-clear': () => { PK.sel = ''; renderPick(); if (PK.onSel && PK.ctx === 'merge') PK.onSel(); const q = $('#pk-q'); if (q) q.focus(); },
   'pk-new': () => { pkKeep(); const snap = PK; libForm(null, { name: PK.q, tk: DAY_TONE[PK.day], done: id => { PK = snap; PK.sel = id; PK.q = ''; snap.reopen(); if (PK && PK.ctx === 'swap' && PK.onSel) PK.onSel(libGet(id)); }, cancel: () => { PK = snap; snap.reopen(); } }); },
   'me-pick': t => { const k = t.dataset.m; if (LABEL_VIEW[k]) musEd.view = LABEL_VIEW[k]; else if (FRONT_IDS.has(k) && !BACK_IDS.has(k)) musEd.view = 'front'; else if (BACK_IDS.has(k) && !FRONT_IDS.has(k)) musEd.view = 'back'; const m2 = musEd.m; if (m2.p.includes(k)) { m2.p = m2.p.filter(y => y !== k); m2.s.push(k); } else if (m2.s.includes(k)) m2.s = m2.s.filter(y => y !== k); else m2.p.push(k); musEdRender(k); },
-  'dev-more': () => { devN += 8; render(); },
   'w-del': t => { wDelAsk = t.dataset.id; render(); },
   'w-del-no': () => { wDelAsk = null; render(); },
   'w-del-yes': t => {
@@ -4395,7 +4504,7 @@ const actions = {
   'spot-replay': t => openSpotReplay(t.dataset.id),
   'cm-del': t => {
     const m = CHAT.msgs.find(x => x.id === t.dataset.id); if (!m) return;
-    sheet(`<h2>Nachricht löschen?</h2><div class="cdel-prev">${esc(m.text)}</div><p class="muted" style="margin:0">Sie verschwindet bei dir und bei ${esc(m.to)}.</p>
+    sheet(`<h2>Nachricht löschen?</h2><div class="cdel-prev">${esc(m.text)}</div><p class="muted" style="margin:0">Sie verschwindet bei dir und bei ${nm(m.to)}.</p>
       <div class="btnrow col"><button class="btn danger" data-act="cm-del-yes" data-id="${esc(m.id)}">Für beide löschen</button><button class="btn ghost" data-act="mclose">Abbrechen</button></div>`);
   },
   'cm-del-yes': t => { $('#modal').innerHTML = ''; chatDelete(t.dataset.id); },
@@ -4429,8 +4538,18 @@ const actions = {
   'v-del-yes': async t => { await deleteVaultEntry(t.dataset.id); if (VAULT.urls[t.dataset.id]) { URL.revokeObjectURL(VAULT.urls[t.dataset.id]); delete VAULT.urls[t.dataset.id]; } VAULT.del = null; await loadVault(); toast('Bild gelöscht'); render(); },
   'v-change': () => { lockVault(); VAULT.mode = 'old'; location.hash = '#vault'; render(); },
   'v-export': () => exportVault(),
-  's-save': async () => { const ok = await testAndSave($('#s-url').value, $('#s-key').value, $('#s-err')); if (ok) { toast('Verbunden'); sync({ overlay: true }); } },
-  's-me': t => { cfg.me = t.dataset.v; LS.set('cfg', cfg); builder = null; draft = null; saveDraft(); lockVault(); invalidate(); loadChat(); toast(`Du bist jetzt ${cfg.me}`); render(); loadSpots().then(() => { safeRender(); if (cfg.url) { spotSync(); chatSync(); } }); },
+  'acct-copy': () => { try { navigator.clipboard.writeText('#' + PROFILES[cfg.me].buddy_id); toast('Buddy-ID kopiert'); } catch (e) {} },
+  'logout-ask': () => { logoutAsk = true; render(); },
+  'logout-no': () => { logoutAsk = false; render(); },
+  'logout-yes': async () => {
+    try { await sb.auth.signOut(); } catch (e) { /* offline: lokal trotzdem abmelden */ }
+    const me = cfg.me; lockVault();
+    ['chat.msgs.', 'chat.read.', 'chat.key.', 'chat.tomb.'].forEach(k => localStorage.removeItem('hb.' + k + me));
+    events = []; pending = []; lastSeq = 0; lastSync = null; seenIds = new Set(); saveLog(); LS.set('lastSync', null);
+    cfg = { me: '', url: '', key: '' }; LS.set('cfg', cfg); LS.set('acct.email', ''); PROFILES = {}; CREW = null; LS.set('profiles', {}); LS.set('crew', null); computePeople();
+    CHAT.msgs = []; CHAT.hold = []; CHAT.loaded = false; CK.state = 'none'; CK.for = null; logoutAsk = false; builder = null; draft = null; saveDraft(); invalidate();
+    location.hash = ''; render();
+  },
   'reset-ask': () => { resetAsk = true; render(); },
   'reset-no': () => { resetAsk = false; render(); },
   'reset-yes': () => { events = []; pending = []; lastSeq = 0; lastSync = null; seenIds = new Set(); saveLog(); LS.set('lastSync', null); resetAsk = false; invalidate(); builder = null; sync({ overlay: true }); render(); },
@@ -4514,7 +4633,6 @@ document.addEventListener('change', e => {
   if ((t.id === 'av-file' || t.id === 'av-file2') && t.files[0]) setAvatar(t.files[0]);
   if (t.id === 'v-import' && t.files[0]) readBackupFile(t.files[0]);
   if ((t.id === 'sp-file' || t.id === 'sp-file2') && t.files[0]) openEditor(t.files[0]);
-  if (t.id === 'dev-tgl') { LS.set('dev', t.checked); render(); }
   if (t.dataset.f === 'w') { const go = () => { if (draft && draft.items[+t.dataset.i] && draft.items[+t.dataset.i].ex.type === 'bw' && propagateDown(+t.dataset.i, +t.dataset.j)) { saveDraft(); rerenderCard(+t.dataset.i); } }; if (view === 'bearbeiten' && edraft) withEd(go); else go(); }
   if (t.id === 'vn-file' && t.files[0]) {
     if (VAULT.photoUrl) URL.revokeObjectURL(VAULT.photoUrl);
