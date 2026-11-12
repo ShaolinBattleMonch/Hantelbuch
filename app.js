@@ -8,7 +8,7 @@ const APP_VERSION = '3.0.0';
 const SCRIPT_MIN = 0;            // Google-Skript entfällt ab 3.0
 /* Supabase: Projekt in Frankfurt. Der Publishable Key ist öffentlich, Zugriff regeln die Zeilenrechte in der Datenbank. */
 const SB_URL = (() => { try { return localStorage.getItem('built.sb.url') || 'https://orfbfukamifoqpnpdckb.supabase.co'; } catch (e) { return 'https://orfbfukamifoqpnpdckb.supabase.co'; } })();
-const V3_SPOTS = false, V3_CHAT = true;
+const V3_CHAT = true;
 const SB_KEY = 'sb_publishable_lRri8xqx8PzRR81-ZfarBg_sRJO9TSo';
 const sb = window.supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'built.auth' } });
 /* Personen: ich, dann meine Crew, dann Freunde. Kennung ist die Profil-ID, angezeigt wird der Name. */
@@ -22,7 +22,9 @@ function computePeople() {
   PEOPLE = [...new Set([me, ...crew, ...friends].filter(Boolean))];
 }
 computePeople();
-const pname = p => (PROFILES[p] && PROFILES[p].name) || (p && p.length < 20 ? p : 'Buddy');
+const pname = p => (typeof p === 'string' && p.startsWith('crew:') ? (CREW && CREW.name) || 'Crew' : (PROFILES[p] && PROFILES[p].name) || (p && p.length < 20 ? p : 'Buddy'));
+const crewKey = () => (CREW && CREW.id ? 'crew:' + CREW.id : null);
+const isCrewKey = p => typeof p === 'string' && p.startsWith('crew:');
 const nm = p => esc(pname(p));
 const DAYS = ['A', 'B', 'C', 'D', 'E', 'F'];    // interne Kennung der Trainingstage (bis zu 6 pro Plan), angezeigt werden die Kürzel
 const DAY_SHORT = { A: 'B&T', B: 'R&B', C: 'B&B', D: 'T4', E: 'T5', F: 'T6' };
@@ -399,18 +401,19 @@ function flameStats(p) {
   const ws = st().workouts.filter(w => w.person === p).sort((a, b) => new Date(a.ts) - new Date(b.ts));
   const counts = Object.fromEntries(DAYS.map(d => [d, 0])), perWeek = new Map();
   ws.forEach(w => { counts[w.data.day]++; const k = weekOf(w.ts); if (!perWeek.has(k)) perWeek.set(k, []); perWeek.get(k).push(w); });
-  const cur = weekOf(Date.now());
-  let k = (perWeek.get(cur) || []).length >= 3 ? cur : prevWeek(cur), streak = 0;
-  while ((perWeek.get(k) || []).length >= 3) { streak++; k = prevWeek(k); }
-  return { counts, streak, week: perWeek.get(cur) || [] };
+  // Wochenflamme: so viele Trainings wie das persönliche Wochenziel dieser Woche (Änderungen gelten ab dem nächsten Montag)
+  const cur = weekOf(Date.now()), full = k => (perWeek.get(k) || []).length >= weekGoal(p, k);
+  let k = full(cur) ? cur : prevWeek(cur), streak = 0;
+  while (full(k)) { streak++; k = prevWeek(k); }
+  return { counts, streak, week: perWeek.get(cur) || [], goal: weekGoal(p, cur) };
 }
 /* Flammen-Liste: je Person Wochenflamme mit Streak, Antippen klappt die Tagesflammen auf */
 const FLAME_OPEN = new Set();
 function flameList() {
   const ppl = PEOPLE.map(p => ({ p, x: flameStats(p) })).sort((a, b) => b.x.streak - a.x.streak || (a.p === cfg.me ? -1 : 1));
   const rows = ppl.map(({ p, x }) => {
-    const open = FLAME_OPEN.has(p), n = x.week.length;
-    const wk = n >= 3 ? `${n} von 3 · Wochenflamme sicher` : `${n} von 3 diese Woche`;
+    const open = FLAME_OPEN.has(p), n = x.week.length, g = x.goal;
+    const wk = n >= g ? `${n}/${g} · Wochenflamme sicher` : `${n}/${g} diese Woche`;
     return `<div class="fl-row"><button class="fl-head" data-act="fl-toggle" data-p="${esc(p)}" aria-expanded="${open}">${avatar(p, 36)}<span class="fl-who"><b>${p === cfg.me ? 'Du' : nm(p)}</b><span class="small muted">${wk}</span></span><span class="fl-n" aria-label="${x.streak} ${x.streak === 1 ? 'Woche' : 'Wochen'} Streak"><img src="${FLAME.W}" alt=""><b>${x.streak}</b></span></button>
       ${open ? `<div class="fl-days">${DAYS.filter(d => x.counts[d] || pdays(p).includes(d)).map(d => `<span class="fl-day"><img src="${FLAME[d]}" alt=""><span class="fl-k" style="color:${TONE_HEX[DAY_TONE[d]]}">${esc(dl(d, p))}</span><b class="mono">${x.counts[d]}</b></span>`).join('')}</div>` : ''}</div>`;
   }).join('');
@@ -421,19 +424,20 @@ function viewDone(id) {
   if (!w) return null;
   const p = w.person, d = w.data.day, wk = weekOf(w.ts);
   const week = s.workouts.filter(x => x.person === p && weekOf(x.ts) === wk).sort((a, b) => new Date(a.ts) - new Date(b.ts));
-  const n = week.findIndex(x => x.id === id) + 1, full = n === 3;
+  const g = weekGoal(p, wk), n = week.findIndex(x => x.id === id) + 1, full = n === g;
+  const wort = k => ['', 'einem', 'zwei', 'drei', 'vier', 'fünf', 'sechs'][k] || k, rest = g - n;
   const streak = flameStats(p).streak;
   const wd = new Date(w.ts).toLocaleDateString('de-DE', { weekday: 'long' });
   const head = full
     ? `<h1 class="display done-t">Woche<br>geschafft</h1>
        <div class="mono done-s"><b>Wochenstreak ${streak}</b></div>
-       <div class="mono muted small done-l">${streak > 1 ? `${streak} Wochen in Folge mit drei Trainings` : 'Deine erste Woche mit drei Trainings in Folge'}</div>`
+       <div class="mono muted small done-l">${streak > 1 ? `${streak} Wochen in Folge mit ${g === 1 ? 'einem Training' : wort(g) + ' Trainings'}` : 'Deine erste Woche mit erreichtem Wochenziel'}</div>`
     : `<h1 class="display done-k t-${DAY_TONE[d]}">${esc(wlabel(w))}</h1>
        <div class="done-s">${esc(w.data.title)}</div>
-       <div class="mono muted small done-l">${n < 3 ? `${n} von 3 diese Woche · noch ${n === 1 ? 'zwei' : 'eins'} bis zur Wochenflamme` : `${n}. Training diese Woche · Wochenflamme schon sicher`}</div>`;
+       <div class="mono muted small done-l">${n < g ? `${n} von ${g} diese Woche · noch ${rest === 1 ? 'eins' : wort(rest)} bis zur Wochenflamme` : `${n}. Training diese Woche · Wochenflamme schon sicher`}</div>`;
   const abTxt = w.abort ? `<div class="mono small done-ab">Abgebrochen · ${w.abort.done} von ${w.abort.plan} Sätzen</div>` : '';
-  const slots = week.slice(0, 3).map(x => `<div class="done-slot"><div class="glass${x.id === id ? ' new' : ''}"><img src="${FLAME[x.data.day]}" alt="${esc(dl(x.data.day, p))}"></div><span class="eyebrow">${new Date(x.ts).toLocaleDateString('de-DE', { weekday: 'short' }).replace('.', '')}</span></div>`);
-  while (slots.length < 3) slots.push('<div class="done-slot"><div class="empty-slot"></div><span class="eyebrow">·</span></div>');
+  const slots = week.slice(0, Math.max(g, Math.min(n, 6))).map(x => `<div class="done-slot"><div class="glass${x.id === id ? ' new' : ''}"><img src="${FLAME[x.data.day]}" alt="${esc(dl(x.data.day, p))}"></div><span class="eyebrow">${new Date(x.ts).toLocaleDateString('de-DE', { weekday: 'short' }).replace('.', '')}</span></div>`);
+  while (slots.length < g) slots.push('<div class="done-slot"><div class="empty-slot"></div><span class="eyebrow">·</span></div>');
   return `<div class="done">
     <div class="done-top"><span class="eyebrow">${esc(wd)} · KW ${isoWeek(w.ts)}</span><a class="iconbtn glass" href="#start" aria-label="Schließen">${ICON.x}</a></div>
     <img class="done-hero" src="${full ? FLAME_HERO.W : FLAME_HERO[d]}" alt="${full ? 'Wochenflamme' : 'Flamme für ' + esc(dl(d, p))}">
@@ -470,6 +474,9 @@ function avatar(p, size = 32) {
 }
 
 const ICON = {
+  qr: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M4 12h16"/></svg>',
+  users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/></svg>',
+  more: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
   book: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2z"/><path d="M4 20a2 2 0 0 0 2 2h13v-4"/><path d="M9 7h6"/></svg>',
   pen: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg>',
   mail: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
@@ -1128,9 +1135,9 @@ function diffText(d) {
 const diffList = list => `<ul class="diff">${list.map(d => `<li><span class="s">${DIFF_SIGN[d.k] || '~'}</span><span>${esc(diffText(d))}</span></li>`).join('')}</ul>`;
 
 function bellItems() {
-  const s = st(), me = cfg.me, other = partner(), out = [];
-  if (!other || !hasCrew() || !(CREW.members || []).includes(other)) return out;   // Planänderungen nur innerhalb der Crew
-  DAYS.forEach(d => {
+  const s = st(), me = cfg.me, out = [];
+  // Planänderungen kommen nur aus der eigenen Crew, je Mitglied und Tag die letzte gemeinsame Änderung
+  crewMates().forEach(other => DAYS.forEach(d => {
     const pc = s.lastShared[other + '|' + d];
     if (!pc) return;
     const mine = s.plans[me][d], theirs = s.plans[other][d];
@@ -1141,7 +1148,7 @@ function bellItems() {
     const myK = s.lastAction[me + '|' + d] ?? -1;
     const status = !dec && pc.k > myK ? 'open' : dec && dec.decision === 'dismissed' ? 'dismissed' : 'diverged';
     out.push({ day: d, pc, diff, status });
-  });
+  }));
   return out;
 }
 const openCount = () => (cfg.me && cfg.me.length > 20 ? bellItems().filter(x => x.status === 'open').length + notices().length : 0);
@@ -1276,6 +1283,7 @@ async function loadPeople() {
   } else CREW = null;
   LS.set('crew', CREW);
   computePeople();
+  try { await loadSocial(fr.data || []); } catch (e) { /* nicht kritisch */ }
   return before !== PEOPLE.join();
 }
 const evRow = e => ({ id: e.id, ts: e.ts, type: e.type, summary: e.summary || '', data: e.data || {}, private: !!e.private, crew_id: e.private ? null : (e.crew || (CREW ? CREW.id : null)) });
@@ -1317,6 +1325,19 @@ function sync({ overlay = false, quiet = false } = {}) {
         ui.set(40 + 56 * Math.min(1, guard / 4), 'Lade Verlauf …', lastSeq > start ? `${events.length} Einträge` : 'Alles aktuell');
         if ((r.data || []).length < 500) break;
       }
+      // Neue Buddys oder Crew-Mitglieder: deren ältere Einträge nachladen (lagen vor meinem letzten Stand)
+      const full = LS.get('people.full', []), fresh = PEOPLE.filter(p => p !== cfg.me && !full.includes(p));
+      if (fresh.length && start > 0) {
+        let from = 0;
+        for (let g2 = 0; g2 < 100; g2++) {
+          const r = await sb.from('events').select('id,seq,user_id,ts,type,summary,data,private,crew_id').in('user_id', fresh).gt('seq', from).order('seq', { ascending: true }).limit(500);
+          if (r.error) throw sbErr(r.error);
+          const rows = r.data || []; const keep = lastSeq; rows.forEach(addSynced); lastSeq = Math.max(keep, lastSeq);
+          if (rows.length < 500) break; from = rows[rows.length - 1].seq;
+        }
+        events.sort((a, b) => a.seq - b.seq); invalidate();
+      }
+      LS.set('people.full', PEOPLE.slice());
       pending = pending.filter(p => !seenIds.has(p.id));
       saveLog();
       // Bibliothek: fester Grundbestand (owner leer) und eigene bzw. Crew-Übungen
@@ -1749,45 +1770,66 @@ const chunk = str => { const out = []; for (let i = 0; i < str.length; i += VCHU
 
 let spotSyncing = null;
 function spotSync() {
-  if (!V3_SPOTS) return Promise.resolve();   // neue Spot-Verschlüsselung folgt in Schritt 4
   if (spotSyncing) return spotSyncing;
-  if (!cfg.me || !cfg.url || !cfg.key || navigator.onLine === false || (scriptVersion != null && scriptVersion < 4)) return Promise.resolve();
+  if (!cfg.me || cfg.key !== 'supabase' || navigator.onLine === false) return Promise.resolve();
   const me = cfg.me;
+  /* Ab 3.0: Bild verschlüsselt im Speicher „spots/<ich>/<id>“, Angaben in der Tabelle „spots“. Ein Schlüssel pro Spot,
+     verpackt für jeden Empfänger (alle Buddys und die Crew) wie beim Chat. Empfänger stehen in „spot_recipients“. */
   spotSyncing = (async () => {
     let changed = false;
     try {
-      const list = (await call({ action: 'spot_list' }, 30000)).spots || [];
-      const inSheet = new Set(list.map(x => x.id)), now = Date.now();
-      // gelöschte eigene Spots auch aus der Tabelle nehmen
+      if (!(await ensureChatKey())) return;
+      const lr = await sb.from('spots').select('id,owner,created_at,iv,ct,keys,file_path');
+      if (lr.error) throw lr.error;
+      const list = lr.data || [], inDb = new Set(list.map(x => x.id)), now = Date.now();
       const tombs = LS.get('spot.tomb.' + me, []);
-      for (const id of [...tombs]) { if (inSheet.has(id)) { await call({ action: 'spot_del', person: me, id }, 30000); inSheet.delete(id); } tombs.splice(tombs.indexOf(id), 1); LS.set('spot.tomb.' + me, tombs); }
+      const drop = async x => { await sb.from('spots').delete().eq('id', x.id); if (x.file_path) await sb.storage.from('spots').remove([x.file_path]); inDb.delete(x.id); };
+      for (const id of [...tombs]) { const x = list.find(y => y.id === id); if (x) await drop(x); tombs.splice(tombs.indexOf(id), 1); LS.set('spot.tomb.' + me, tombs); }
       // eigene, noch nicht geteilte Spots hochladen
       for (const g of await SDB.all('gallery')) {
         if (g.person !== me || g.shared || now - new Date(g.created) > SPOT_LIFE) continue;
-        const enc = await encBytes(await spotKey(), new Uint8Array(g.img));
-        const body = JSON.stringify({ id: g.id, person: me, created: g.created, meta: g.meta, iv: enc.iv, ct: b64e(enc.ct) });
-        await call({ action: 'spot_put', person: me, id: g.id, created: g.created, chunks: chunk(body) }, 120000);
-        await SDB.put('gallery', { ...g, shared: true }); inSheet.add(g.id); changed = true;
+        const to = others().filter(p => PROFILES[p] && (PROFILES[p].friend || crewMates().includes(p)));
+        const rcpts = {}; for (const p of to) { const pub = await peerPub(p); if (pub) rcpts[p] = pub; }
+        const mk = crypto.getRandomValues(new Uint8Array(32)), key = await crypto.subtle.importKey('raw', mk, 'AES-GCM', false, ['encrypt']);
+        const img = await encBytes(key, new Uint8Array(g.img));
+        const path = `${me}/${g.id}`;
+        const up = await sb.storage.from('spots').upload(path, img.ct, { contentType: 'application/octet-stream', upsert: true });
+        if (up.error) throw up.error;
+        const meta = await encJSON(key, { meta: g.meta || {}, iiv: img.iv, created: g.created });
+        const keys = { _pk: CK.pub };
+        for (const [id, pub] of Object.entries({ ...rcpts, [me]: CK.pub })) { const w = await encBytes(await sharedKey(pub), mk); keys[id] = w.iv + '.' + b64e(w.ct); }
+        // nur anlegen (Ändern ist nicht erlaubt); gibt es ihn schon, war ein früherer Versuch erfolgreich
+        const ins = await sb.from('spots').insert({ id: g.id, created_at: g.created, expires_at: new Date(new Date(g.created).getTime() + SPOT_MAX).toISOString(), iv: meta.iv, ct: b64e(meta.ct), keys, file_path: path });
+        if (ins.error && sbErr(ins.error).code !== 'duplicate') throw ins.error;
+        const rr = Object.keys(rcpts).map(user_id => ({ spot_id: g.id, user_id }));
+        if (rr.length) await sb.from('spot_recipients').upsert(rr, { onConflict: 'spot_id,user_id', ignoreDuplicates: true });
+        await SDB.put('gallery', { ...g, shared: true, to: Object.keys(rcpts) }); inDb.add(g.id); changed = true;
       }
-      // eigene aufräumen: nach 3 Tagen, wenn gesehen; sonst spätestens nach 30 Tagen
+      // eigene aufräumen: nach 3 Tagen, wenn alle Empfänger ihn gesehen haben; sonst spätestens nach 30 Tagen
+      const mineG = await SDB.all('gallery');
       for (const x of list) {
-        if (x.person !== me) continue;
-        const age = now - new Date(x.created);
-        if ((age > SPOT_LIFE && others().every(o => spotSeenBy(x.id, o))) || age > SPOT_MAX) { await call({ action: 'spot_del', person: me, id: x.id }, 30000); inSheet.delete(x.id); }
+        if (x.owner !== me) continue;
+        const age = now - new Date(x.created_at), g = mineG.find(y => y.id === x.id), to = (g && g.to) || others();
+        if ((age > SPOT_LIFE && to.every(o => spotSeenBy(x.id, o))) || age > SPOT_MAX) await drop(x);
       }
-      // neue Spots der anderen laden
+      // neue Spots der anderen laden und entschlüsseln
       const have = new Set((await SDB.all('inbox')).map(x => x.id));
       for (const x of list) {
-        if (x.person === me || !PEOPLE.includes(x.person) || have.has(x.id) || spotSeenBy(x.id, me) || now - new Date(x.created) > SPOT_MAX) continue;
-        const g = await call({ action: 'spot_get', id: x.id }, 120000);
-        const p = JSON.parse(g.chunks.join(''));
-        const bytes = await decBytes(await spotKey(), p.iv, b64d(p.ct));
-        await SDB.put('inbox', { id: x.id, person: x.person, created: x.created, meta: p.meta || {}, img: bytes.buffer });
-        changed = true;
+        if (x.owner === me || !PEOPLE.includes(x.owner) || have.has(x.id) || spotSeenBy(x.id, me) || now - new Date(x.created_at) > SPOT_MAX) continue;
+        try {
+          const k = x.keys || {}, w = k[me]; if (!w || !k._pk) continue;
+          const [wiv, wct] = w.split('.');
+          const mk = await decBytes(await sharedKey(k._pk), wiv, b64d(wct));
+          const key = await crypto.subtle.importKey('raw', mk, 'AES-GCM', false, ['decrypt']);
+          const meta = await decJSON(key, x.iv, b64d(x.ct));
+          const dl_ = await sb.storage.from('spots').download(x.file_path); if (dl_.error) continue;
+          const bytes = await decBytes(key, meta.iiv, new Uint8Array(await dl_.data.arrayBuffer()));
+          await SDB.put('inbox', { id: x.id, person: x.owner, created: new Date(x.created_at).toISOString(), meta: meta.meta || {}, img: bytes.buffer });
+          changed = true;
+        } catch (e) { /* nicht lesbar: überspringen */ }
       }
-      // Verschwundene aus dem Zwischenspeicher entfernen. Gesehene bleiben bis zum Ablauf der Spot-Frist,
-      // damit sie im Chat neben deiner Antwort stehen können.
-      for (const x of await SDB.all('inbox')) if (!inSheet.has(x.id) || (spotSeenBy(x.id, me) && now - new Date(x.created) > SPOT_LIFE)) { await SDB.del('inbox', x.id); changed = true; }
+      // Verschwundene aus dem Zwischenspeicher entfernen. Gesehene bleiben bis zum Ablauf der Spot-Frist.
+      for (const x of await SDB.all('inbox')) if (!inDb.has(x.id) || (spotSeenBy(x.id, me) && now - new Date(x.created) > SPOT_LIFE)) { await SDB.del('inbox', x.id); changed = true; }
     } catch (e) { /* nächster Versuch beim nächsten Sync */ }
     finally {
       spotSyncing = null;
@@ -1854,7 +1896,7 @@ function loadChat() {
   // Nachrichten aus 2.2.1 nennen Personen beim Namen: auf Profil-IDs abbilden
   const all = (Array.isArray(raw) ? raw : []).filter(m => m && typeof m.id === 'string' && typeof m.text === 'string')
     .map(m => ({ ...m, from: legacyId(m.from), to: legacyId(m.to), ...(m.spotOwner ? { spotOwner: legacyId(m.spotOwner) } : {}) }));
-  const known = m => PEOPLE.includes(m.from) && PEOPLE.includes(m.to);
+  const known = m => PEOPLE.includes(m.from) && (PEOPLE.includes(m.to) || m.to === crewKey());
   CHAT.msgs = all.filter(known);
   CHAT.hold = all.filter(m => !known(m));   // Person (noch) nicht in der Liste: aufheben, nicht verwerfen
   const rd = chatReadMap(), rd2 = {}; Object.entries(rd).forEach(([k, v]) => { rd2[legacyId(k)] = v; });
@@ -1863,15 +1905,17 @@ function loadChat() {
 }
 function pruneChat() { const lim = Date.now() - CHAT_DAYS * 864e5, keep = m => m.pend || new Date(m.ts).getTime() > lim; CHAT.msgs = CHAT.msgs.filter(keep); CHAT.hold = (CHAT.hold || []).filter(keep); }
 function saveChat() { LS.set(chatLS(), [...CHAT.msgs, ...(CHAT.hold || [])]); }
-const chatWith = p => CHAT.msgs.filter(m => (m.from === p && m.to === cfg.me) || (m.from === cfg.me && m.to === p));
+// Chat-Partner: eine Person oder die Crew („crew:<id>“, Nachrichten an alle Mitglieder)
+const chatWith = p => CHAT.msgs.filter(m => (isCrewKey(p) ? m.to === p : (m.from === p && m.to === cfg.me) || (m.from === cfg.me && m.to === p)));
+const chatTargets = () => [...others(), ...(crewKey() ? [crewKey()] : [])];
 const chatReadMap = () => LS.get('chat.read.' + cfg.me, {}) || {};
-const chatUnread = p => { const r = chatReadMap()[p] || ''; return CHAT.msgs.filter(m => m.from === p && m.to === cfg.me && m.ts > r).length; };
-const chatUnreadAll = () => others().reduce((a, p) => a + chatUnread(p), 0);
+const chatUnread = p => { const r = chatReadMap()[p] || ''; return chatWith(p).filter(m => m.from !== cfg.me && !m.react && m.ts > r).length; };
+const chatUnreadAll = () => chatTargets().reduce((a, p) => a + chatUnread(p), 0);
 function chatMarkRead(p) {
-  const last = chatWith(p).filter(m => m.from === p).map(m => m.ts).sort().pop(); if (!last) return;
+  const last = chatWith(p).filter(m => m.from !== cfg.me).map(m => m.ts).sort().pop(); if (!last) return;
   const r = chatReadMap(); if (r[p] === last) return; r[p] = last; LS.set('chat.read.' + cfg.me, r);
 }
-const chatPeers = () => others().filter(p => chatWith(p).length).sort((a, b) => (chatWith(b).pop().ts).localeCompare(chatWith(a).pop().ts));
+const chatPeers = () => chatTargets().filter(p => chatWith(p).length).sort((a, b) => (chatWith(b).pop().ts).localeCompare(chatWith(a).pop().ts));
 
 /* ---------- Chat-Schlüssel (ab 3.0) ----------
    Jedes Konto hat ein Schlüsselpaar (ECDH P-256). Der öffentliche Teil liegt in „keys“, der private nur auf dem Handy
@@ -1998,27 +2042,32 @@ function chatSync() {
       const tombs = LS.get('chat.tomb.' + cfg.me, []);
       for (const id of [...tombs]) { const r = await sb.from('messages').delete().eq('id', id).eq('sender', cfg.me); if (r.error) throw sbErr(r.error); tombs.splice(tombs.indexOf(id), 1); LS.set('chat.tomb.' + cfg.me, tombs); }
       for (const m of CHAT.msgs.filter(x => x.pend && x.from === cfg.me)) {
-        const pub = await peerPub(m.to); if (!pub) continue;              // Empfänger hat noch keinen Schlüssel: bleibt wartend
+        const crew = isCrewKey(m.to);
+        if (crew && m.to !== crewKey()) { m.fail = true; m.pend = false; changed = true; continue; }   // Crew inzwischen verlassen
+        const rcpts = {};
+        for (const id of crew ? crewMates() : [m.to]) { const pub = await peerPub(id); if (pub) rcpts[id] = pub; }
+        if (!crew && !rcpts[m.to]) continue;                               // Empfänger hat noch keinen Schlüssel: bleibt wartend
         const o = { text: m.text }; if (m.spot) { o.spot = m.spot; o.spotOwner = m.spotOwner; }
         if (m.re) o.re = m.re; if (m.react) o.react = m.react;
-        const s = await sealMsg(o, { [m.to]: pub });
-        const r = await sb.from('messages').insert({ id: m.id, recipient: m.to, ts: m.ts, ...s });
+        const s = await sealMsg(o, rcpts);
+        const r = await sb.from('messages').insert({ id: m.id, ...(crew ? { crew_id: CREW.id } : { recipient: m.to }), ts: m.ts, ...s });
         if (r.error && sbErr(r.error).code !== 'duplicate') { const c = sbErr(r.error).code; if (c === 'network') throw r.error; m.fail = true; changed = true; continue; }
         m.pend = false; m.sv = true; delete m.fail; changed = true;
       }
       if (changed) saveChat();
       const since = new Date(Date.now() - CHAT_DAYS * 864e5).toISOString();
-      const lr = await sb.from('messages').select('id,sender,recipient,ts,iv,ct,keys').is('crew_id', null).gt('ts', since).order('ts', { ascending: true });
+      const lr = await sb.from('messages').select('id,sender,recipient,crew_id,ts,iv,ct,keys').gt('ts', since).order('ts', { ascending: true });
       if (lr.error) throw sbErr(lr.error);
       const list = lr.data || [];
       const have = new Set(CHAT.msgs.map(m => m.id)), onServer = new Set(list.map(x => x.id));
       for (const x of list) {
         if (have.has(x.id)) { const m = CHAT.msgs.find(y => y.id === x.id); if (m && !m.sv) { m.sv = true; changed = true; } continue; }
-        if (!PEOPLE.includes(x.sender) || !PEOPLE.includes(x.recipient)) continue;
+        const to = x.crew_id ? 'crew:' + x.crew_id : x.recipient;
+        if (!PEOPLE.includes(x.sender) || !(PEOPLE.includes(to) || to === crewKey())) continue;
         try {
           const o = await openMsg(x);
           if (!o || typeof o.text !== 'string' || !o.text.trim()) continue;
-          const m = { id: x.id, from: x.sender, to: x.recipient, ts: new Date(x.ts).toISOString(), text: o.text.slice(0, CHAT_LEN), sv: true };
+          const m = { id: x.id, from: x.sender, to, ts: new Date(x.ts).toISOString(), text: o.text.slice(0, CHAT_LEN), sv: true };
           if (typeof o.spot === 'string' && PEOPLE.includes(o.spotOwner)) { m.spot = o.spot.slice(0, 64); m.spotOwner = o.spotOwner; }
           if (typeof o.re === 'string') m.re = o.re.slice(0, 64);
           if (m.re && isEmoji(o.react)) m.react = o.react;
@@ -2037,7 +2086,7 @@ function chatSync() {
   return chatSyncing;
 }
 function chatSend(to, text, ref = {}) {
-  text = String(text || '').trim().slice(0, CHAT_LEN); if (!text || !others().includes(to)) return;
+  text = String(text || '').trim().slice(0, CHAT_LEN); if (!text || !chatTargets().includes(to)) return;
   if (!CHAT.loaded) loadChat();
   const m = { id: uid(), from: cfg.me, to, ts: new Date().toISOString(), text, pend: true };
   if (ref.spot) { m.spot = ref.spot; m.spotOwner = ref.spotOwner; }
@@ -2091,12 +2140,12 @@ function viewChats() {
     <button class="fab" data-act="chat-new" aria-label="Neuer Chat">${ICON.plus.replace('width="16" height="16"', 'width="24" height="24"')}</button>`;
 }
 function chatNewSheet(q = '') {
-  const list = others().filter(p => !q || pname(p).toLowerCase().includes(q.toLowerCase()));
+  const list = chatTargets().filter(p => !q || pname(p).toLowerCase().includes(q.toLowerCase()));
   sheet(`<h2>Neuer Chat</h2>
     <label class="cn-search">${ICON.search.replace('<svg ', '<svg width="18" height="18" ')}<input id="cn-q" type="search" placeholder="Buddy-ID suchen" aria-label="Buddy-ID suchen" value="${esc(q)}" autocomplete="off"></label>
     <span class="eyebrow">Gym Buddys</span>
     <div class="cn-list">${list.map(p => `<button class="cn-row glass" data-act="chat-open" data-p="${esc(p)}">${avatar(p, 46)}<span><b>${nm(p)}</b><span class="small muted">${chatWith(p).length ? 'Chat fortsetzen' : 'Neuen Chat beginnen'}</span></span><span class="cn-go">Schreiben</span></button>`).join('') || '<div class="empty">Niemand gefunden.</div>'}</div>
-    <div class="cn-add"><span class="cn-plus">${ICON.plus.replace('width="16" height="16"', 'width="20" height="20"')}</span><span>Gym Buddy hinzufügen<br><span class="small">Kommt mit dem Freunde-System</span></span></div>
+    <a class="cn-add" href="#buddies" data-act="mclose"><span class="cn-plus">${ICON.plus.replace('width="16" height="16"', 'width="20" height="20"')}</span><span>Gym Buddy hinzufügen<br><span class="small">Über die GymBuddy-ID oder den QR-Code</span></span></a>
     <button class="btn ghost" data-act="mclose">Abbrechen</button>`);
 }
 // Spot im Chat: solange er verfügbar ist, öffnet Antippen ihn erneut (eigener in der Galerie-Ansicht, fremder im Ansehen)
@@ -2151,7 +2200,9 @@ function chatMsgsHTML(p) {
 function viewChat(p) {
   if (!CHAT.loaded) loadChat();
   CHAT.open = p;
-  return `<div class="chat-head"><div class="chat-head-in">${backBtn('chats')}<a class="chat-prof" href="#profil:${encodeURIComponent(p)}" data-act="goprof" data-p="${esc(p)}" aria-label="Profil von ${nm(p)}">${avatar(p, 36)}</a><span class="chat-who"><b>${nm(p)}</b><span class="lockline">${ICON.lock.replace('width="22" height="22"', 'width="12" height="12"')}verschlüsselt · ${CHAT_DAYS} Tage</span></span></div></div>
+  const crew = isCrewKey(p);
+  const sub = crew ? `Crew · ${['Du', ...crewMates().map(id => `<span style="color:${nameColor(id)}">${nm(id)}</span>`)].join(', ')}` : `${ICON.lock.replace('width="22" height="22"', 'width="12" height="12"')}verschlüsselt · ${CHAT_DAYS} Tage`;
+  return `<div class="chat-head"><div class="chat-head-in">${backBtn('chats')}<a class="chat-prof" href="${crew ? '#crew' : '#profil:' + encodeURIComponent(p)}" ${crew ? '' : `data-act="goprof" data-p="${esc(p)}"`} aria-label="${crew ? 'Crew-Info' : 'Profil von ' + nm(p)}">${avatar(p, 36)}</a><span class="chat-who"><b>${nm(p)}</b><span class="lockline">${sub}</span></span>${crew ? `<span class="iconbtn" aria-label="Ende-zu-Ende verschlüsselt" style="margin-left:auto;opacity:.6">${ICON.lock.replace('width="22" height="22"', 'width="16" height="16"')}</span>` : ''}</div></div>
     <main class="view chat-view"><div class="chat-msgs" id="chat-msgs">${chatMsgsHTML(p)}</div></main>
     <form class="chat-bar" id="chatform" novalidate>${chatReplyBar(p)}
       <a class="iconbtn" href="#kamera" aria-label="Spot aufnehmen">${ICON.cam.replace('width="22" height="22"', 'width="20" height="20"')}</a>
@@ -2196,7 +2247,7 @@ function refreshReplyBar() {
 // Eigene Reaktion setzen, wechseln oder (gleiches Emoji noch einmal) zurücknehmen. Reist verschlüsselt wie eine Nachricht.
 function chatReact(id, emoji) {
   const m = CHAT.msgs.find(x => x.id === id); if (!m || m.react || !isEmoji(emoji)) return;
-  const p = m.from === cfg.me ? m.to : m.from;
+  const p = isCrewKey(m.to) ? m.to : m.from === cfg.me ? m.to : m.from;
   const old = CHAT.msgs.find(x => x.react && x.re === id && x.from === cfg.me);
   if (old) chatDelete(old.id, true);
   if (!old || old.react !== emoji) chatSend(p, emoji, { re: id, react: emoji });
@@ -2382,14 +2433,13 @@ async function openEditor(blob) {
   location.hash = '#spot';
 }
 function viewCamera() {
-  const sv = scriptVersion != null && scriptVersion < 4;
   const last = SPOT.gallery.slice(-3), op = [0.35, 0.65, 1].slice(3 - last.length);
-  const thumbs = last.map((g, i) => `<div class="cam-thw"><a class="cam-th" href="#spot-bild:${encodeURIComponent(g.id)}"><img src="${spotUrl(g)}" alt="Spot vom ${fmtDate(g.created)}" style="opacity:${op[i]}">${spotSeenBy(g.id, partner()) ? `<span class="seen" aria-label="gesehen">${ICON.eye}</span>` : ''}</a><button class="cam-x" data-act="cam-del" data-id="${esc(g.id)}" aria-label="Spot vom ${fmtDate(g.created)} löschen"><i>${ICON.x}</i></button></div>`).join('');
+  const thumbs = last.map((g, i) => `<div class="cam-thw"><a class="cam-th" href="#spot-bild:${encodeURIComponent(g.id)}"><img src="${spotUrl(g)}" alt="Spot vom ${fmtDate(g.created)}" style="opacity:${op[i]}">${others().some(o => spotSeenBy(g.id, o)) ? `<span class="seen" aria-label="gesehen">${ICON.eye}</span>` : ''}</a><button class="cam-x" data-act="cam-del" data-id="${esc(g.id)}" aria-label="Spot vom ${fmtDate(g.created)} löschen"><i>${ICON.x}</i></button></div>`).join('');
   return `<div class="cam">
     <video id="cam-v" playsinline autoplay muted></video>
     ${last.length ? `<div class="cam-last"><span class="eyebrow">Letzte Spots</span><div class="cam-ths">${thumbs}</div></div>` : ''}
     <div class="cam-fb" id="cam-fb" hidden><span class="muted">Kein Live-Bild verfügbar.</span><label class="btn primary">Kamera öffnen<input type="file" id="sp-file2" accept="image/*" capture="environment" hidden></label></div>
-    ${sv ? `<div class="cam-warn glass">Für Spots muss das Google-Skript auf Version 4 aktualisiert werden.</div>` : ''}
+
     <div class="cam-ctl">
       <label class="tool big" aria-label="Aus Mediathek wählen">${ICON.img}<input type="file" id="sp-file" accept="image/*" hidden></label>
       <button class="shutter" data-act="sp-shoot" aria-label="Foto aufnehmen"><i></i></button>
@@ -2415,7 +2465,7 @@ function viewEditor() {
     </div>
     <input type="range" class="sp-size" id="sp-size" min="0.03" max="0.11" step="0.002" value="${e.textSize}" aria-label="Textgröße" ${e.text || e.editing ? '' : 'hidden'}>
     <div class="sp-dots"><i class="${e.filter === 0 ? 'on' : ''}"></i><i class="${e.filter === 1 ? 'on' : ''}"></i></div>
-    <div class="sp-send"><button class="btn primary" data-act="sp-send" id="sp-send-b" ${scriptVersion != null && scriptVersion < 4 ? 'disabled' : ''}>Senden an ${nm(partner())} ${ICON.right}</button></div>
+    <div class="sp-send"><button class="btn primary" data-act="sp-send" id="sp-send-b">${others().length === 1 ? `Senden an ${nm(others()[0])}` : others().length ? 'An deine Buddys senden' : 'Speichern'} ${ICON.right}</button></div>
   </div>`;
 }
 function layoutEditor() {
@@ -2533,7 +2583,7 @@ async function sendSpot() {
     const rec = { id: uid(), person: cfg.me, created: e.at.toISOString(), meta: { kind: e.filter === 1 ? e.ctx.kind : 'none', day: e.ctx.day || null }, img: await blob.arrayBuffer(), shared: false, up: false };
     await SDB.put('gallery', rec);
     closeEditor(); await loadSpots();
-    toast(cfg.url ? `Spot an ${pname(partner())} gesendet` : 'Spot gespeichert. Ohne Sync sieht ihn nur du.');
+    toast(others().length ? `Spot an ${others().length === 1 ? pname(others()[0]) : 'deine Buddys'} gesendet` : 'Spot gespeichert. Sobald du Buddys hast, sehen sie deine Spots.');
     location.hash = '#kamera';
     spotSync().then(() => gallerySync());
   } catch (err) { if (b) { b.disabled = false; b.textContent = 'Senden'; } toast('Spot konnte nicht erstellt werden.'); }
@@ -2665,7 +2715,7 @@ function viewSpotImage(id) {
     <div class="sv-head" style="top:calc(var(--sat) + 14px)"><a class="tool" href="${SPOT.back || '#profil'}" aria-label="Zurück">${ICON.left}</a><span style="flex:1;text-align:center"><span class="mono small sv-chip">${fmtDate(g.created)} · ${fmtTime(g.created)}</span></span><span style="width:44px"></span></div>
     ${SPOT.galDel === id ? '' : `<div class="sv-reacts" aria-label="Reaktionen">${spotReactions(id).map(reactBubble).join('')}</div>`}
     <div class="sv-act">${SPOT.galDel === id
-      ? `<div class="confirm glass" style="width:100%"><b>Spot löschen?</b><span class="small muted">Er verschwindet aus deiner Galerie${Date.now() - new Date(g.created) < SPOT_MAX ? ` und, falls noch sichtbar, bei ${nm(partner())}` : ''}.</span><div class="btnrow"><button class="btn small danger" data-act="sg-del-yes" data-id="${esc(id)}">Löschen</button><button class="btn small ghost" data-act="sg-del-no">Abbrechen</button></div></div>`
+      ? `<div class="confirm glass" style="width:100%"><b>Spot löschen?</b><span class="small muted">Er verschwindet aus deiner Galerie${Date.now() - new Date(g.created) < SPOT_MAX ? ' und, falls noch sichtbar, bei deinen Buddys' : ''}.</span><div class="btnrow"><button class="btn small danger" data-act="sg-del-yes" data-id="${esc(id)}">Löschen</button><button class="btn small ghost" data-act="sg-del-no">Abbrechen</button></div></div>`
       : `<button class="btn primary" data-act="sg-save" data-id="${esc(id)}" style="flex:1">${ICON.dl} In Fotos sichern</button><button class="btn danger" data-act="sg-del" data-id="${esc(id)}" style="width:50px;padding:0" aria-label="Löschen">${ICON.x}</button>`}</div>
   </div>`;
 }
@@ -2707,7 +2757,7 @@ function head(title, big = true) { return `<header class="head" id="head"><div c
 const subhead = (backTo = 'start', right = '') => `<header class="head" id="head">${backBtn(backTo)}<div class="brand"></div>${right}</header>`;
 function tabbar(active) {
   const t = (id, label, icon) => `<a href="#${id}" ${active === id ? 'aria-current="page"' : ''}>${icon}<span>${label}</span></a>`;
-  return `<nav class="tabbar glass" aria-label="Navigation">${t('kamera', 'Kamera', ICON.cam)}${t('start', 'Start', ICON.home)}${t('verlauf', 'Verlauf', ICON.chart)}${t('plan', 'Plan', ICON.list)}${t('notizen', 'Notizen', ICON.note)}${t('profil', 'Profil', avatar(cfg.me, 24))}</nav>`;
+  return `<nav class="tabbar glass" aria-label="Navigation">${t('kamera', 'Kamera', ICON.cam)}${t('start', 'Start', ICON.home)}${t('verlauf', 'Verlauf', ICON.chart)}${t('plan', 'Plan', ICON.list)}${t('buddies', 'Buddies', ICON.users + (socialCount() ? `<span class="badge">${socialCount()}</span>` : ''))}${t('profil', 'Profil', avatar(cfg.me, 24))}</nav>`;
 }
 
 function safeRender() {
@@ -2823,6 +2873,8 @@ function render() {
   if (name !== view) {
     resetAsk = logoutAsk = otherDayAsk = false; if (view.startsWith('vault') && !name.startsWith('vault')) lockVault();
     if (view === 'kamera') stopCamera();
+    if (view === 'scanner') stopScan();
+    if (name === 'crew') CREWV = { edit: false, invite: false, leave: false, rm: null, name: '' };
     if (view === 'spot' && name !== 'spot') closeEditor();
     if (view === 'spots' && name !== 'spots' && SPOT.view) { cancelAnimationFrame(SPOT.view.raf); SPOT.view = null; }
     if (view === 'spot-bild') SPOT.galDel = null;
@@ -2836,6 +2888,9 @@ function render() {
     case 'bearbeiten': if (!edraft) { location.hash = '#verlauf'; return; } html = withEd(viewEdit); tone = DAY_TONE[edraft.day]; break;
     case 'verlauf': html = head('Verlauf') + `<main class="view">${viewVerlauf()}</main>` + tabbar('verlauf'); break;
     case 'plan': html = head('Plan') + `<main class="view">${viewPlan()}</main>` + tabbar('plan'); tone = pkind() === 'crew' && !hasCrew() ? '' : DAY_TONE[builder.day] || ''; break;
+    case 'buddies': html = head('Buddies') + `<main class="view">${viewBuddies()}</main>` + tabbar('buddies'); break;
+    case 'crew': html = subhead('buddies') + `<main class="view">${viewCrew()}</main>` + tabbar('buddies'); break;
+    case 'scanner': html = viewScanner(); break;
     case 'bibliothek': html = subhead('plan') + `<main class="view">${viewLibrary()}</main>` + tabbar('plan'); break;
     case 'notizen': {
       const fromTr = NOTE_FOCUS && NOTE_FOCUS.from === 'training' && draft;
@@ -2846,7 +2901,7 @@ function render() {
     case 'ueber': html = subhead('einstellungen') + `<main class="view nobar">${viewAbout()}</main>`; break;
     case 'rechtliches': html = subhead('ueber') + `<main class="view nobar legal">${viewLegal(arg)}</main>`; break;
     case 'gewicht': html = subhead('profil') + `<main class="view">${viewBodyweight()}</main>` + tabbar('profil'); break;
-    case 'profil': html = (arg && arg !== cfg.me ? subhead('start') : `<header class="head" id="head"><div class="brand"></div>${gearBtn()}</header>`) + `<main class="view">${viewProfile(arg && PEOPLE.includes(arg) ? arg : cfg.me)}</main>` + tabbar(arg && arg !== cfg.me ? '' : 'profil'); break;
+    case 'profil': html = (arg && arg !== cfg.me ? subhead('buddies', PEOPLE.includes(arg) ? `<button class="iconbtn" data-act="bud-menu" data-p="${esc(arg)}" aria-label="Mehr">${ICON.more}</button>` : '') : `<header class="head" id="head"><div class="brand"></div>${gearBtn()}</header>`) + `<main class="view">${viewProfile(arg && PEOPLE.includes(arg) ? arg : cfg.me)}</main>` + tabbar(arg && arg !== cfg.me ? '' : 'profil'); break;
     case 'vault': html = subhead('profil', VAULT.key && VAULT.mode === 'unlock' && !VAULT.showKey ? `<button class="btn small glass" data-act="v-lock" style="border-color:rgba(255,255,255,.3)">${ICON.lock.replace('width="22" height="22"', 'width="16" height="16"')} Sperren</button>` : '') + `<main class="view nobar">${viewVault()}</main>`; break;
     case 'vault-wiederherstellen': html = subhead(vmeta() ? 'einstellungen' : 'vault') + `<main class="view nobar">${viewRestore()}</main>`; break;
     case 'vault-neu': if (!VAULT.key) { location.hash = '#vault'; return; } html = subhead('vault') + `<main class="view nobar">${viewVaultNew()}</main>`; break;
@@ -2857,7 +2912,7 @@ function render() {
     case 'spots': if (!SPOT.view) { openViewer(); return; } html = viewViewer(); break;
     case 'spot-bild': html = viewSpotImage(arg); break;
     case 'chats': html = subhead(draft ? 'training' : 'start') + `<main class="view">${viewChats()}</main>` + tabbar(''); break;
-    case 'chat': if (!others().includes(arg)) { location.hash = '#chats'; return; } html = viewChat(arg); break;
+    case 'chat': if (!chatTargets().includes(arg)) { location.hash = '#chats'; return; } html = viewChat(arg); break;
     case 'geschafft': html = viewDone(arg); if (!html) { location.hash = '#start'; return; } break;
     default: html = `<header class="head" id="head"><div class="brand built">BUILT</div>${spotRing() || flameCap()}${chatBtn()}${bellBtn()}${gearBtn()}</header><main class="view">${viewStart()}</main>` + tabbar('start');
   }
@@ -2866,6 +2921,7 @@ function render() {
   if (name !== view) {
     app.scrollTop = 0; view = name;
     if (name === 'notizen' && NOTE_FOCUS) { const c = document.getElementById('nc-' + NOTE_FOCUS.ex); if (c) { c.scrollIntoView({ block: 'center' }); NOTE_FOCUS.t = Date.now(); } }
+    if (name === 'scanner') startScan();
   }
   tabSlideIn();
   pendingRender = false;
@@ -3024,6 +3080,9 @@ function feedWorkout(e) {
       <div class="m">${fmtDate(e.ts)} · ${fmtTime(e.ts)} · ${duration(d.start, d.end)}</div></a>
       <div class="fi-l2"><span class="muted">${ab ? `${ab.done} von ${ab.plan} Sätzen` : `${n} ${n === 1 ? 'Satz' : 'Sätze'}`}</span>${d.deload ? '<span class="chip dl">Deload</span>' : ''}${recBtn}${wait}</div>
       ${open ? `<div class="fi-recs">${prs.map(i => `<div><span>${esc(i.name.replace(/\s*\(.*\)$/, ''))}</span><span class="mono" style="color:${col}">${esc(i.label)}</span></div>`).join('')}</div>` : ''}
+      ${(() => { // Crew-Notizen zu diesem Training gebündelt, private nie
+        const k = liveNotes().filter(x => x.workout_id === e.id && x.scope === 'crew' && x.user_id === p).length;
+        return k ? `<a class="fi-notes" href="#training-log:${encodeURIComponent(e.id)}">${ICON_CREW14}${me ? 'Du hast' : nm(p) + ' hat'} ${k === 1 ? 'eine Notiz' : k + ' Notizen'} geschrieben</a>` : ''; })()}
     </div></div>`;
 }
 
@@ -3066,9 +3125,9 @@ function newItem(x, deload) {
   return { ex: x, note: '', feel: '', wu: [], swappedFrom: null, swapBy: null, removed: false, hint, kind, sets, tt: x.type === 'tr' ? (deload ? x.min : pl.tt || x.min) : 0, rm: [] };
 }
 function partnerSwapsToday(day) {
-  const other = partner(), latest = {};
+  const mates = crewMates(), latest = {};
   if (draft && draft.plan === 'mine') return [];
-  st().swaps.filter(e => e.person === other && e.data.day === day && e.data.date === todayStr()).forEach(e => { latest[e.data.fromId] = e; });
+  st().swaps.filter(e => mates.includes(e.person) && e.data.day === day && e.data.date === todayStr()).forEach(e => { latest[e.data.fromId] = e; });
   return Object.values(latest);
 }
 function startTraining(skipDeload, pick, k = skind()) {
@@ -3371,10 +3430,10 @@ function swapForm(i, keep) {
     <p class="help" style="margin:0">Ersetzt <b>${esc(x.name)}</b> nur in diesem Training. Dein Plan bleibt unverändert, die Ersatzübung bekommt ihren eigenen Verlauf.</p>
     ${pickBlock('Ersatzübung suchen')}
     <div class="grid3"><label>Sätze<input class="inp" id="sw-sets" name="sets" inputmode="numeric" value="${v('sets', x.sets)}"></label><label><span id="sw-unit">${isTimed(x.type) ? 'Sek. von' : 'Wdh. von'}</span><input class="inp" id="sw-min" name="min" inputmode="numeric" value="${v('min', x.min)}"></label><label>bis<input class="inp" id="sw-max" name="max" inputmode="numeric" value="${v('max', x.max)}"></label></div>
-    <fieldset class="radios"><legend>Für wen?</legend>
-      <label class="chk"><input type="radio" name="who" value="both" ${pkVal('who', 'both') === 'both' ? 'checked' : ''}><span>Für uns beide heute<small>${nm(partner())} sieht den Tausch in seinem heutigen Training für ${esc(dl(draft.day, null, draft.plan))}.</small></span></label>
+    ${draft.plan !== 'mine' && crewMates().length ? `<fieldset class="radios"><legend>Für wen?</legend>
+      <label class="chk"><input type="radio" name="who" value="both" ${pkVal('who', 'both') === 'both' ? 'checked' : ''}><span>Für die ganze Crew heute<small>Deine Crew sieht den Tausch im heutigen Training für ${esc(dl(draft.day, null, draft.plan))}.</small></span></label>
       <label class="chk"><input type="radio" name="who" value="me" ${pkVal('who', 'both') === 'me' ? 'checked' : ''}><span>Nur für mich</span></label>
-    </fieldset>
+    </fieldset>` : ''}
     <div class="err" id="sw-err" hidden></div>
     <div class="sbar"><button class="btn primary" type="submit">Tauschen</button></div>
   </form></div>`;
@@ -3408,7 +3467,7 @@ function submitSwap(form) {
   PK = null; $('#modal').innerHTML = '';
   doSwap(i, x, from, cfg.me, shared);
   render();
-  toast(shared ? `Getauscht. ${pname(partner())} sieht den Tausch.` : 'Getauscht');
+  toast(shared ? 'Getauscht. Deine Crew sieht den Tausch.' : 'Getauscht');
 }
 // Bei der alten Übung stehen schon Werte: mitnehmen oder beide behalten?
 let SWAPQ = null;
@@ -3432,7 +3491,7 @@ function swapDo(mode) {
   SWAPQ = null; PK = null; $('#modal').innerHTML = '';
   doSwap(q.i, q.x, q.from, cfg.me, q.shared, mode);
   render();
-  toast((mode === 'carry' ? 'Getauscht, Werte übernommen.' : 'Getauscht, beide bleiben.') + (q.shared ? ` ${pname(partner())} sieht den Tausch.` : ''));
+  toast((mode === 'carry' ? 'Getauscht, Werte übernommen.' : 'Getauscht, beide bleiben.') + (q.shared ? ' Deine Crew sieht den Tausch.' : ''));
 }
 
 /* ---------- Übungsauswahl: überall dieselbe (Plan, Heute tauschen, Training bearbeiten, Zusammenführen) ---------- */
@@ -4005,27 +4064,32 @@ function viewProfile(p) {
   const bw = s.bw[p]; let ci = bw.length ? 0 : -1; bw.forEach((b, i) => { if (b.from <= todayStr()) ci = i; });
   const lb = ci >= 0 ? bw[ci] : null, pb = ci > 0 ? bw[ci - 1] : null;
   const since = s.first[p];
-  const meta = `${since ? 'Trainiert seit ' + new Date(since).toLocaleDateString('de-DE') : 'Noch keine Einträge'} · als Nächstes ${esc(dl(nextDay(p), p))}`;
-  const ring = `<div class="pf-ring">${avatar(p, 114)}${own ? `<label class="pf-cam" aria-label="Profilbild ändern">${ICON.cam.replace('width="22" height="22"', 'width="16" height="16"')}<input type="file" id="av-file" accept="image/*" hidden></label>` : ''}</div>`;
+  const meta = `${since ? 'Trainiert seit ' + new Date(since).toLocaleDateString('de-DE') : 'Noch keine Einträge'}${own ? ` · als Nächstes ${esc(dl(nextDay(p), p, curPlan()))}` : ''}`;
+  const bid = (PROFILES[p] || {}).buddy_id;
+  const idLine = own && bid ? `<button data-act="acct-copy" style="background:none;border:0;color:#fff;padding:2px 0;display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:-4px" aria-label="Buddy-ID ${esc(bid)} kopieren"><span class="mono" style="font-size:16px;font-weight:700;letter-spacing:.08em">#${esc(bid)}</span>${ICON.copy.replace(/18/g, '16')}</button>` : '';
+  const goal = weekGoal(p), wkN = ws.filter(w => weekOf(w.ts) === weekOf(Date.now())).length;
+  const ring = `<div class="pf-ring">${avatar(p, 114)}${own ? `<button class="pf-qr" data-act="id-sheet" aria-label="Meinen QR-Code zeigen">${ICON.qr.replace(/20/g, '16')}</button>` : ''}${own ? `<label class="pf-cam" aria-label="Profilbild ändern">${ICON.cam.replace('width="22" height="22"', 'width="16" height="16"')}<input type="file" id="av-file" accept="image/*" hidden></label>` : ''}</div>`;
   const bar = `<section class="card"><div class="rowbetween"><span class="eyebrow">Trainings nach Tag</span><span class="mono muted small">${tot}</span></div>
       <div class="daybar">${tot ? DAYS.map((d, i) => counts[i] ? `<i class="t-${DAY_TONE[d]}" style="flex:${counts[i]}"></i>` : '').join('') : ''}</div>
       <div class="legend mono">${DAYS.map((d, i) => counts[i] || pdays(p).includes(d) ? `<span>${esc(dl(d, p))} ${counts[i]}</span>` : '').join('')}</div></section>`;
   if (own) {
-    return `<div class="pf">${ring}<h1 class="display">${nm(p)}</h1><span class="mono muted small">${meta}</span></div>
+    return `<div class="pf">${ring}<h1 class="display">${nm(p)}</h1>${idLine}<span class="mono muted small">${meta}</span></div>
       <div class="stat2">
         <div class="card"><span class="val">${tot}</span><span class="eyebrow">Trainings</span></div>
         <a class="card" href="#gewicht"><span class="val">${lb ? fmtN(lb.kg) + '<small> kg</small>' : '–'}</span><span class="eyebrow">Körpergewicht${pb ? ` · ${lb.kg - pb.kg >= 0 ? '+' : '−'}${fmtN(Math.abs(lb.kg - pb.kg))}` : ''}</span></a>
       </div>
+      <button class="card goalcard" data-act="goal-open"><span style="display:flex;align-items:center;gap:12px"><img src="${FLAME.W}" alt="" width="36" height="36"><span style="flex:1;display:flex;flex-direction:column;text-align:left"><b>Wochenziel · ${goal} ${goal === 1 ? 'Training' : 'Trainings'}</b><span class="small muted">${wkN} von ${goal} diese Woche${(PROFILES[p] || {}).week_goal_next && new Date((PROFILES[p] || {}).week_goal_from) > new Date() ? ` · ab ${new Date(PROFILES[p].week_goal_from).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}: ${PROFILES[p].week_goal_next}` : ''}</span></span>${ICON.right}</span></button>
       ${bar}
       <a class="vaultcard glass" href="#vault"><span class="ic">${ICON.lock}</span><span style="flex:1;display:flex;flex-direction:column;gap:2px"><b>Vault</b><span class="small muted">${vmeta() ? 'Private Bilder · nur für dich' : 'Private Fortschrittsbilder · Code festlegen'}</span></span>${ICON.right}</a>
       ${galleryHTML()}`;
   }
   const recent = ws.slice().reverse().slice(0, 3);
-  return `<div class="pf">${ring}<h1 class="display">${nm(p)}</h1><span class="mono muted small">${meta}</span></div>
+  return `<div class="pf">${ring}<h1 class="display">${nm(p)}</h1><span class="mono muted small">${meta}${crewMates().includes(p) ? ' · in deiner Crew' : ''}</span></div>
     <div class="stat2">
       <div class="card"><span class="val">${tot}</span><span class="eyebrow">Trainings</span></div>
-      <div class="card"><span class="val">${ws.filter(w => new Date(w.ts) >= wk).length}<small> / 3</small></span><span class="eyebrow">Diese Woche</span></div>
+      <div class="card"><span class="val">${wkN}<small> / ${goal}</small></span><span class="eyebrow">Diese Woche</span></div>
     </div>
+    <a class="btn primary" href="#chat:${encodeURIComponent(p)}">Nachricht schreiben</a>
     ${bar}
     ${recent.length ? `<section class="card" style="padding:4px 16px"><div class="feed">${recent.map(feedItem).join('')}</div></section>` : ''}`;
 }
@@ -4060,7 +4124,7 @@ function viewRecoveryKey() {
     <div class="rkey mono" id="rk-show">${VAULT.showKey.split('-').map(g => `<span>${g}</span>`).join('')}</div>
     <button class="btn glass" data-act="rk-copy" style="min-width:200px">Kopieren</button>
     <button class="btn primary" data-act="rk-done" style="min-width:260px">Ich habe ihn gespeichert</button>
-    <span class="small muted" style="max-width:320px">Ohne diesen Schlüssel lassen sich die Bilder bei einem Handywechsel nicht wiederherstellen. Gib ihn niemandem, auch nicht ${nm(partner())}.</span></div>`;
+    <span class="small muted" style="max-width:320px">Ohne diesen Schlüssel lassen sich die Bilder bei einem Handywechsel nicht wiederherstellen. Gib ihn niemandem, auch nicht deinen Buddys.</span></div>`;
 }
 function viewRestore() {
   return `<div class="form">
@@ -4122,7 +4186,7 @@ function viewBodyweight() {
       <div class="grid2"><label>Gilt ab<input class="inp mono" type="date" id="bw-from" value="${todayStr()}" max="${todayStr()}"></label>
         <label>Gewicht<span class="field"><input id="bw-in" inputmode="decimal" autocomplete="off" placeholder="z. B. 82,4" aria-label="Körpergewicht in kg"><span>kg</span></span></label></div>
       <button class="btn primary" data-act="bw-save">Eintragen</button>
-      <span class="help">Ein älteres Datum korrigiert genau diesen Zeitraum. Trainings rechnen mit dem Wert, der an ihrem Tag galt. ${nm(partner())} sieht dein Körpergewicht, weil es in die Gesamtlast im Verlauf eingeht.</span>
+      <span class="help">Ein älteres Datum korrigiert genau diesen Zeitraum. Trainings rechnen mit dem Wert, der an ihrem Tag galt. ${(PROFILES[cfg.me] || {}).share_weight ? 'Deine Buddys sehen dein Körpergewicht (Freigabe in den Einstellungen).' : 'Nur du siehst dein Körpergewicht. Freigeben kannst du es in den Einstellungen.'}</span>
     </section>
     ${list.length > 1 ? `<section class="card chart"><b>Verlauf (kg)</b>${chartSvg([{ color: '#fff', points: pts }], 'Körpergewicht')}</section>` : ''}
     <section class="card">${periods || '<div class="empty">Noch kein Eintrag. Körpergewichtsübungen rechnen erst mit Gesamtlast, wenn hier ein Wert steht.</div>'}</section>`;
@@ -4149,17 +4213,19 @@ function viewBell() {
   });
   const recent = items.filter((h, i) => !oldOf(list[i])), older = items.filter((h, i) => oldOf(list[i]));
   const mine = DAYS.map(d => s.lastChange[cfg.me + '|' + d]).filter(Boolean);
+  const mates = crewMates();
   const mineHtml = mine.map(c => {
-    const a = s.plans[other][c.data.day], b = s.plans[cfg.me][c.data.day];
-    const same = (!a && !b) || (!!a && !!b && !sharedDiff(a, b).length);
-    return `<div class="sess"><div class="top"><span style="display:flex;gap:8px;align-items:center;color:var(--fg)">${dayChip(c.data.day)}<b>${esc(c.data.title)}</b></span><span class="pill ${same ? 'accepted' : ''}">${same ? `bei ${nm(other)} gleich` : `bei ${nm(other)} offen`}</span></div><span class="mono muted small">zuletzt gespeichert ${fmtDate(c.ts)}, ${fmtTime(c.ts)}</span></div>`;
+    const b = s.plans[cfg.me][c.data.day];
+    const open = mates.filter(o => { const a = s.plans[o][c.data.day]; return !((!a && !b) || (!!a && !!b && !sharedDiff(a, b).length)); });
+    const same = !open.length, other = open[0] || mates[0];
+    return `<div class="sess"><div class="top"><span style="display:flex;gap:8px;align-items:center;color:var(--fg)">${dayChip(c.data.day)}<b>${esc(c.data.title)}</b></span><span class="pill ${same ? 'accepted' : ''}">${same ? (mates.length > 1 ? 'bei allen gleich' : `bei ${nm(other)} gleich`) : `bei ${open.map(nm).join(', ')} offen`}</span></div><span class="mono muted small">zuletzt gespeichert ${fmtDate(c.ts)}, ${fmtTime(c.ts)}</span></div>`;
   }).join('');
   const nts = notices();
   return `${nts.length ? `<h1 class="display" style="font-size:30px">Hinweise</h1>${nts.map(noticeCard).join('')}` : ''}<h1 class="display" style="font-size:30px">Plan&shy;änderungen</h1>
-    <p class="muted small" style="margin:0">Wenn ${nm(other)} gemeinsame Übungen ändert, siehst du es hier. Abweichende Übungen und persönliche Werte lösen keine Meldung aus.</p>
-    ${recent.join('') || `<section class="card"><div class="empty">${older.length ? 'Nichts Neues.' : 'Keine Unterschiede. Eure gemeinsamen Übungen sind gleich.'}</div></section>`}
+    <p class="muted small" style="margin:0">Wenn jemand aus deiner Crew gemeinsame Übungen im Crew-Plan ändert, siehst du es hier. Abweichende Übungen und persönliche Werte lösen keine Meldung aus.</p>
+    ${recent.join('') || `<section class="card"><div class="empty">${older.length ? 'Nichts Neues.' : hasCrew() ? 'Keine Unterschiede. Eure gemeinsamen Übungen sind gleich.' : 'Planänderungen gibt es, sobald du in einer Crew bist.'}</div></section>`}
     ${older.length ? `<details class="older"><summary>Ältere (${older.length})</summary><div style="display:flex;flex-direction:column;gap:12px;padding-top:12px">${older.join('')}</div></details>` : ''}
-    ${mine.length ? `<div class="sec-title"><h2>Deine Änderungen</h2></div><section class="card">${mineHtml}</section>` : ''}`;
+    ${mine.length && mates.length ? `<div class="sec-title"><h2>Deine Änderungen</h2></div><section class="card">${mineHtml}</section>` : ''}`;
 }
 function acceptChange(changeId, intoDraft) {
   const s = st(), c = s.changes[changeId]; if (!c) return;
@@ -4376,6 +4442,245 @@ function viewNotes3(arg) {
     ${cards || `<section class="card"><div class="empty">${k === 'crew' ? 'Noch keine Crew-Notizen. Notizen schreibst du im Training unter jeder Übung.' : 'Noch keine privaten Notizen. Notizen schreibst du im Training unter jeder Übung.'}</div></section>`}`;
 }
 function noteFocusEnd() { if (!NOTE_FOCUS || !NOTE_FOCUS.dim) return; NOTE_FOCUS.dim = false; document.querySelectorAll('.ndim').forEach(el => el.classList.remove('ndim')); document.querySelectorAll('.xcard.hl').forEach(el => el.classList.remove('hl')); }
+
+/* ======================= Buddies und Crew (ab 3.0) =======================
+   Freunde über die GymBuddy-ID (Suche oder QR-Code), Anfragen annehmen oder ablehnen.
+   Eine Crew pro Person, höchstens 6. Der Crew-Chef lädt Freunde ein, benennt um und entfernt Mitglieder. */
+const CREW_MAX = 6;
+let SOCIAL = (() => { const v = LS.get('social', null); return v && typeof v === 'object' ? v : { incoming: [], outgoing: [], invites: [], crewInvites: [], crewMeta: null }; })();
+const BUD = { q: '', found: null, msg: '', busy: false };
+const isOwner = () => hasCrew() && CREW.owner === cfg.me;
+const crewMates = () => (hasCrew() ? (CREW.members || []).filter(p => p !== cfg.me) : []);
+const friendsList = () => Object.values(PROFILES).filter(p => p.friend && p.id !== cfg.me).map(p => p.id);
+async function loadSocial(fr) {
+  const me = cfg.me;
+  const pend = (fr || []).filter(f => f.status === 'pending');
+  const inv = await sb.from('crew_invites').select('crew_id,user_id,invited_by,created_at');
+  const invites = (inv.data || []).filter(i => i.user_id === me);
+  let crews = [];
+  if (invites.length) { const r = await sb.from('crews').select('id,name,owner').in('id', invites.map(i => i.crew_id)); crews = r.data || []; }
+  let crewMeta = null;
+  if (hasCrew()) { const r = await sb.from('crews').select('id,name,created_at,owner').eq('id', CREW.id).maybeSingle(); crewMeta = r.data || null; }
+  SOCIAL = {
+    incoming: pend.filter(f => f.requested_by !== me).map(f => (f.a === me ? f.b : f.a)),
+    outgoing: pend.filter(f => f.requested_by === me).map(f => (f.a === me ? f.b : f.a)),
+    invites: invites.map(i => ({ crew: i.crew_id, by: i.invited_by, name: (crews.find(c => c.id === i.crew_id) || {}).name || 'Crew' })),
+    crewInvites: (inv.data || []).filter(i => hasCrew() && i.crew_id === CREW.id).map(i => i.user_id),
+    crewMeta
+  };
+  LS.set('social', SOCIAL);
+}
+const socialCount = () => (SOCIAL.incoming || []).length + (SOCIAL.invites || []).length;
+// Datenbank-Aufruf mit Rückmeldung; danach Personen neu laden
+async function rpcDo(fn, args, ok) {
+  const r = await sb.rpc(fn, args || {});
+  if (r.error) { const m = sbErr(r.error); toast(m.code === 'network' ? 'Keine Verbindung. Bitte später noch einmal.' : (m.msg || 'Das hat nicht geklappt.').replace(/^.*?: /, '')); return null; }
+  if (ok) toast(ok);
+  await sync({ quiet: true }); render();
+  return r.data === null || r.data === undefined || r.data === '' ? true : r.data;   // Funktionen ohne Rückgabe: erfolgreich
+}
+async function buddySearch(code) {
+  const c = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  BUD.q = c; BUD.found = null; BUD.msg = '';
+  if (c.length < 8) { budRefresh(); return; }
+  BUD.busy = true; budRefresh();
+  const r = await sb.rpc('find_buddy', { code: c });
+  BUD.busy = false;
+  if (r.error) BUD.msg = sbErr(r.error).code === 'network' ? 'Keine Verbindung.' : (sbErr(r.error).msg || 'Suche nicht möglich.');
+  else if (!(r.data || []).length) BUD.msg = c === (PROFILES[cfg.me] || {}).buddy_id ? 'Das ist deine eigene ID.' : 'Niemand mit dieser ID gefunden.';
+  else BUD.found = r.data[0];
+  budRefresh();
+}
+function budState(id) {
+  if (!id) return '';
+  if (PROFILES[id] && PROFILES[id].friend) return 'friend';
+  if ((SOCIAL.outgoing || []).includes(id)) return 'sent';
+  if ((SOCIAL.incoming || []).includes(id)) return 'incoming';
+  return '';
+}
+const iniAv = (name, size, seed) => `<span class="av" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.4)}px;background:${AV_FILL[avIdx(seed || name)]}" aria-hidden="true">${esc((String(name || '?')[0] || '?').toUpperCase())}</span>`;
+// Ergebnis der Suche: wird beim Tippen direkt ausgetauscht, damit das Eingabefeld den Fokus behält
+function budResultHTML() {
+  const f = BUD.found, stt = f ? budState(f.id) : '';
+  const lbl = { friend: 'Befreundet', sent: 'Angefragt', incoming: 'Annehmen', '': 'Anfrage senden' }[stt];
+  return `<span class="small muted">${BUD.busy ? 'Suche …' : BUD.msg ? esc(BUD.msg) : 'Die ID steht im Profil deines Buddys unter seinem Namen.'}</span>
+      ${f ? `<div class="glass" style="border-radius:16px;padding:12px;display:flex;align-items:center;gap:12px">${iniAv(f.name, 44, f.id)}
+        <span style="flex:1;display:flex;flex-direction:column"><b>${esc(f.name)}</b><span class="mono small muted">#${esc(f.buddy_id)}</span></span>
+        <button class="btn primary" data-act="bud-send" data-id="${esc(f.id)}" ${stt === 'friend' || stt === 'sent' ? 'disabled' : ''} style="width:auto;min-height:40px;padding:0 14px;font-size:14px">${lbl}</button></div>` : ''}`;
+}
+function budRefresh() { const el = $('#bud-res'); if (el) el.innerHTML = budResultHTML(); else safeRender(); }
+function viewBuddies() {
+  const search = `<section class="card glass" style="gap:10px">
+      <label for="bud-q" class="eyebrow">GymBuddy suchen</label>
+      <div style="display:flex;gap:8px"><div style="flex:1;position:relative"><span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);opacity:.6;display:flex;pointer-events:none">${ICON.search.replace('<svg ', '<svg width="18" height="18" ')}</span>
+        <input id="bud-q" class="inp mono srch" value="${esc(BUD.q)}" placeholder="ID eingeben, z. B. LN4K7QPA" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="9" style="padding-left:42px;letter-spacing:.08em;font-size:17px"></div>
+        <a class="iconbtn glass" href="#scanner" aria-label="QR-Code scannen" style="width:52px;height:52px;border-radius:14px">${ICON.qr}</a></div>
+      <div id="bud-res" style="display:flex;flex-direction:column;gap:10px">${budResultHTML()}</div>
+    </section>`;
+  const reqs = (SOCIAL.incoming || []).map(id => `<div class="brow">${avatar(id, 40)}<span class="bname"><b>${nm(id)}</b><span class="small muted">möchte dein Gym Buddy sein</span></span>
+      <button class="btn small primary" data-act="bud-accept" data-id="${esc(id)}">Annehmen</button><button class="btn small ghost" data-act="bud-decline" data-id="${esc(id)}" aria-label="Ablehnen">${ICON.x}</button></div>`).join('');
+  const cinv = (SOCIAL.invites || []).map(i => `<div class="brow">${iniAv(i.name, 40, i.crew)}<span class="bname"><b>${esc(i.name)}</b><span class="small muted">${nm(i.by)} lädt dich in die Crew ein</span></span>
+      <button class="btn small primary" data-act="crew-join" data-id="${esc(i.crew)}">Beitreten</button><button class="btn small ghost" data-act="crew-inv-no" data-id="${esc(i.crew)}" aria-label="Ablehnen">${ICON.x}</button></div>`).join('');
+  const out = (SOCIAL.outgoing || []).map(id => `<div class="brow">${avatar(id, 40)}<span class="bname"><b>${nm(id)}</b><span class="small muted">Anfrage gesendet</span></span><button class="btn small ghost" data-act="bud-cancel" data-id="${esc(id)}">Zurückziehen</button></div>`).join('');
+  const n = hasCrew() ? (CREW.members || []).length : 0;
+  const crew = hasCrew() ? `<section class="card glass" style="gap:14px">
+      <a href="#crew" style="display:flex;align-items:center;gap:12px;text-decoration:none;color:var(--fg)">${avatar(crewKey(), 48)}
+        <span style="flex:1;display:flex;flex-direction:column"><b style="font-size:17px">${esc(CREW.name)}</b><span class="small muted">${n} von ${CREW_MAX}${isOwner() ? ' · du bist Crew-Chef' : ''}</span></span>
+        <span class="iconbtn glass" aria-hidden="true">${ICON.right}</span></a>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
+        <a class="btn glass" href="#chat:${encodeURIComponent(crewKey())}" style="min-height:44px;font-size:14px;padding:0 6px;white-space:nowrap">Crew-Chat</a>
+        <a class="btn glass" href="#plan" data-act="goto-crewplan" style="min-height:44px;font-size:14px;padding:0 6px;white-space:nowrap">Crew-Plan</a>
+        <button class="btn glass" data-act="crew-invite" style="min-height:44px;font-size:14px;padding:0 6px;white-space:nowrap" ${isOwner() && n < CREW_MAX ? '' : 'disabled'}>Einladen</button></div></section>`
+    : `<section class="card nocrew"><h2>Du bist noch in keiner Crew</h2><p>Gründe eine mit deinen Buddies und trainiert nach einem gemeinsamen Plan.</p><a class="btn primary" href="#crew" style="width:100%">${ICON_CREW14.replace(/14/g, '20')}Crew gründen</a></section>`;
+  const fl = friendsList().sort((a, b) => pname(a).localeCompare(pname(b), 'de'));
+  const frows = fl.map((id, i) => { const x = flameStats(id), g = weekGoal(id);
+    return `<a class="brow" href="#profil:${encodeURIComponent(id)}" style="${i < fl.length - 1 ? 'border-bottom:1px solid rgba(255,255,255,.12)' : ''}">${avatar(id, 40)}<span class="bname"><b>${nm(id)}</b><span class="small muted">${x.week.length} von ${g} diese Woche${crewMates().includes(id) ? ' · Crew' : ''}</span></span><span class="fl-n" aria-label="${x.streak} Wochen Streak"><img src="${FLAME.W}" alt=""><b>${x.streak}</b></span></a>`; }).join('');
+  return `${search}
+    ${reqs || cinv ? `<div class="sec-title"><h2>Anfragen</h2></div><section class="card glass" style="padding:4px 16px;gap:0">${cinv}${reqs}</section>` : ''}
+    <div class="sec-title"><h2>Crew</h2></div>${crew}
+    <div class="sec-title"><h2>Freunde <span class="mono muted" style="font-size:13px;font-weight:500">${fl.length}</span></h2></div>
+    ${fl.length ? `<section class="card glass" style="padding:4px 16px;gap:0">${frows}</section>` : `<section class="card"><div class="empty">Noch keine Gym Buddys. Suche nach einer ID oder scanne den QR-Code im Profil deines Buddys.</div></section>`}
+    ${out ? `<div class="sec-title"><h2>Gesendet</h2></div><section class="card glass" style="padding:4px 16px;gap:0">${out}</section>` : ''}`;
+}
+// Wer neu in eine Crew kommt, übernimmt den Crew-Plan des Crew-Chefs (sonst stünden alle alten Änderungen in der Glocke)
+function adoptCrewPlan() {
+  if (!hasCrew() || CREW.owner === cfg.me) return;
+  const s = st(), from = s.plans[CREW.owner], mine = s.plans[cfg.me]; if (!from || !PD(from).length) return;
+  PD(from).forEach(d => { if (!mine[d] || sharedDiff(mine[d], from[d]).length) addEvent('plan_change', { day: d, title: from[d].title, short: from[d].short, exercises: clone(from[d].exercises).map(x => ({ ...x, personal: false })), changes: [], v2: true, adopt: true }, `Crew-Plan übernommen: ${from[d].short}`); });
+  PD(mine).forEach(d => { if (!from[d]) addEvent('plan_change', { day: d, deleted: true, short: mine[d].short, title: mine[d].title, adopt: true }, `Crew-Plan übernommen: ${mine[d].short} entfällt`); });
+}
+/* ---------- Crew-Info ---------- */
+let CREWV = { edit: false, invite: false, leave: false, rm: null, name: '' };
+function viewCrew() {
+  if (!hasCrew()) return `<h1 class="display" style="font-size:30px">Crew gründen</h1>
+    <p class="muted" style="margin:0">Mit einer Crew trainiert ihr nach einem gemeinsamen Plan, teilt Notizen und habt einen Crew-Chat. Bis zu ${CREW_MAX} Personen.</p>
+    <section class="card form"><label>Name der Crew<input class="inp" id="crew-name" maxlength="24" placeholder="z. B. Eisenfamilie" value="${esc(CREWV.name)}" autocomplete="off"></label>
+      <div class="err" id="crew-err" hidden></div><button class="btn primary" data-act="crew-create">Crew gründen</button></section>
+    <p class="small muted" style="margin:0 2px">Danach lädst du Freunde ein. Dein Plan wird zum Crew-Plan, „Mein Plan“ bleibt nur für dich.</p>`;
+  const meta = SOCIAL.crewMeta, mem = CREW.members || [], own = isOwner();
+  const rows = mem.map((id, i) => `<div style="display:flex;align-items:center;gap:12px;min-height:60px;${i < mem.length - 1 ? 'border-bottom:1px solid rgba(255,255,255,.12)' : ''}">${avatar(id, 40)}
+      <span style="flex:1;display:flex;flex-direction:column"><b style="${id === cfg.me ? '' : `color:${nameColor(id)}`}">${id === cfg.me ? 'Du' : nm(id)}</b><span class="small muted">${id === CREW.owner ? 'Crew-Chef' : 'Mitglied'}</span></span>
+      ${own && id !== cfg.me ? (CREWV.rm === id ? `<button class="btn small danger" data-act="crew-rm-yes" data-id="${esc(id)}">Entfernen</button><button class="btn small ghost" data-act="crew-rm-no">Nein</button>` : `<button class="btn small ghost" data-act="crew-rm" data-id="${esc(id)}">Entfernen</button>`) : ''}</div>`).join('');
+  const pendingInv = (SOCIAL.crewInvites || []).filter(id => !mem.includes(id));
+  const cands = friendsList().filter(id => !mem.includes(id) && !pendingInv.includes(id));
+  return `<div class="pf" style="position:relative"><div class="pf-ring">${avatar(crewKey(), 114)}</div>
+      ${CREWV.edit ? `<label style="width:100%"><input class="inp" id="crew-rename" value="${esc(CREW.name)}" maxlength="24" aria-label="Crew-Name" style="text-align:center;font-family:var(--display);font-weight:800;font-size:24px"></label><button class="lnk" data-act="crew-rename">Fertig</button>`
+        : `<button ${own ? 'data-act="crew-edit"' : 'disabled'} style="background:none;border:0;color:#fff;display:flex;align-items:center;gap:10px;cursor:${own ? 'pointer' : 'default'};padding:0" aria-label="Crew-Namen ändern"><h1 class="display" style="font-size:36px">${esc(CREW.name)}</h1>${own ? ICON.pen.replace(/20/g, '18') : ''}</button>`}
+      <span class="mono muted small">Crew · ${mem.length} von ${CREW_MAX}${meta && meta.created_at ? ' · gegründet ' + new Date(meta.created_at).toLocaleDateString('de-DE') : ''}</span></div>
+    <div class="sec-title"><h2>Mitglieder</h2><span class="mono muted small">${mem.length} / ${CREW_MAX}</span></div>
+    <section class="card glass" style="padding:4px 16px;gap:0">${rows}</section>
+    <span class="small muted" style="margin:0 2px">Die Namensfarbe ist die Chat-Farbe jedes Mitglieds.</span>
+    ${pendingInv.length ? `<div class="sec-title"><h2>Eingeladen</h2></div><section class="card glass" style="padding:4px 16px;gap:0">${pendingInv.map(id => `<div class="brow">${avatar(id, 36)}<span class="bname"><b>${nm(id)}</b><span class="small muted">wartet auf Antwort</span></span></div>`).join('')}</section>` : ''}
+    ${own && mem.length < CREW_MAX ? (CREWV.invite ? `<section class="card" style="gap:10px"><b>Buddy einladen</b>${cands.length ? cands.map(id => `<div class="brow">${avatar(id, 36)}<span class="bname"><b>${nm(id)}</b></span><button class="btn small primary" data-act="crew-invite-yes" data-id="${esc(id)}">Einladen</button></div>`).join('') : '<span class="small muted">Alle deine Freunde sind schon in der Crew oder eingeladen. Weitere Buddys findest du über ihre ID.</span>'}<button class="btn small ghost" data-act="crew-invite-no">Schließen</button></section>`
+      : `<button class="btn glass" data-act="crew-invite">Buddy einladen</button>`) : ''}
+    ${CREWV.leave ? `<section class="card"><b>Crew wirklich verlassen?</b><span class="small muted">Deine Crew-Notizen bleiben in der Crew, du bekommst sie als private Notizen mit. Genutzte eigene Übungen der Crew bleiben für dich nutzbar.${own && mem.length > 1 ? ' Die Chef-Rolle geht an das älteste Mitglied.' : ''}</span>
+        <div class="btnrow"><button class="btn small danger" data-act="crew-leave-yes">Verlassen</button><button class="btn small ghost" data-act="crew-leave-no">Abbrechen</button></div></section>`
+      : `<button class="btn ghost danger-t" data-act="crew-leave" style="border-color:var(--danger)">Crew verlassen</button>`}`;
+}
+/* ---------- Buddy-Menü im Profil: entfernen, blockieren, melden ---------- */
+function buddyMenu(p, mode) {
+  const sameCrew = crewMates().includes(p);
+  if (mode === 'block') {
+    sheet(`<h2>${nm(p)} blockieren?</h2><p class="muted" style="margin:0">Ihr seht gegenseitig nichts mehr voneinander: Trainings, Notizen, Chat, Spots und Flammen. ${nm(p)} erfährt nicht, dass du blockiert hast.</p>
+      ${sameCrew ? `<div class="notice card"><b>Ihr seid in derselben Crew.</b><span class="small">${isOwner() ? `Wenn du blockierst, wird ${nm(p)} aus der Crew entfernt.` : 'Wenn du blockierst, verlässt du die Crew.'}</span></div>` : ''}
+      <div class="btnrow col"><button class="btn danger" data-act="bud-block-yes" data-id="${esc(p)}">Blockieren</button><button class="btn ghost" data-act="mclose">Abbrechen</button></div>`); return;
+  }
+  if (mode === 'remove') {
+    sheet(`<h2>${nm(p)} entfernen?</h2><p class="muted" style="margin:0">Ihr seid dann keine Gym Buddys mehr und seht eure Trainings nicht mehr.${sameCrew ? ' In der Crew bleibt ihr beide.' : ''}</p>
+      <div class="btnrow col"><button class="btn danger" data-act="bud-remove-yes" data-id="${esc(p)}">Entfernen</button><button class="btn ghost" data-act="mclose">Abbrechen</button></div>`); return;
+  }
+  if (mode === 'report') {
+    sheet(`<h2>${nm(p)} melden</h2><span class="eyebrow">Warum?</span>
+      <div class="pick col" role="radiogroup">${['Unangemessener Name oder Bild', 'Belästigung', 'Spam oder Betrug', 'Etwas anderes'].map((r, i) => `<label class="chk"><input type="radio" name="rep-why" value="${esc(r)}" ${i === 0 ? 'checked' : ''}><span>${esc(r)}</span></label>`).join('')}</div>
+      <label class="chk"><input type="checkbox" id="rep-block"><span>${nm(p)} zusätzlich blockieren</span></label>
+      <span class="small muted">${nm(p)} erfährt nicht, wer gemeldet hat.</span>
+      <div class="btnrow col"><button class="btn danger" data-act="bud-report-yes" data-id="${esc(p)}">Melden</button><button class="btn ghost" data-act="mclose">Abbrechen</button></div>`); return;
+  }
+  sheet(`<h2>${nm(p)}</h2><div class="cm-acts" style="width:100%">
+      <button type="button" data-act="chat-open" data-p="${esc(p)}">Nachricht schreiben${ICON.chat.replace('width="20" height="20"', 'width="18" height="18"')}</button>
+      ${PROFILES[p] && PROFILES[p].friend ? `<button type="button" data-act="bud-remove" data-id="${esc(p)}">Als Buddy entfernen${ICON.x}</button>` : ''}
+      <button type="button" class="danger-t" data-act="bud-block" data-id="${esc(p)}">Blockieren</button>
+      <button type="button" class="danger-t" data-act="bud-report" data-id="${esc(p)}">Melden</button></div>
+    <button class="btn ghost" data-act="mclose">Schließen</button>`);
+}
+/* ---------- QR-Code: eigene ID zeigen, Code eines Buddys scannen ---------- */
+function qrSvg(text, px = 220) {
+  if (typeof qrcode !== 'function') return '';
+  const q = qrcode(0, 'M'); q.addData(text); q.make();
+  const n = q.getModuleCount(), m = 2, s = n + m * 2;
+  let d = '';
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c + m} ${r + m}h1v1h-1z`;
+  return `<svg width="${px}" height="${px}" viewBox="0 0 ${s} ${s}" shape-rendering="crispEdges" role="img" aria-label="QR-Code"><rect width="${s}" height="${s}" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+}
+const buddyLink = id => `BUILT:${id}`;
+function idSheet() {
+  const id = (PROFILES[cfg.me] || {}).buddy_id || '';
+  $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg" style="background:rgba(0,0,0,.92)"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="qr-t" style="align-items:center;text-align:center;gap:18px;background:transparent;border:0">
+    <div style="align-self:stretch;display:flex;justify-content:flex-end"><button class="iconbtn glass" data-act="mclose" aria-label="Schließen">${ICON.x}</button></div>
+    <h1 class="display" id="qr-t" style="font-size:30px;align-self:flex-start;text-align:left;margin:0">Deine<br>GymBuddy-ID</h1>
+    <div style="padding:14px;border-radius:22px;background:#fff">${qrSvg(buddyLink(id), 220)}</div>
+    <button class="mono" data-act="acct-copy" style="font-size:24px;font-weight:700;letter-spacing:.1em;padding:12px 26px;border-radius:14px;background:rgba(255,255,255,.08);border:1px solid var(--gline);color:#fff;cursor:pointer" aria-label="ID kopieren">#${esc(id)}</button>
+    <p class="muted" style="margin:0;max-width:280px">Lass deinen Buddy diesen Code in BUILT scannen.</p>
+    <a class="btn glass" href="#scanner" data-act="mclose" style="align-self:stretch">Code eines Buddys scannen</a>
+  </div></div>`;
+}
+const SCAN = { stream: null, raf: 0, found: null, err: '', busy: false };
+function loadScript(src) { return new Promise((res, rej) => { if (document.querySelector(`script[src="${src}"]`)) return res(); const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); }
+function viewScanner() {
+  const f = SCAN.found, stt = f ? budState(f.id) : '';
+  return `<div class="scan">
+    <div class="head"><a class="iconbtn glass" href="#buddies" aria-label="Schließen">${ICON.x}</a><span style="flex:1;text-align:center;font-weight:600">Buddy-Code scannen</span><span style="width:44px"></span></div>
+    <div class="scan-c"><div class="scan-f"><video id="scan-v" playsinline muted></video><i class="c1"></i><i class="c2"></i><i class="c3"></i><i class="c4"></i><span class="scan-l"></span></div>
+      <p style="margin:0;text-align:center;max-width:260px;font-weight:500">${SCAN.err ? esc(SCAN.err) : 'Halte die Kamera auf den QR-Code im Profil deines Buddys.'}</p></div>
+    <div style="padding:0 16px calc(24px + var(--sab, 0px))">
+      ${f ? `<div class="card glass" style="background:rgba(20,20,22,.85)"><span class="eyebrow">Erkannt</span>
+        <div style="display:flex;align-items:center;gap:12px">${iniAv(f.name, 48, f.id)}<span style="flex:1;display:flex;flex-direction:column"><b style="font-size:17px">${esc(f.name)}</b><span class="mono small muted">#${esc(f.buddy_id)}</span></span></div>
+        <button class="btn primary" data-act="bud-send" data-id="${esc(f.id)}" ${stt === 'friend' || stt === 'sent' ? 'disabled' : ''}>${{ friend: 'Schon befreundet', sent: 'Angefragt', incoming: 'Annehmen', '': 'Anfrage senden' }[stt]}</button></div>` : ''}
+      <p class="small muted" style="text-align:center;margin:12px 0 0">Kein QR-Code zur Hand? <a href="#buddies" data-act="scan-type">ID eintippen</a></p></div>
+  </div>`;
+}
+async function startScan() {
+  SCAN.found = null; SCAN.err = '';
+  try {
+    await loadScript('vendor/jsqr-1.4.0.js');
+    SCAN.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+    const v = $('#scan-v'); if (!v) return stopScan();
+    v.srcObject = SCAN.stream; await v.play();
+    const cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently: true });
+    const tick = async () => {
+      if (view !== 'scanner' || !SCAN.stream) return;
+      if (v.videoWidth && !SCAN.busy) {
+        const w = 360, h = Math.round(v.videoHeight * w / v.videoWidth); cv.width = w; cv.height = h; cx.drawImage(v, 0, 0, w, h);
+        const r = window.jsQR(cx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'dontInvert' });
+        const m = r && /^BUILT:([A-Z0-9]{8})$/i.exec(r.data.trim());
+        if (m && (!SCAN.found || SCAN.found.buddy_id !== m[1].toUpperCase())) {
+          SCAN.busy = true;
+          const q = await sb.rpc('find_buddy', { code: m[1] });
+          SCAN.busy = false;
+          if (!q.error && q.data && q.data.length) { SCAN.found = q.data[0]; if (navigator.vibrate) navigator.vibrate(10); render(); return; }
+        }
+      }
+      SCAN.raf = requestAnimationFrame(tick);
+    };
+    tick();
+  } catch (e) { SCAN.err = 'Kamera nicht verfügbar. Erlaube den Kamerazugriff oder tippe die ID ein.'; render(); }
+}
+function stopScan() { cancelAnimationFrame(SCAN.raf); if (SCAN.stream) SCAN.stream.getTracks().forEach(t => t.stop()); SCAN.stream = null; }
+/* ---------- Wochenziel ---------- */
+// Ziel einer Woche: ab dem Montag, ab dem eine Änderung gilt, das neue Ziel
+function weekGoal(p, weekTs) {
+  const pr = PROFILES[p] || {}, base = Math.min(6, Math.max(1, int(pr.week_goal) || 3));
+  if (pr.week_goal_next && pr.week_goal_from) { const from = new Date(pr.week_goal_from + 'T00:00:00').getTime(); if ((weekTs ?? weekOf(Date.now())) >= from) return int(pr.week_goal_next) || base; }
+  return base;
+}
+function goalSheet() {
+  const pr = PROFILES[cfg.me] || {}, cur = weekGoal(cfg.me), nxt = pr.week_goal_next && pr.week_goal_from && new Date(pr.week_goal_from) > new Date() ? int(pr.week_goal_next) : cur;
+  const mon = new Date(weekOf(Date.now()) + 7 * 864e5);
+  sheet(`<h2>Wochenziel</h2><p class="muted" style="margin:0">Wie oft willst du pro Woche trainieren?</p>
+    <div class="wz" role="radiogroup" aria-label="Trainings pro Woche">${[1, 2, 3, 4, 5, 6].map(n => `<button type="button" class="wzb ${n === nxt ? 'on' : ''}" role="radio" data-act="goal-pick" data-v="${n}" aria-checked="${n === nxt}">${n}</button>`).join('')}</div>
+    <span class="small muted" id="goal-hint">Gilt ab Montag, ${mon.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}. Diese Woche zählt noch dein bisheriges Ziel (${cur}).</span>
+    <div class="btnrow col"><button class="btn primary" data-act="goal-save" data-v="${nxt}">Speichern</button><button class="btn ghost" data-act="mclose">Abbrechen</button></div>`);
+}
 
 /* ---------- Plan-Builder ----------
    Oben Mein Plan / Crew-Plan, darunter die Trainingstage als Kürzel (bis zu 6), „+ Tag“ und der Stift für Name, Kürzel und Löschen.
@@ -4595,6 +4900,7 @@ function viewSettings() {
     <div class="rows glass">
       <div class="row">E-Mail<span class="v">${esc(LS.get('acct.email', '') || '–')}</span></div>
       ${PROFILES[cfg.me] && PROFILES[cfg.me].buddy_id ? `<button class="row" data-act="acct-copy">Buddy-ID<span class="v mono">#${esc(PROFILES[cfg.me].buddy_id)}</span></button>` : ''}
+      <label class="row tgl" style="cursor:pointer"><span>Körpergewicht mit Buddys teilen</span><input type="checkbox" role="switch" id="share-w" ${(PROFILES[cfg.me] || {}).share_weight ? 'checked' : ''}><i aria-hidden="true"></i></label>
       <div class="row">Letzter Sync<span class="v">${lastSync ? fmtDate(lastSync) + ', ' + fmtTime(lastSync) : '–'}</span></div>
       <div class="row">Einträge<span class="v">${events.length} synchronisiert, ${waiting} wartend</span></div>
     </div>
@@ -4741,8 +5047,16 @@ const actions = {
   'cm-reply-x': () => { CHAT.reply = null; refreshReplyBar(); },
   'cm-copy': t => { const m = CHAT.msgs.find(x => x.id === t.dataset.id); closeModal(); if (m && navigator.clipboard) navigator.clipboard.writeText(m.text).then(() => toast('Kopiert'), () => toast('Kopieren nicht möglich')); },
   'cm-del2': t => { closeModal(); chatDelete(t.dataset.id); },
-  'cm-report': t => sheet(`<h2>Nachricht melden?</h2><span class="small muted">Die Nachricht wird für dich ausgeblendet. Ab der Version mit Konten geht eine Meldung zusätzlich zur Prüfung an die Moderation.</span><div class="btnrow"><button class="btn danger" data-act="cm-report-yes" data-id="${esc(t.dataset.id)}">Melden</button><button class="btn ghost" data-act="mclose">Abbrechen</button></div>`),
-  'cm-report-yes': t => { const h = chatHidden(); if (!h.includes(t.dataset.id)) h.push(t.dataset.id); LS.set('chat.hidden.' + cfg.me, h); closeModal(); chatChanged(); toast('Gemeldet und ausgeblendet'); },
+  'cm-report': t => { const m = CHAT.msgs.find(x => x.id === t.dataset.id); if (!m) return; sheet(`<h2>Nachricht melden</h2><div class="cm-msg" style="align-self:stretch;max-width:none"><b class="small" style="color:${nameColor(m.from)}">${nm(m.from)}</b><br>${esc(m.text)}</div>
+    <span class="eyebrow">Warum?</span><div class="pick col" role="radiogroup">${['Beleidigung oder Belästigung', 'Spam oder Betrug', 'Unangemessene Inhalte', 'Etwas anderes'].map((r, i) => `<label class="chk"><input type="radio" name="rep-why" value="${esc(r)}" ${i === 0 ? 'checked' : ''}><span>${esc(r)}</span></label>`).join('')}</div>
+    <label class="chk"><input type="checkbox" id="rep-block"><span>${nm(m.from)} zusätzlich blockieren</span></label>
+    <span class="small muted">Die Nachricht wird zur Prüfung entschlüsselt mitgeschickt und für dich ausgeblendet. ${nm(m.from)} erfährt nicht, wer gemeldet hat.</span>
+    <div class="btnrow col"><button class="btn danger" data-act="cm-report-yes" data-id="${esc(m.id)}">Melden</button><button class="btn ghost" data-act="mclose">Abbrechen</button></div>`); },
+  'cm-report-yes': async t => { const m = CHAT.msgs.find(x => x.id === t.dataset.id); const why = (document.querySelector('input[name="rep-why"]:checked') || {}).value || '', block = $('#rep-block') && $('#rep-block').checked;
+    const h = chatHidden(); if (!h.includes(t.dataset.id)) h.push(t.dataset.id); LS.set('chat.hidden.' + cfg.me, h); closeModal(); chatChanged();
+    const r = m ? await sb.from('reports').insert({ target_type: 'message', target_id: m.id, reason: why.slice(0, 500), content: m.text.slice(0, 4000) }) : { error: true };
+    toast(r.error ? 'Ausgeblendet. Melden klappt beim nächsten Mal.' : 'Gemeldet und ausgeblendet');
+    if (block && m) { await rpcDo('block_user', { other: m.from }); location.hash = '#chats'; } },
   'cm-jump': (t, e) => { e.stopPropagation(); const el = document.getElementById('cm-' + t.dataset.id); if (!el) { toast('Nachricht nicht mehr da'); return; } el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.remove('flash'); el.getBoundingClientRect(); el.classList.add('flash'); },
   start: () => startTraining(false),
   'start-normal': () => startTraining(true),
@@ -4855,6 +5169,39 @@ const actions = {
   'bday-cancel': () => { const d = builder.day; if (!planOf(cfg.me, builder.kind)[d]) { delete builder.work[d]; delete builder.dirty[d]; builder.day = PD(builder.work)[0]; } closeModal(); render(); },
   nscope: t => { const it = draft && draft.items[+t.dataset.i]; if (!it) return; it.nscope = t.dataset.v; saveDraft(); render(); setTimeout(() => { const ta = document.getElementById('note-' + t.dataset.i); if (ta) ta.focus(); }, 30); },
   skind: t => { startKind = t.dataset.v; otherDayAsk = false; render(); },
+  'bud-send': async t => { const id = t.dataset.id; if (budState(id) === 'incoming') { await rpcDo('respond_friend_request', { other: id, accept: true }, 'Ihr seid jetzt Gym Buddys'); return; } const r = await rpcDo('send_friend_request', { target: id }); if (r) toast(r === 'accepted' ? 'Ihr seid jetzt Gym Buddys' : 'Anfrage gesendet'); },
+  'bud-accept': t => rpcDo('respond_friend_request', { other: t.dataset.id, accept: true }, 'Ihr seid jetzt Gym Buddys'),
+  'bud-decline': t => rpcDo('respond_friend_request', { other: t.dataset.id, accept: false }, 'Anfrage abgelehnt'),
+  'bud-cancel': async t => { const me = cfg.me, o = t.dataset.id; const r = await sb.from('friendships').delete().eq('a', me < o ? me : o).eq('b', me < o ? o : me); toast(r.error ? 'Das hat nicht geklappt.' : 'Anfrage zurückgezogen'); await sync({ quiet: true }); render(); },
+  'bud-menu': t => buddyMenu(t.dataset.p || t.dataset.id),
+  'bud-remove': t => buddyMenu(t.dataset.id, 'remove'),
+  'bud-block': t => buddyMenu(t.dataset.id, 'block'),
+  'bud-report': t => buddyMenu(t.dataset.id, 'report'),
+  'bud-remove-yes': async t => { const me = cfg.me, o = t.dataset.id; closeModal(); const r = await sb.from('friendships').delete().eq('a', me < o ? me : o).eq('b', me < o ? o : me); toast(r.error ? 'Das hat nicht geklappt.' : 'Als Buddy entfernt'); await sync({ quiet: true }); location.hash = '#buddies'; },
+  'bud-block-yes': async t => { closeModal(); const ok = await rpcDo('block_user', { other: t.dataset.id }, 'Blockiert'); if (ok) location.hash = '#buddies'; },
+  'bud-report-yes': async t => { const why = (document.querySelector('input[name="rep-why"]:checked') || {}).value || '', block = $('#rep-block') && $('#rep-block').checked, id = t.dataset.id; closeModal();
+    const r = await sb.from('reports').insert({ target_type: 'profile', target_id: id, reason: why.slice(0, 500) }); toast(r.error ? 'Melden hat nicht geklappt. Bitte später noch einmal.' : 'Danke, wir sehen es uns an.');
+    if (block) { await rpcDo('block_user', { other: id }); location.hash = '#buddies'; } },
+  'crew-create': async () => { const n = ($('#crew-name').value || '').trim(); CREWV.name = n; const e = $('#crew-err'); if (n.length < 2) { e.textContent = 'Bitte gib einen Namen mit mindestens 2 Zeichen ein.'; e.hidden = false; return; } const r = await rpcDo('create_crew', { crew_name: n }, `Crew ${n} gegründet`); if (r) { planKind = null; builder = null; render(); } },
+  'crew-edit': () => { CREWV.edit = true; render(); setTimeout(() => { const i = $('#crew-rename'); if (i) i.focus(); }, 30); },
+  'crew-rename': async () => { const n = ($('#crew-rename').value || '').trim(); CREWV.edit = false; if (!n || n === CREW.name) { render(); return; } const r = await sb.from('crews').update({ name: n }).eq('id', CREW.id); if (r.error) toast(/valid_name|check/.test(r.error.message || '') ? 'Bitte wähle einen anderen Namen.' : 'Umbenennen hat nicht geklappt.'); else toast('Crew umbenannt'); await sync({ quiet: true }); render(); },
+  'crew-invite': () => { if (view !== 'crew') { location.hash = '#crew'; setTimeout(() => { CREWV.invite = true; render(); }, 50); return; } CREWV.invite = true; render(); },
+  'crew-invite-no': () => { CREWV.invite = false; render(); },
+  'crew-invite-yes': t => rpcDo('invite_to_crew', { friend: t.dataset.id }, `${pname(t.dataset.id)} eingeladen`),
+  'crew-join': async t => { const r = await rpcDo('join_crew', { crew: t.dataset.id }, 'Willkommen in der Crew'); if (r) { planKind = null; builder = null; adoptCrewPlan(); } },
+  'crew-inv-no': async t => { const r = await sb.from('crew_invites').delete().eq('crew_id', t.dataset.id).eq('user_id', cfg.me); toast(r.error ? 'Das hat nicht geklappt.' : 'Einladung abgelehnt'); await sync({ quiet: true }); render(); },
+  'crew-rm': t => { CREWV.rm = t.dataset.id; render(); },
+  'crew-rm-no': () => { CREWV.rm = null; render(); },
+  'crew-rm-yes': t => { CREWV.rm = null; rpcDo('remove_from_crew', { other: t.dataset.id }, `${pname(t.dataset.id)} entfernt`); },
+  'crew-leave': () => { CREWV.leave = true; render(); },
+  'crew-leave-no': () => { CREWV.leave = false; render(); },
+  'crew-leave-yes': async () => { CREWV.leave = false; const r = await rpcDo('leave_crew', {}, 'Du hast die Crew verlassen'); if (r) { planKind = null; startKind = null; builder = null; location.hash = '#buddies'; } },
+  'goto-crewplan': () => { planKind = 'crew'; builder = null; },
+  'id-sheet': () => idSheet(),
+  'scan-type': () => { setTimeout(() => { const i = $('#bud-q'); if (i) i.focus(); }, 80); },
+  'goal-open': () => goalSheet(),
+  'goal-pick': t => { document.querySelectorAll('.wzb').forEach(b => { const on = b === t; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); }); const s = $('[data-act="goal-save"]'); if (s) s.dataset.v = t.dataset.v; },
+  'goal-save': async t => { const n = int(t.dataset.v); closeModal(); const r = await sb.rpc('set_week_goal', { n }); if (r.error) { toast('Speichern hat nicht geklappt.'); return; } toast(r.data ? `Neues Wochenziel ${n} gilt ab Montag` : `Wochenziel: ${n}`); await sync({ quiet: true }); render(); },
   'note-more': t => { const k = t.dataset.v; if (NOTE_OPEN.has(k)) NOTE_OPEN.delete(k); else NOTE_OPEN.add(k); safeRender(); },
   'note-edit': t => openNoteMenu(t.dataset.id, 'edit'),
   'note-del': t => openNoteMenu(t.dataset.id, 'del'),
@@ -4934,10 +5281,10 @@ const actions = {
   'sg-del-yes': t => deleteSpot(t.dataset.id),
   'cam-del': t => {
     const g = SPOT.gallery.find(x => x.id === t.dataset.id); if (!g) return;
-    const seen = spotSeenBy(g.id, partner());
+    const seen = others().some(o => spotSeenBy(g.id, o));
     sheet(`<div class="spdel"><img src="${spotUrl(g)}" alt="Spot vom ${fmtDate(g.created)}"><h2>Spot löschen?</h2>
       <span class="mono muted small">${relDay(g.created)} · ${fmtTime(g.created)}${seen ? ' · gesehen' : g.shared ? ' · noch nicht gesehen' : ' · noch nicht gesendet'}</span>
-      <p class="muted" style="margin:0">Der Spot verschwindet aus deiner Galerie.${!seen ? ` ${nm(partner())} bekommt ihn nicht mehr zu sehen.` : ''}</p></div>
+      <p class="muted" style="margin:0">Der Spot verschwindet aus deiner Galerie.${!seen ? ' Wer ihn noch nicht gesehen hat, bekommt ihn nicht mehr zu sehen.' : ''}</p></div>
       <div class="btnrow col"><button class="btn danger" data-act="cam-del-yes" data-id="${esc(g.id)}">Löschen</button><button class="btn ghost" data-act="mclose">Abbrechen</button></div>`);
   },
   'cam-del-yes': async t => { $('#modal').innerHTML = ''; await deleteSpot(t.dataset.id, '#kamera'); },
@@ -4963,7 +5310,7 @@ const actions = {
     const me = cfg.me; lockVault();
     ['chat.msgs.', 'chat.read.', 'chat.key.', 'chat.tomb.'].forEach(k => localStorage.removeItem('hb.' + k + me));
     events = []; pending = []; lastSeq = 0; lastSync = null; seenIds = new Set(); saveLog(); LS.set('lastSync', null);
-    cfg = { me: '', url: '', key: '' }; LS.set('cfg', cfg); LS.set('acct.email', ''); PROFILES = {}; CREW = null; LS.set('profiles', {}); LS.set('crew', null); computePeople();
+    cfg = { me: '', url: '', key: '' }; LS.set('cfg', cfg); LS.set('acct.email', ''); PROFILES = {}; CREW = null; LS.set('profiles', {}); LS.set('crew', null); computePeople(); LS.set('people.full', []); LS.set('social', null); SOCIAL = { incoming: [], outgoing: [], invites: [], crewInvites: [], crewMeta: null }; NOTES = []; saveNotes(); LIBQ = []; LS.set('lib.q', []);
     CHAT.msgs = []; CHAT.hold = []; CHAT.loaded = false; CK.state = 'none'; CK.for = null; logoutAsk = false; builder = null; draft = null; saveDraft(); invalidate();
     location.hash = ''; render();
   },
@@ -5051,6 +5398,7 @@ document.addEventListener('change', e => {
   const t = e.target;
   if ((t.id === 'av-file' || t.id === 'av-file2') && t.files[0]) setAvatar(t.files[0]);
   if (t.id === 'v-import' && t.files[0]) readBackupFile(t.files[0]);
+  if (t.id === 'share-w') { const v = t.checked; sb.from('profiles').update({ share_weight: v }).eq('id', cfg.me).then(r => { if (r.error) { toast('Speichern hat nicht geklappt.'); t.checked = !v; return; } if (PROFILES[cfg.me]) PROFILES[cfg.me].share_weight = v; LS.set('profiles', PROFILES); toast(v ? 'Deine Buddys sehen dein Körpergewicht' : 'Körpergewicht nur noch für dich'); }); }
   if ((t.id === 'sp-file' || t.id === 'sp-file2') && t.files[0]) openEditor(t.files[0]);
   if (t.dataset.f === 'w') { const go = () => { if (draft && draft.items[+t.dataset.i] && draft.items[+t.dataset.i].ex.type === 'bw' && propagateDown(+t.dataset.i, +t.dataset.j)) { saveDraft(); rerenderCard(+t.dataset.i); } }; if (view === 'bearbeiten' && edraft) withEd(go); else go(); }
   if (t.id === 'vn-file' && t.files[0]) {
@@ -5091,6 +5439,7 @@ document.addEventListener('input', e => {
   if (t.id === 'pk-q' && PK) { PK.q = t.value; PK.sel = ''; renderPick(); return; }
   if (t.id === 'lf-name') { libSim(); lfCheck(); return; }
   if (t.closest && t.closest('#libform')) lfCheck();
+  if (t.id === 'bud-q') { const c = t.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); BUD.q = c; if (c.length === 8) buddySearch(c); else if (BUD.found || BUD.msg) { BUD.found = null; BUD.msg = ''; budRefresh(); } return; }
   if (t.id === 'lib-q') { LIBV.q = t.value; const l = $('#lib-list'); if (l) l.innerHTML = libListHTML(); return; }
   if (t.id === 'me-q' && musEd) { musEd.q = t.value; musHits(); return; }
   if (t.id === 'sv-in') { if (SPOT.view && SPOT.view.compose === 'text') { t.style.height = ''; t.style.height = Math.min(t.scrollHeight, 132) + 'px'; } return; }

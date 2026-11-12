@@ -1068,3 +1068,31 @@ body:has(#chat-reply) .view.chat-view { padding-bottom: calc(var(--sab) + var(--
 .vis { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 16px; border: 1px solid var(--gline); font-size: 14px; }
 .vis svg { flex: none; margin-top: 2px; }
 .sbar .why { display: block; text-align: center; font-size: 13px; color: var(--warn); margin-bottom: 10px; }
+
+/* ---------- 3.0: Buddies, Crew, QR, Wochenziel ---------- */
+.tabbar a { position: relative; }
+.tabbar a .badge { position: absolute; top: 2px; left: calc(50% + 6px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--m); color: #fff; font: 700 11px var(--body); display: grid; place-items: center; }
+.srch::placeholder { color: rgba(255,255,255,.45); font-family: var(--body); letter-spacing: 0; }
+.brow { display: flex; align-items: center; gap: 12px; min-height: 64px; text-decoration: none; color: var(--fg); }
+.brow + .brow { border-top: 1px solid rgba(255,255,255,.12); }
+.brow .bname { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.brow .bname b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brow .btn.small { width: auto; flex: none; }
+.pf-qr { position: absolute; left: -2px; bottom: 4px; width: 38px; height: 38px; border-radius: 50%; border: 3px solid #000; background: #fff; color: #000; display: grid; place-items: center; cursor: pointer; padding: 0; }
+.goalcard { text-align: left; color: var(--fg); font: inherit; cursor: pointer; }
+.pick.col { display: flex; flex-direction: column; gap: 8px; }
+.scan { position: fixed; inset: 0; background: #1c1c1e; display: flex; flex-direction: column; padding-top: calc(var(--sat, 0px) + 8px); z-index: 30; }
+.scan .head { display: flex; align-items: center; gap: 8px; padding: 0 16px; }
+.scan-c { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; }
+.scan-f { width: 250px; height: 250px; position: relative; border-radius: 22px; overflow: hidden; }
+.scan-f video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.scan-f i { position: absolute; width: 46px; height: 46px; border: 0 solid #fff; }
+.scan-f .c1 { left: 0; top: 0; border-left-width: 4px; border-top-width: 4px; border-top-left-radius: 22px; }
+.scan-f .c2 { right: 0; top: 0; border-right-width: 4px; border-top-width: 4px; border-top-right-radius: 22px; }
+.scan-f .c3 { left: 0; bottom: 0; border-left-width: 4px; border-bottom-width: 4px; border-bottom-left-radius: 22px; }
+.scan-f .c4 { right: 0; bottom: 0; border-right-width: 4px; border-bottom-width: 4px; border-bottom-right-radius: 22px; }
+.scan-l { position: absolute; left: 24px; right: 24px; top: 50%; height: 2px; background: var(--c); box-shadow: 0 0 12px var(--c); animation: scanl 2.2s ease-in-out infinite alternate; }
+@keyframes scanl { from { transform: translateY(-90px); } to { transform: translateY(90px); } }
+@media (prefers-reduced-motion: reduce) { .scan-l { animation: none; } }
+.fl-goal { font: 600 12px var(--mono); color: var(--dim); }
+.fi-notes { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 13px; color: var(--dim); text-decoration: none; }

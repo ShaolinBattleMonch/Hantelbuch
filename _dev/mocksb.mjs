@@ -24,6 +24,7 @@ const qid = s => '"' + String(s).replace(/"/g, '""') + '"';
 
 export function serve(db, port = 54321) {
   const users = new Map(); // email -> id
+  const FILES = new Map(); // bucket/pfad -> Buffer
   let q = Promise.resolve(); // Abfragen nacheinander (eine Verbindung)
   const run = (sub, fn) => { const p = q.catch(() => {}).then(async () => {
     await db.exec(`reset role; select set_config('request.jwt.claim.sub', '${sub || ''}', false); set role ${sub ? 'authenticated' : 'anon'};`);
@@ -48,8 +49,32 @@ export function serve(db, port = 54321) {
   const srv = http.createServer(async (req, res) => {
     if (req.method === 'OPTIONS') return send(res, 204);
     const url = new URL(req.url, 'http://x'); const chunks = []; for await (const c of req) chunks.push(c);
-    const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString() || 'null') : null;
     const sub = subOf(req.headers.authorization);
+    // ---- Speicher (Dateien im Arbeitsspeicher, Regeln wie in Skript 01) ----
+    const sm = /^\/storage\/v1\/object\/(?:authenticated\/)?([^/]+)(?:\/(.*))?$/.exec(url.pathname);
+    if (sm) {
+      const bucket = sm[1], name = decodeURIComponent(sm[2] || ''), key = bucket + '/' + name, raw = Buffer.concat(chunks);
+      const ownFolder = n => n.split('/')[0] === sub;
+      if (!sub) return send(res, 401, { message: 'no' });
+      if (req.method === 'POST' || req.method === 'PUT') {
+        if (!ownFolder(name)) return send(res, 403, { statusCode: '403', message: 'new row violates row-level security policy' });
+        if (FILES.has(key) && req.method === 'POST' && req.headers['x-upsert'] !== 'true') return send(res, 409, { statusCode: '409', message: 'The resource already exists' });
+        FILES.set(key, raw); return send(res, 200, { Key: key, Id: key });
+      }
+      if (req.method === 'DELETE') {
+        const prefixes = JSON.parse(raw.toString() || '{}').prefixes || [];
+        const out = []; for (const n of prefixes) if (ownFolder(n) && FILES.delete(bucket + '/' + n)) out.push({ name: n });
+        return send(res, 200, out);
+      }
+      if (req.method === 'GET') {
+        let ok = ownFolder(name);
+        if (!ok && bucket === 'spots') ok = (await run(sub, () => db.query('select public.can_read_spot_file($1) ok', [name]))).rows[0].ok;
+        if (!ok && bucket === 'avatars') ok = (await run(sub, () => db.query('select public.can_see_folder($1, $2) ok', name.split('/')))).rows[0].ok;
+        if (!ok || !FILES.has(key)) return send(res, 400, { statusCode: '404', error: 'not_found', message: 'Object not found' });
+        res.writeHead(200, { 'content-type': 'application/octet-stream', 'access-control-allow-origin': '*', 'access-control-expose-headers': '*' }); return res.end(FILES.get(key));
+      }
+    }
+    const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString() || 'null') : null;
     try {
       // ---- Auth ----
       if (url.pathname === '/auth/v1/otp') return send(res, 200, {});
@@ -100,8 +125,8 @@ export function serve(db, port = 54321) {
           const oc = sp.get('on_conflict');
           if (ignore) sql += oc ? ` on conflict (${oc.split(',').map(qid).join(',')}) do nothing` : ' on conflict do nothing';
           else if (merge && oc) sql += ` on conflict (${oc.split(',').map(qid).join(',')}) do update set ${cols.filter(c => !oc.split(',').includes(c)).map(c => `${qid(c)} = excluded.${qid(c)}`).join(', ') || qid(cols[0]) + ' = excluded.' + qid(cols[0])}`;
-          sql += ' returning *';
-          const r = await run(sub, () => db.query(sql, ps)); out.push(...r.rows);
+          if (wantRet) sql += ' returning *';
+          const r = await run(sub, () => db.query(sql, ps)); if (wantRet) out.push(...r.rows);
         }
         return send(res, 201, wantRet ? out : undefined);
       }

@@ -2,7 +2,7 @@
    Bei einem Update der App-Dateien VERSION hochzählen, dann laden alle Geräte die neue Version. */
 const VERSION = 'built-v30';
 const SHELL = [
-  './', './index.html', './styles.css', './app.js', './vendor/supabase-2.118.0.js', './manifest.webmanifest',
+  './', './index.html', './styles.css', './app.js', './vendor/supabase-2.118.0.js', './vendor/qrcode-generator-2.0.4.js', './vendor/jsqr-1.4.0.js', './manifest.webmanifest',
   './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png',
   './flammen/flamme-a.webp', './flammen/flamme-b.webp', './flammen/flamme-c.webp', './flammen/flamme-d.webp', './flammen/flamme-e.webp', './flammen/flamme-f.webp', './flammen/flamme-woche.webp',
   './flammen/flamme-hero-a.webp', './flammen/flamme-hero-b.webp', './flammen/flamme-hero-c.webp', './flammen/flamme-hero-d.webp', './flammen/flamme-hero-e.webp', './flammen/flamme-hero-f.webp', './flammen/flamme-hero-woche.webp',
