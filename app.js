@@ -24,9 +24,12 @@ function computePeople() {
 computePeople();
 const pname = p => (PROFILES[p] && PROFILES[p].name) || (p && p.length < 20 ? p : 'Buddy');
 const nm = p => esc(pname(p));
-const DAYS = ['A', 'B', 'C'];    // interne Kennung der Trainingstage, angezeigt werden die Kürzel
-const DAY_SHORT = { A: 'B&T', B: 'R&B', C: 'B&B' };
-const DAY_TONE = { A: 'y', B: 'm', C: 'c' };   // Gelb, Magenta, Cyan
+const DAYS = ['A', 'B', 'C', 'D', 'E', 'F'];    // interne Kennung der Trainingstage (bis zu 6 pro Plan), angezeigt werden die Kürzel
+const DAY_SHORT = { A: 'B&T', B: 'R&B', C: 'B&B', D: 'T4', E: 'T5', F: 'T6' };
+const DAY_TONE = { A: 'y', B: 'm', C: 'c', D: 'g', E: 'r', F: 'v' };   // Gelb, Magenta, Cyan, dann die Mischfarben Grün, Rot, Violett
+const EMPTY_DAY = { title: '', short: '', exercises: [] };
+// Pläne: „crew“ = Crew-Plan (Änderungen gehen als Vorschlag an die Crew), „mine“ = Mein Plan (nur für mich)
+const PD = pl => DAYS.filter(d => pl && pl[d]);   // vorhandene Tage eines Plans in fester Reihenfolge
 const TYPE_LABEL = { kg: 'Gewicht', bw: 'Körpergewicht', time: 'Zeit', tr: 'Zeit + Wdh.' };
 const isTimed = type => type === 'time' || type === 'tr';   // Übungen mit Timer
 const REM_WHY = { zeit: 'Zeit', geraet: 'Gerät belegt', erschoepft: 'Erschöpft', schmerz: 'Schmerzen' };   // Grund für − Satz
@@ -77,7 +80,7 @@ const DEFAULT_PLAN = {
 /* ---------- Muskeln: Körper-Illustration (eigene Zeichnung) und Bibliothek ---------- */
 const BODY = {"sil":"M91.0,50.0C87.8,53.0 92.2,63.8 90.0,68.0C87.8,72.2 82.7,73.3 78.0,75.0C73.3,76.7 66.5,76.5 62.0,78.0C57.5,79.5 53.8,80.7 51.0,84.0C48.2,87.3 46.2,92.0 45.0,98.0C43.8,104.0 44.7,111.7 44.0,120.0C43.3,128.3 41.7,140.3 41.0,148.0C40.3,155.7 40.8,159.0 40.0,166.0C39.2,173.0 37.3,182.0 36.0,190.0C34.7,198.0 33.1,206.7 32.0,214.0C30.9,221.3 30.8,228.7 29.5,234.0C28.2,239.3 25.4,241.3 24.0,246.0C22.6,250.7 20.7,257.7 21.0,262.0C21.3,266.3 23.8,271.7 25.7,272.0C27.6,272.3 30.9,268.0 32.7,264.0C34.5,260.0 34.8,254.0 36.7,248.0C38.6,242.0 41.8,236.3 44.0,228.0C46.2,219.7 48.3,207.0 50.0,198.0C51.7,189.0 52.8,181.7 54.0,174.0C55.2,166.3 56.0,159.0 57.0,152.0C58.0,145.0 58.8,136.0 60.0,132.0C61.2,128.0 62.8,125.0 64.0,128.0C65.2,131.0 66.2,141.7 67.0,150.0C67.8,158.3 69.0,169.0 69.0,178.0C69.0,187.0 67.7,196.7 67.0,204.0C66.3,211.3 66.2,214.3 65.0,222.0C63.8,229.7 61.0,239.3 59.5,250.0C58.0,260.7 56.5,274.7 55.9,286.0C55.3,297.3 56.0,309.0 55.9,318.0C55.8,327.0 55.9,331.0 55.1,340.0C54.3,349.0 51.9,361.7 51.1,372.0C50.3,382.3 50.4,394.3 50.3,402.0C50.2,409.7 51.0,413.7 50.3,418.0C49.6,422.3 46.2,425.0 46.0,428.0C45.8,431.0 46.0,434.7 49.0,436.0C52.0,437.3 61.3,438.0 64.0,436.0C66.7,434.0 65.0,428.3 65.0,424.0C65.0,419.7 63.6,417.3 64.3,410.0C65.0,402.7 67.3,390.0 69.1,380.0C70.8,370.0 73.2,358.3 74.8,350.0C76.3,341.7 76.7,338.3 78.4,330.0C80.1,321.7 82.9,310.7 85.2,300.0C87.5,289.3 90.0,274.0 92.5,266.0C95.0,258.0 98.8,254.3 100.0,252.0C101.2,249.7 98.8,249.7 100.0,252.0C101.2,254.3 105.0,258.0 107.5,266.0C110.0,274.0 112.5,289.3 114.8,300.0C117.1,310.7 119.9,321.7 121.6,330.0C123.3,338.3 123.7,341.7 125.2,350.0C126.8,358.3 129.2,370.0 130.9,380.0C132.7,390.0 135.0,402.7 135.7,410.0C136.4,417.3 134.9,419.7 135.0,424.0C135.1,428.3 133.3,434.0 136.0,436.0C138.7,438.0 148.0,437.3 151.0,436.0C154.0,434.7 154.2,431.0 154.0,428.0C153.8,425.0 150.4,422.3 149.7,418.0C149.0,413.7 149.8,409.7 149.7,402.0C149.6,394.3 149.7,382.3 148.9,372.0C148.1,361.7 145.7,349.0 144.9,340.0C144.1,331.0 144.2,327.0 144.1,318.0C144.0,309.0 144.7,297.3 144.1,286.0C143.5,274.7 142.0,260.7 140.5,250.0C139.0,239.3 136.2,229.7 135.0,222.0C133.8,214.3 133.7,211.3 133.0,204.0C132.3,196.7 131.0,187.0 131.0,178.0C131.0,169.0 132.2,158.3 133.0,150.0C133.8,141.7 134.8,131.0 136.0,128.0C137.2,125.0 138.8,128.0 140.0,132.0C141.2,136.0 142.0,145.0 143.0,152.0C144.0,159.0 144.8,166.3 146.0,174.0C147.2,181.7 148.3,189.0 150.0,198.0C151.7,207.0 153.8,219.7 156.0,228.0C158.2,236.3 161.4,242.0 163.3,248.0C165.2,254.0 165.5,260.0 167.3,264.0C169.1,268.0 172.4,272.3 174.3,272.0C176.2,271.7 178.7,266.3 179.0,262.0C179.3,257.7 177.4,250.7 176.0,246.0C174.6,241.3 171.8,239.3 170.5,234.0C169.2,228.7 169.1,221.3 168.0,214.0C166.9,206.7 165.3,198.0 164.0,190.0C162.7,182.0 160.8,173.0 160.0,166.0C159.2,159.0 159.7,155.7 159.0,148.0C158.3,140.3 156.7,128.3 156.0,120.0C155.3,111.7 156.2,104.0 155.0,98.0C153.8,92.0 151.8,87.3 149.0,84.0C146.2,80.7 142.5,79.5 138.0,78.0C133.5,76.5 126.7,76.7 122.0,75.0C117.3,73.3 112.2,72.2 110.0,68.0C107.8,63.8 112.2,53.0 109.0,50.0C105.8,47.0 94.2,47.0 91.0,50.0Z","names":{"brust_o":["Obere Brust","Pectoralis major, Pars clavicularis"],"brust_u":["Untere Brust","Pectoralis major, Pars sternocostalis"],"serratus":["Sägemuskel","Serratus anterior"],"schulter_v":["Vordere Schulter","Deltoideus, Pars clavicularis"],"schulter_s":["Seitliche Schulter","Deltoideus, Pars acromialis"],"schulter_h":["Hintere Schulter","Deltoideus, Pars spinalis"],"nacken":["Nacken","Trapezius, Pars descendens"],"trapez_mu":["Mittlerer/unterer Trapez","Trapezius, Pars transversa et ascendens"],"rhomboiden":["Rautenmuskeln","Rhomboideus major/minor"],"rotatoren":["Rotatorenmanschette","Infraspinatus, Teres minor"],"teres":["Großer Rundmuskel","Teres major"],"latissimus":["Latissimus","Latissimus dorsi"],"ruecken_u":["Rückenstrecker","Erector spinae"],"bizeps":["Bizeps","Biceps brachii"],"brachialis":["Oberarmmuskel","Brachialis"],"brachiorad":["Oberarmspeichenmuskel","Brachioradialis"],"ua_beuger":["Unterarmbeuger","Flexoren des Unterarms"],"ua_strecker":["Unterarmstrecker","Extensoren des Unterarms"],"trizeps_l":["Trizeps, langer Kopf","Triceps brachii, Caput longum"],"trizeps_s":["Trizeps, seitlicher Kopf","Triceps brachii, Caput laterale"],"bauch":["Gerader Bauchmuskel","Rectus abdominis"],"bauch_s":["Schräge Bauchmuskeln","Obliquus externus abdominis"],"hueftbeuger":["Hüftbeuger","Iliopsoas"],"gluteus_m":["Mittlerer Gesäßmuskel","Gluteus medius"],"gluteus":["Großer Gesäßmuskel","Gluteus maximus"],"quad_rf":["Gerader Oberschenkelmuskel","Rectus femoris"],"quad_vl":["Äußerer Quadrizeps","Vastus lateralis"],"quad_vm":["Innerer Quadrizeps","Vastus medialis"],"adduktoren":["Adduktoren","Adductor longus/magnus"],"hams_a":["Beinbeuger außen","Biceps femoris"],"hams_i":["Beinbeuger innen","Semitendinosus, Semimembranosus"],"waden":["Zwillingswadenmuskel","Gastrocnemius"],"soleus":["Schollenmuskel","Soleus"],"schienbein":["Schienbeinmuskel","Tibialis anterior"]},"front":[["brust_o","M99.4,83.7C97.6,81.4 92.5,80.0 88.4,79.4C84.3,78.9 78.7,79.1 75.0,80.5C71.2,81.9 66.0,86.1 66.0,88.1C66.0,90.0 71.2,91.5 75.0,92.4C78.7,93.3 84.3,93.3 88.4,93.5C92.5,93.6 97.6,95.1 99.4,93.5C101.2,91.8 101.2,86.1 99.4,83.7Z M100.6,93.5C102.4,95.1 107.5,93.6 111.6,93.5C115.7,93.3 121.3,93.3 125.0,92.4C128.8,91.5 134.0,90.0 134.0,88.1C134.0,86.1 128.8,81.9 125.0,80.5C121.3,79.1 115.7,78.9 111.6,79.4C107.5,80.0 102.4,81.4 100.6,83.7C98.8,86.1 98.8,91.8 100.6,93.5Z",84.6,87.3],["brust_u","M99.4,95.2C97.7,90.7 92.8,95.3 88.8,95.2C84.8,95.0 79.3,94.1 75.4,94.1C71.5,94.1 67.2,93.2 65.3,95.2C63.5,97.1 63.3,102.0 64.2,106.0C65.1,109.9 67.6,115.7 70.9,118.9C74.3,122.2 79.7,124.9 84.4,125.4C89.0,125.9 96.4,127.2 98.9,122.2C101.4,117.1 101.1,99.7 99.4,95.2Z M101.1,122.2C103.6,127.2 111.0,125.9 115.6,125.4C120.3,124.9 125.7,122.2 129.1,118.9C132.4,115.7 134.9,109.9 135.8,106.0C136.7,102.0 136.5,97.1 134.7,95.2C132.8,93.2 128.5,94.1 124.6,94.1C120.7,94.1 115.2,95.0 111.2,95.2C107.2,95.3 102.3,90.7 100.6,95.2C98.9,99.7 98.6,117.1 101.1,122.2Z",81.0,106.5],["serratus","M65.9,123.2C64.2,123.7 62.0,126.4 61.4,129.7C60.9,132.9 61.4,139.7 62.5,142.6C63.7,145.5 66.6,148.0 68.1,146.9C69.6,145.9 70.9,139.6 71.5,136.1C72.1,132.7 72.4,128.6 71.5,126.4C70.6,124.3 67.6,122.6 65.9,123.2Z M128.5,126.4C127.6,128.6 127.9,132.7 128.5,136.1C129.1,139.6 130.4,145.9 131.9,146.9C133.4,148.0 136.3,145.5 137.5,142.6C138.6,139.7 139.1,132.9 138.6,129.7C138.0,126.4 135.8,123.7 134.1,123.2C132.4,122.6 129.4,124.3 128.5,126.4Z",66.8,134.2],["schulter_v","M70.8,78.8C70.1,77.0 65.2,79.1 63.0,80.9C60.7,82.7 58.3,85.6 57.4,89.6C56.4,93.5 56.8,100.4 57.4,104.7C57.9,109.0 59.4,115.5 60.7,115.5C62.0,115.5 64.1,108.7 65.2,104.7C66.3,100.7 66.5,96.1 67.5,91.7C68.4,87.4 71.6,80.6 70.8,78.8Z M132.5,91.7C133.5,96.1 133.7,100.7 134.8,104.7C135.9,108.7 138.0,115.5 139.3,115.5C140.6,115.5 142.1,109.0 142.6,104.7C143.2,100.4 143.6,93.5 142.6,89.6C141.7,85.6 139.3,82.7 137.0,80.9C134.8,79.1 129.9,77.0 129.2,78.8C128.4,80.6 131.6,87.4 132.5,91.7Z",63.1,95.1],["schulter_s","M59.7,78.6C59.1,77.9 53.9,81.8 51.8,85.1C49.8,88.3 47.9,93.5 47.4,98.0C46.8,102.5 47.4,108.8 48.5,112.1C49.6,115.3 52.8,118.7 54.1,117.5C55.4,116.2 56.1,109.2 56.3,104.5C56.5,99.8 54.6,93.7 55.2,89.4C55.8,85.1 60.2,79.3 59.7,78.6Z M144.8,89.4C145.4,93.7 143.5,99.8 143.7,104.5C143.9,109.2 144.6,116.2 145.9,117.5C147.2,118.7 150.4,115.3 151.5,112.1C152.6,108.8 153.2,102.5 152.6,98.0C152.1,93.5 150.2,88.3 148.2,85.1C146.1,81.8 140.9,77.9 140.3,78.6C139.8,79.3 144.2,85.1 144.8,89.4Z",53.3,97.9],["nacken","M89.6,63.3C87.8,63.1 85.0,68.5 81.8,70.9C78.6,73.2 70.2,75.9 70.6,77.4C71.0,78.8 80.3,80.4 84.0,79.5C87.8,78.6 92.1,74.7 93.0,72.0C93.9,69.3 91.5,63.5 89.6,63.3Z M107.0,72.0C107.9,74.7 112.2,78.6 116.0,79.5C119.7,80.4 129.0,78.8 129.4,77.4C129.8,75.9 121.4,73.2 118.2,70.9C115.0,68.5 112.2,63.1 110.4,63.3C108.5,63.5 106.1,69.3 107.0,72.0Z",83.8,72.6],["latissimus","M64.8,127.0C63.5,127.4 62.4,133.5 62.5,137.8C62.7,142.1 64.6,151.1 65.9,152.9C67.2,154.7 69.6,151.5 70.4,148.6C71.1,145.7 71.3,139.2 70.4,135.6C69.5,132.0 66.1,126.6 64.8,127.0Z M129.6,135.6C128.7,139.2 128.9,145.7 129.6,148.6C130.4,151.5 132.8,154.7 134.1,152.9C135.4,151.1 137.3,142.1 137.5,137.8C137.6,133.5 136.5,127.4 135.2,127.0C133.9,126.6 130.5,132.0 129.6,135.6Z",67,150],["bizeps","M56.3,116.2C55.0,116.2 53.1,118.8 51.8,122.7C50.5,126.7 49.2,134.4 48.4,140.0C47.7,145.6 47.0,151.7 47.3,156.2C47.7,160.7 49.2,166.8 50.7,167.0C52.2,167.2 55.0,162.1 56.3,157.3C57.6,152.4 58.0,143.6 58.5,137.8C59.1,132.1 60.0,126.3 59.6,122.7C59.3,119.1 57.6,116.2 56.3,116.2Z M140.4,122.7C140.0,126.3 140.9,132.1 141.5,137.8C142.0,143.6 142.4,152.4 143.7,157.3C145.0,162.1 147.8,167.2 149.3,167.0C150.8,166.8 152.3,160.7 152.7,156.2C153.0,151.7 152.3,145.6 151.6,140.0C150.8,134.4 149.5,126.7 148.2,122.7C146.9,118.8 145.0,116.2 143.7,116.2C142.4,116.2 140.7,119.1 140.4,122.7Z",53,136],["brachialis","M48.3,126.4C47.9,126.4 45.8,134.5 44.9,139.4C44.0,144.3 42.7,150.9 42.7,155.6C42.7,160.3 44.2,167.3 44.9,167.5C45.6,167.7 46.8,161.4 47.1,156.7C47.5,152.0 47.0,144.4 47.1,139.4C47.3,134.4 48.6,126.4 48.3,126.4Z M152.9,139.4C153.0,144.4 152.5,152.0 152.9,156.7C153.2,161.4 154.4,167.7 155.1,167.5C155.8,167.3 157.3,160.3 157.3,155.6C157.3,150.9 156.0,144.3 155.1,139.4C154.2,134.5 152.1,126.4 151.7,126.4C151.4,126.4 152.7,134.4 152.9,139.4Z",45.8,147.5],["brachiorad","M44.4,167.2C43.1,167.9 41.4,170.9 39.9,175.8C38.4,180.6 36.6,189.7 35.5,196.3C34.3,203.0 33.0,211.4 33.2,215.8C33.4,220.1 35.3,224.2 36.6,222.2C37.9,220.2 39.6,210.2 41.1,203.9C42.6,197.6 44.4,189.8 45.5,184.4C46.7,179.0 48.0,174.3 47.8,171.5C47.6,168.6 45.7,166.4 44.4,167.2Z M152.2,171.5C152.0,174.3 153.3,179.0 154.5,184.4C155.6,189.8 157.4,197.6 158.9,203.9C160.4,210.2 162.1,220.2 163.4,222.2C164.7,224.2 166.6,220.1 166.8,215.8C167.0,211.4 165.7,203.0 164.5,196.3C163.4,189.7 161.6,180.6 160.1,175.8C158.6,170.9 156.9,167.9 155.6,167.2C154.3,166.4 152.4,168.6 152.2,171.5Z",40.5,192.1],["ua_beuger","M50.4,168.7C49.3,169.8 48.4,175.7 47.1,181.7C45.8,187.6 44.1,196.6 42.6,204.3C41.1,212.1 38.4,222.9 38.1,228.1C37.8,233.3 39.5,238.0 41.0,235.7C42.5,233.3 45.3,221.4 47.1,214.1C48.8,206.7 50.4,197.9 51.5,191.4C52.7,184.9 54.0,178.9 53.8,175.2C53.6,171.4 51.5,167.6 50.4,168.7Z M146.2,175.2C146.0,178.9 147.3,184.9 148.5,191.4C149.6,197.9 151.2,206.7 152.9,214.1C154.7,221.4 157.5,233.3 159.0,235.7C160.5,238.0 162.2,233.3 161.9,228.1C161.6,222.9 158.9,212.1 157.4,204.3C155.9,196.6 154.2,187.6 152.9,181.7C151.6,175.7 150.7,169.8 149.6,168.7C148.5,167.6 146.4,171.4 146.2,175.2Z",46.5,199.9],["bauch","M99.4,123.5C97.3,107.2 89.3,120.1 86.6,122.5C83.9,124.8 83.8,129.7 83.3,137.6C82.7,145.5 82.9,159.4 83.3,170.0C83.6,180.6 84.0,193.7 85.5,201.3C87.0,208.9 89.9,212.1 92.2,215.3C94.6,218.6 98.2,236.0 99.4,220.7C100.6,205.4 101.5,139.9 99.4,123.5Z M100.6,220.7C101.8,236.0 105.4,218.6 107.8,215.3C110.1,212.1 113.0,208.9 114.5,201.3C116.0,193.7 116.4,180.6 116.7,170.0C117.1,159.4 117.3,145.5 116.7,137.6C116.2,129.7 116.1,124.8 113.4,122.5C110.7,120.1 102.7,107.2 100.6,123.5C98.5,139.9 99.4,205.4 100.6,220.7Z",92,178],["bauch_s","M82.6,126.2C81.1,122.8 74.7,124.6 72.5,128.3C70.2,132.1 69.3,140.8 69.1,148.9C68.9,157.0 70.2,168.8 71.4,176.9C72.5,185.0 73.8,192.2 75.8,197.5C77.9,202.7 82.6,211.3 83.7,208.3C84.8,205.2 82.9,189.0 82.6,179.1C82.2,169.2 81.4,157.7 81.4,148.9C81.4,140.0 84.0,129.6 82.6,126.2Z M118.6,148.9C118.6,157.7 117.8,169.2 117.4,179.1C117.1,189.0 115.2,205.2 116.3,208.3C117.4,211.3 122.1,202.7 124.2,197.5C126.2,192.2 127.5,185.0 128.6,176.9C129.8,168.8 131.1,157.0 130.9,148.9C130.7,140.8 129.8,132.1 127.5,128.3C125.3,124.6 118.9,122.8 117.4,126.2C116.0,129.6 118.6,140.0 118.6,148.9Z",76,160],["hueftbeuger","M87.0,212.0C84.5,210.0 80.9,211.8 80.2,215.2C79.6,218.7 81.5,228.2 83.3,232.5C85.1,236.8 89.2,242.1 91.1,241.2C93.0,240.3 95.5,232.0 94.8,227.1C94.1,222.3 89.4,214.0 87.0,212.0Z M105.2,227.1C104.5,232.0 107.0,240.3 108.9,241.2C110.8,242.1 114.9,236.8 116.7,232.5C118.5,228.2 120.4,218.7 119.8,215.2C119.1,211.8 115.5,210.0 113.0,212.0C110.6,214.0 105.9,222.3 105.2,227.1Z",87.3,225.6],["gluteus_m","M70.1,203.2C68.8,203.6 66.4,208.2 65.6,211.8C64.9,215.4 64.7,223.4 65.6,224.8C66.5,226.2 69.9,223.0 71.2,220.5C72.5,218.0 73.6,212.6 73.5,209.7C73.3,206.8 71.4,202.8 70.1,203.2Z M126.5,209.7C126.4,212.6 127.5,218.0 128.8,220.5C130.1,223.0 133.5,226.2 134.4,224.8C135.3,223.4 135.1,215.4 134.4,211.8C133.6,208.2 131.2,203.6 129.9,203.2C128.6,202.8 126.7,206.8 126.5,209.7Z",69.2,214.0],["quad_rf","M78.4,226.4C76.6,227.2 74.0,239.0 72.3,248.0C70.5,257.0 68.9,270.7 68.0,280.4C67.1,290.2 66.6,299.9 66.9,306.4C67.1,312.8 68.0,320.0 69.6,319.3C71.2,318.6 74.4,310.3 76.4,302.0C78.4,293.8 80.6,279.4 81.7,269.6C82.7,259.9 83.4,250.9 82.9,243.7C82.4,236.5 80.2,225.7 78.4,226.4Z M117.1,243.7C116.6,250.9 117.3,259.9 118.3,269.6C119.4,279.4 121.6,293.8 123.6,302.0C125.6,310.3 128.8,318.6 130.4,319.3C132.0,320.0 132.9,312.8 133.1,306.4C133.4,299.9 132.9,290.2 132.0,280.4C131.1,270.7 129.5,257.0 127.7,248.0C126.0,239.0 123.4,227.2 121.6,226.4C119.8,225.7 117.6,236.5 117.1,243.7Z",75.6,265],["quad_vl","M70.4,228.5C68.8,229.2 64.6,239.3 62.3,247.9C60.1,256.6 58.0,269.7 56.9,280.3C55.9,290.9 55.5,304.1 56.2,311.6C56.8,319.2 59.6,327.3 61.1,325.7C62.6,324.1 64.1,311.3 65.3,301.9C66.6,292.6 67.3,279.2 68.4,269.5C69.4,259.8 71.5,250.4 71.8,243.6C72.2,236.8 72.0,227.8 70.4,228.5Z M128.2,243.6C128.5,250.4 130.6,259.8 131.6,269.5C132.7,279.2 133.4,292.6 134.7,301.9C135.9,311.3 137.4,324.1 138.9,325.7C140.4,327.3 143.2,319.2 143.8,311.6C144.5,304.1 144.1,290.9 143.1,280.3C142.0,269.7 139.9,256.6 137.7,247.9C135.4,239.3 131.2,229.2 129.6,228.5C128.0,227.8 127.8,236.8 128.2,243.6Z",61.4,282],["quad_vm","M81.5,281.2C80.0,281.6 77.2,292.7 75.9,298.5C74.6,304.2 73.6,311.3 73.7,315.8C73.8,320.3 75.3,325.5 76.8,325.5C78.3,325.5 81.3,320.6 82.7,315.8C84.0,310.9 85.3,302.1 85.1,296.3C84.9,290.6 83.1,280.8 81.5,281.2Z M114.9,296.3C114.7,302.1 116.0,310.9 117.3,315.8C118.7,320.6 121.7,325.5 123.2,325.5C124.7,325.5 126.2,320.3 126.3,315.8C126.4,311.3 125.4,304.2 124.1,298.5C122.8,292.7 120.0,281.6 118.5,281.2C116.9,280.8 115.1,290.6 114.9,296.3Z",79.3,305.5],["adduktoren","M88.5,231.7C85.7,232.5 83.5,245.8 82.4,253.3C81.2,260.9 81.0,270.8 81.5,277.1C81.9,283.4 83.4,292.2 85.2,291.1C87.0,290.1 90.0,277.6 92.3,270.6C94.7,263.6 100.0,255.5 99.4,249.0C98.8,242.5 91.4,231.0 88.5,231.7Z M100.6,249.0C100.0,255.5 105.3,263.6 107.7,270.6C110.0,277.6 113.0,290.1 114.8,291.1C116.6,292.2 118.1,283.4 118.5,277.1C119.0,270.8 118.8,260.9 117.6,253.3C116.5,245.8 114.3,232.5 111.5,231.7C108.6,231.0 101.2,242.5 100.6,249.0Z",88.3,262.2],["waden","M71.4,337.2C69.9,338.7 67.9,348.0 66.9,354.5C65.8,361.0 65.1,371.1 65.2,376.1C65.3,381.2 66.1,386.2 67.4,384.8C68.7,383.3 71.6,374.0 73.0,367.5C74.4,361.0 76.1,350.9 75.8,345.9C75.5,340.8 72.8,335.8 71.4,337.2Z M124.2,345.9C123.9,350.9 125.6,361.0 127.0,367.5C128.4,374.0 131.3,383.3 132.6,384.8C133.9,386.2 134.7,381.2 134.8,376.1C134.9,371.1 134.2,361.0 133.1,354.5C132.1,348.0 130.1,338.7 128.6,337.2C127.2,335.8 124.5,340.8 124.2,345.9Z",70.0,361.0],["soleus","M58.3,370.6C57.5,371.0 54.8,386.4 54.2,392.2C53.7,398.0 54.0,405.5 54.8,405.2C55.6,404.8 58.5,395.8 59.1,390.0C59.6,384.3 59.1,370.2 58.3,370.6Z M140.9,390.0C141.5,395.8 144.4,404.8 145.2,405.2C146.0,405.5 146.3,398.0 145.8,392.2C145.2,386.4 142.5,371.0 141.7,370.6C140.9,370.2 140.4,384.3 140.9,390.0Z",56.6,389.5],["schienbein","M63.7,336.2C62.4,336.5 59.6,346.4 58.0,354.5C56.4,362.6 54.7,376.1 54.0,384.8C53.2,393.4 52.9,403.1 53.4,406.4C53.9,409.6 55.8,408.5 57.1,404.2C58.4,399.9 59.9,389.1 61.3,380.5C62.8,371.8 65.7,359.8 66.0,352.4C66.4,345.0 65.0,335.8 63.7,336.2Z M134.0,352.4C134.3,359.8 137.2,371.8 138.7,380.5C140.1,389.1 141.6,399.9 142.9,404.2C144.2,408.5 146.1,409.6 146.6,406.4C147.1,403.1 146.8,393.4 146.0,384.8C145.3,376.1 143.6,362.6 142.0,354.5C140.4,346.4 137.6,336.5 136.3,336.2C135.0,335.8 133.6,345.0 134.0,352.4Z",59.1,374.1]],"back":[["schulter_s","M50.2,82.9C49.2,82.9 46.6,87.5 45.7,91.5C44.7,95.5 44.0,102.7 44.6,106.6C45.1,110.6 47.9,116.0 49.0,115.3C50.2,114.5 50.9,106.3 51.3,102.3C51.7,98.3 51.5,94.7 51.3,91.5C51.1,88.3 51.1,82.9 50.2,82.9Z M148.7,91.5C148.5,94.7 148.3,98.3 148.7,102.3C149.1,106.3 149.8,114.5 151.0,115.3C152.1,116.0 154.9,110.6 155.4,106.6C156.0,102.7 155.3,95.5 154.3,91.5C153.4,87.5 150.8,82.9 149.8,82.9C148.9,82.9 148.9,88.3 148.7,91.5Z",48.7,98.3],["schulter_h","M66.8,81.2C64.7,79.4 59.3,80.9 56.7,82.3C54.1,83.7 51.9,86.3 51.1,89.9C50.4,93.5 50.7,102.1 52.2,103.9C53.7,105.7 57.3,102.5 60.1,100.7C62.9,98.9 67.9,96.3 69.0,93.1C70.2,89.9 68.9,83.0 66.8,81.2Z M131.0,93.1C132.1,96.3 137.1,98.9 139.9,100.7C142.7,102.5 146.3,105.7 147.8,103.9C149.3,102.1 149.6,93.5 148.9,89.9C148.1,86.3 145.9,83.7 143.3,82.3C140.7,80.9 135.3,79.4 133.2,81.2C131.1,83.0 129.8,89.9 131.0,93.1Z",59.3,91.8],["nacken","M99.4,56.8C97.9,53.2 93.8,60.7 90.4,63.3C87.1,65.8 83.3,69.2 79.2,71.9C75.1,74.6 65.1,77.5 65.8,79.5C66.5,81.4 78.1,82.9 83.7,83.8C89.3,84.7 96.8,89.4 99.4,84.9C102.0,80.4 100.9,60.4 99.4,56.8Z M100.6,84.9C103.2,89.4 110.7,84.7 116.3,83.8C121.9,82.9 133.5,81.4 134.2,79.5C134.9,77.5 124.9,74.6 120.8,71.9C116.7,69.2 112.9,65.8 109.6,63.3C106.2,60.7 102.1,53.2 100.6,56.8C99.1,60.4 98.0,80.4 100.6,84.9Z",86.3,73.3],["trapez_mu","M99.4,84.7C98.1,73.3 93.4,83.9 91.7,86.8C90.1,89.7 89.7,95.6 89.5,101.9C89.3,108.2 89.7,117.6 90.6,124.6C91.5,131.6 93.6,139.0 95.1,144.1C96.5,149.1 98.7,164.8 99.4,154.9C100.1,145.0 100.7,96.0 99.4,84.7Z M100.6,154.9C101.3,164.8 103.5,149.1 104.9,144.1C106.4,139.0 108.5,131.6 109.4,124.6C110.3,117.6 110.7,108.2 110.5,101.9C110.3,95.6 109.9,89.7 108.3,86.8C106.6,83.9 101.9,73.3 100.6,84.7C99.3,96.0 99.9,145.0 100.6,154.9Z",94.3,116.2],["rhomboiden","M89.5,88.8C88.2,86.7 82.6,88.6 80.6,91.0C78.5,93.3 76.8,98.4 77.2,102.9C77.6,107.4 80.7,114.6 82.8,118.0C84.9,121.4 88.6,125.7 89.5,123.4C90.5,121.0 88.4,109.7 88.4,103.9C88.4,98.2 90.8,91.0 89.5,88.8Z M111.6,103.9C111.6,109.7 109.5,121.0 110.5,123.4C111.4,125.7 115.1,121.4 117.2,118.0C119.3,114.6 122.4,107.4 122.8,102.9C123.2,98.4 121.5,93.3 119.4,91.0C117.4,88.6 111.8,86.7 110.5,88.8C109.2,91.0 111.6,98.2 111.6,103.9Z",84.7,104.7],["rotatoren","M76.4,94.2C74.8,92.9 69.7,94.2 67.5,96.3C65.2,98.5 62.6,103.9 63.0,107.1C63.4,110.4 66.9,114.5 69.7,115.8C72.5,117.0 78.5,116.7 79.8,114.7C81.1,112.7 78.1,107.3 77.6,103.9C77.0,100.5 78.1,95.4 76.4,94.2Z M122.4,103.9C121.9,107.3 118.9,112.7 120.2,114.7C121.5,116.7 127.5,117.0 130.3,115.8C133.1,114.5 136.6,110.4 137.0,107.1C137.4,103.9 134.8,98.5 132.5,96.3C130.3,94.2 125.2,92.9 123.6,94.2C121.9,95.4 123.0,100.5 122.4,103.9Z",72.3,105.3],["teres","M70.1,117.6C67.2,117.2 63.8,117.9 62.3,119.7C60.8,121.5 59.9,126.6 61.2,128.4C62.5,130.2 67.0,131.6 70.1,130.5C73.3,129.4 80.2,124.0 80.2,121.9C80.2,119.7 73.1,117.9 70.1,117.6Z M119.8,121.9C119.8,124.0 126.7,129.4 129.9,130.5C133.0,131.6 137.5,130.2 138.8,128.4C140.1,126.6 139.2,121.5 137.7,119.7C136.2,117.9 132.8,117.2 129.9,117.6C126.9,117.9 119.8,119.7 119.8,121.9Z",68.8,123.6],["latissimus","M81.2,118.0C77.1,115.1 69.8,122.5 66.6,127.7C63.5,132.9 62.0,141.8 62.2,149.3C62.3,156.9 65.0,166.6 67.8,173.1C70.6,179.6 74.8,184.4 79.0,188.2C83.1,192.0 89.8,198.6 92.4,195.8C95.0,192.9 94.8,179.4 94.6,170.9C94.4,162.5 93.5,153.8 91.3,145.0C89.0,136.2 85.3,120.9 81.2,118.0Z M108.7,145.0C106.5,153.8 105.6,162.5 105.4,170.9C105.2,179.4 105.0,192.9 107.6,195.8C110.2,198.6 116.9,192.0 121.0,188.2C125.2,184.4 129.4,179.6 132.2,173.1C135.0,166.6 137.7,156.9 137.8,149.3C138.0,141.8 136.5,132.9 133.4,127.7C130.2,122.5 122.9,115.1 118.8,118.0C114.7,120.9 111.0,136.2 108.7,145.0Z",79.4,158.5],["ruecken_u","M98.4,150.9C97.5,139.7 94.1,145.7 92.8,149.8C91.5,153.9 90.8,166.5 90.6,175.7C90.4,184.9 90.4,198.0 91.7,204.9C93.0,211.7 97.3,225.8 98.4,216.8C99.6,207.8 99.4,162.0 98.4,150.9Z M101.6,216.8C102.7,225.8 107.0,211.7 108.3,204.9C109.6,198.0 109.6,184.9 109.4,175.7C109.2,166.5 108.5,153.9 107.2,149.8C105.9,145.7 102.5,139.7 101.6,150.9C100.6,162.0 100.4,207.8 101.6,216.8Z",94.4,179.6],["ua_strecker","M48.6,164.7C46.6,166.1 44.2,172.2 41.9,178.7C39.7,185.2 36.9,195.6 35.2,203.6C33.5,211.5 31.7,221.5 31.8,226.2C32.0,230.9 34.5,234.7 36.3,231.6C38.2,228.6 40.8,215.4 43.0,207.9C45.3,200.3 47.9,192.6 49.8,186.3C51.6,180.0 54.4,173.7 54.2,170.1C54.1,166.5 50.7,163.2 48.6,164.7Z M145.8,170.1C145.6,173.7 148.4,180.0 150.2,186.3C152.1,192.6 154.7,200.3 157.0,207.9C159.2,215.4 161.8,228.6 163.7,231.6C165.5,234.7 168.0,230.9 168.2,226.2C168.3,221.5 166.5,211.5 164.8,203.6C163.1,195.6 160.3,185.2 158.1,178.7C155.8,172.2 153.4,166.1 151.4,164.7C149.3,163.2 145.9,166.5 145.8,170.1Z",42.6,196.1],["trizeps_l","M59.1,104.2C57.8,103.7 55.4,110.7 54.6,116.1C53.9,121.5 54.2,130.3 54.6,136.6C55.0,142.9 55.7,153.2 56.9,153.9C58.0,154.6 60.4,146.7 61.3,140.9C62.3,135.2 62.8,125.4 62.5,119.3C62.1,113.2 60.4,104.7 59.1,104.2Z M137.5,119.3C137.2,125.4 137.7,135.2 138.7,140.9C139.6,146.7 142.0,154.6 143.1,153.9C144.3,153.2 145.0,142.9 145.4,136.6C145.8,130.3 146.1,121.5 145.4,116.1C144.6,110.7 142.2,103.7 140.9,104.2C139.6,104.7 137.9,113.2 137.5,119.3Z",58.2,128.5],["trizeps_s","M51.1,108.2C50.0,109.6 47.8,117.4 46.6,123.3C45.5,129.2 44.2,137.9 44.4,143.8C44.6,149.8 46.3,157.7 47.8,158.9C49.3,160.2 52.4,156.2 53.4,151.4C54.3,146.5 53.4,135.9 53.4,129.8C53.4,123.7 53.7,118.3 53.4,114.7C53.0,111.1 52.2,106.7 51.1,108.2Z M146.6,114.7C146.3,118.3 146.6,123.7 146.6,129.8C146.6,135.9 145.7,146.5 146.6,151.4C147.6,156.2 150.7,160.2 152.2,158.9C153.7,157.7 155.4,149.8 155.6,143.8C155.8,137.9 154.5,129.2 153.4,123.3C152.2,117.4 150.0,109.6 148.9,108.2C147.8,106.7 147.0,111.1 146.6,114.7Z",50.0,132.9],["bauch_s","M65.8,174.8C64.7,175.8 63.4,187.0 63.5,192.0C63.7,197.1 65.4,203.6 66.9,205.0C68.4,206.4 71.9,203.9 72.5,200.7C73.1,197.4 71.4,189.9 70.3,185.6C69.1,181.2 66.9,173.7 65.8,174.8Z M129.7,185.6C128.6,189.9 126.9,197.4 127.5,200.7C128.1,203.9 131.6,206.4 133.1,205.0C134.6,203.6 136.3,197.1 136.5,192.0C136.6,187.0 135.3,175.8 134.2,174.8C133.1,173.7 130.9,181.2 129.7,185.6Z",67.8,191.6],["gluteus_m","M71.6,204.2C68.3,205.3 66.0,208.0 64.9,211.8C63.8,215.6 63.1,224.4 64.9,226.9C66.8,229.4 72.4,229.1 76.1,226.9C79.9,224.7 85.8,217.5 87.3,213.9C88.8,210.3 87.7,206.9 85.1,205.3C82.5,203.7 75.0,203.1 71.6,204.2Z M114.9,205.3C112.3,206.9 111.2,210.3 112.7,213.9C114.2,217.5 120.1,224.7 123.9,226.9C127.6,229.1 133.2,229.4 135.1,226.9C136.9,224.4 136.2,215.6 135.1,211.8C134.0,208.0 131.7,205.3 128.4,204.2C125.0,203.1 117.5,203.7 114.9,205.3Z",75.0,214.8],["gluteus","M87.6,213.0C83.4,213.5 77.9,222.0 74.2,225.9C70.5,229.9 66.9,231.5 65.3,236.7C63.8,242.0 62.5,252.4 64.9,257.3C67.2,262.1 73.7,265.5 79.4,265.9C85.2,266.3 96.1,266.6 99.4,259.4C102.7,252.2 101.4,230.4 99.4,222.7C97.4,215.0 91.8,212.4 87.6,213.0Z M100.6,222.7C98.6,230.4 97.3,252.2 100.6,259.4C103.9,266.6 114.8,266.3 120.6,265.9C126.3,265.5 132.8,262.1 135.1,257.3C137.5,252.4 136.2,242.0 134.7,236.7C133.1,231.5 129.5,229.9 125.8,225.9C122.1,222.0 116.6,213.5 112.4,213.0C108.2,212.4 102.6,215.0 100.6,222.7Z",81.8,240.1],["quad_vl","M62.4,260.0C61.8,256.7 58.3,273.6 57.2,281.6C56.2,289.5 55.6,304.2 56.1,307.5C56.6,310.7 59.3,308.9 60.3,301.0C61.4,293.1 62.9,263.2 62.4,260.0Z M139.7,301.0C140.7,308.9 143.4,310.7 143.9,307.5C144.4,304.2 143.8,289.5 142.8,281.6C141.7,273.6 138.2,256.7 137.6,260.0C137.1,263.2 138.6,293.1 139.7,301.0Z",59.0,287.5],["adduktoren","M93.4,260.7C92.8,258.5 89.3,268.2 88.2,273.6C87.1,279.0 86.3,290.9 86.9,293.1C87.4,295.2 90.6,292.0 91.7,286.6C92.8,281.2 93.9,262.8 93.4,260.7Z M108.3,286.6C109.4,292.0 112.6,295.2 113.1,293.1C113.7,290.9 112.9,279.0 111.8,273.6C110.7,268.2 107.2,258.5 106.6,260.7C106.1,262.8 107.2,281.2 108.3,286.6Z",90.0,278.5],["hams_a","M66.7,262.7C64.5,264.7 62.1,274.1 60.8,281.1C59.5,288.1 58.5,298.0 58.9,304.8C59.3,311.7 61.6,319.8 63.3,322.1C65.0,324.5 68.2,323.4 69.3,318.9C70.5,314.4 69.5,303.4 70.2,295.1C70.9,286.8 74.2,274.6 73.6,269.2C73.0,263.8 68.8,260.7 66.7,262.7Z M126.4,269.2C125.8,274.6 129.1,286.8 129.8,295.1C130.5,303.4 129.5,314.4 130.7,318.9C131.8,323.4 135.0,324.5 136.7,322.1C138.4,319.8 140.7,311.7 141.1,304.8C141.5,298.0 140.5,288.1 139.2,281.1C137.9,274.1 135.5,264.7 133.3,262.7C131.2,260.7 127.0,263.8 126.4,269.2Z",66.1,293.4],["hams_i","M76.8,266.2C74.5,270.5 74.3,282.0 73.7,290.0C73.0,297.9 72.0,308.1 72.8,313.7C73.5,319.3 76.3,325.6 78.3,323.4C80.2,321.3 82.6,308.9 84.6,300.8C86.6,292.7 89.8,281.0 90.2,274.8C90.7,268.7 89.5,265.5 87.2,264.0C85.0,262.6 79.1,261.9 76.8,266.2Z M112.8,264.0C110.5,265.5 109.3,268.7 109.8,274.8C110.2,281.0 113.4,292.7 115.4,300.8C117.4,308.9 119.8,321.3 121.7,323.4C123.7,325.6 126.5,319.3 127.2,313.7C128.0,308.1 127.0,297.9 126.3,290.0C125.7,282.0 125.5,270.5 123.2,266.2C120.9,261.9 115.0,262.6 112.8,264.0Z",80.5,290.4],["waden","M58.8,332.4C56.6,334.6 55.1,343.4 54.2,349.7C53.4,356.0 52.9,365.5 53.8,370.2C54.7,374.9 57.8,380.1 59.6,377.8C61.4,375.4 63.4,363.0 64.6,356.2C65.9,349.3 68.2,340.7 67.2,336.7C66.2,332.8 61.0,330.3 58.8,332.4Z M132.8,336.7C131.8,340.7 134.1,349.3 135.4,356.2C136.6,363.0 138.6,375.4 140.4,377.8C142.2,380.1 145.3,374.9 146.2,370.2C147.1,365.5 146.6,356.0 145.8,349.7C144.9,343.4 143.4,334.6 141.2,332.4C139.0,330.3 133.8,332.8 132.8,336.7Z M68.4,334.6C66.8,337.8 66.1,349.3 65.6,356.2C65.0,363.0 64.1,373.1 65.2,375.6C66.4,378.1 70.6,375.6 72.5,371.3C74.4,367.0 76.0,355.4 76.4,349.7C76.8,343.9 76.2,339.2 74.9,336.7C73.5,334.2 69.9,331.3 68.4,334.6Z M125.1,336.7C123.8,339.2 123.2,343.9 123.6,349.7C124.0,355.4 125.6,367.0 127.5,371.3C129.4,375.6 133.6,378.1 134.8,375.6C135.9,373.1 135.0,363.0 134.4,356.2C133.9,349.3 133.2,337.8 131.6,334.6C130.1,331.3 126.5,334.2 125.1,336.7Z",59.7,353.8],["soleus","M53.6,368.6C51.9,370.2 50.7,385.2 50.7,391.3C50.6,397.4 51.3,403.0 53.3,405.3C55.2,407.7 59.6,408.2 62.2,405.3C64.8,402.4 67.5,393.4 68.9,388.0C70.4,382.6 72.3,374.0 71.0,372.9C69.6,371.8 63.8,382.3 60.9,381.6C58.0,380.8 55.3,367.0 53.6,368.6Z M139.1,381.6C136.2,382.3 130.4,371.8 129.0,372.9C127.7,374.0 129.6,382.6 131.1,388.0C132.5,393.4 135.2,402.4 137.8,405.3C140.4,408.2 144.8,407.7 146.7,405.3C148.7,403.0 149.4,397.4 149.3,391.3C149.3,385.2 148.1,370.2 146.4,368.6C144.7,367.0 142.0,380.8 139.1,381.6Z",60.1,387.6]],"right":{"f":["adduktoren","brachialis","brachiorad","gluteus_m","hams_i","nacken","quad_vm","rhomboiden","schulter_s","serratus","soleus","teres","trizeps_s","waden"],"b":["brachialis","brachiorad","gluteus_m","hams_i","quad_vl","quad_vm","rhomboiden","schulter_s","soleus","teres","trizeps_s"]},"groups":{"Brust":["brust_o","brust_u","serratus"],"Schulter":["schulter_v","schulter_s","schulter_h","rotatoren","nacken"],"Rücken":["trapez_mu","rhomboiden","teres","latissimus","ruecken_u"],"Arme":["bizeps","brachialis","brachiorad","ua_beuger","ua_strecker","trizeps_l","trizeps_s"],"Bauch":["bauch","bauch_s","hueftbeuger"],"Beine":["gluteus","gluteus_m","quad_rf","quad_vl","quad_vm","adduktoren","hams_a","hams_i","waden","soleus","schienbein"]}};
 const EX_LIB = [["bankdruecken","Bankdrücken (Langhantel)","kg","brust_u,brust_o","schulter_v,trizeps_s,trizeps_l"],["kh-bankdruecken","Bankdrücken (Kurzhantel)","kg","brust_u","brust_o,schulter_v,trizeps_s,trizeps_l"],["schraegbank","Schrägbankdrücken (Kurzhantel, 30°)","kg","brust_o","brust_u,schulter_v,trizeps_s"],["lh-schraegbank","Schrägbankdrücken (Langhantel)","kg","brust_o","brust_u,schulter_v,trizeps_s,trizeps_l"],["negativbank","Negativbankdrücken","kg","brust_u","trizeps_s,trizeps_l,schulter_v"],["brustpresse","Brustpresse (Maschine)","kg","brust_u","brust_o,schulter_v,trizeps_s"],["dips","Dips (Brust-Fokus)","bw","brust_u,trizeps_l,trizeps_s","brust_o,schulter_v"],["liegestuetze","Liegestütze","bw","brust_u","brust_o,schulter_v,trizeps_s,trizeps_l,serratus,bauch"],["kabelflys","Kabelzug-Flys","kg","brust_u,brust_o","schulter_v"],["butterfly","Butterfly (Maschine)","kg","brust_u","brust_o,schulter_v"],["kh-flys","Kurzhantel-Flys","kg","brust_u","brust_o,schulter_v"],["pullover","Pullover (Kurzhantel)","kg","latissimus,brust_u","teres,trizeps_l,serratus"],["ueberkopf-trizeps","Überkopf-Trizepsstrecken am Kabel","kg","trizeps_l","trizeps_s"],["trizeps-seil","Trizepsdrücken am Kabel (Seil)","kg","trizeps_s,trizeps_l",""],["trizeps-stange","Trizepsdrücken am Kabel (Stange)","kg","trizeps_s","trizeps_l"],["french-press","French Press (SZ-Stange)","kg","trizeps_l,trizeps_s",""],["enges-bankdruecken","Enges Bankdrücken","kg","trizeps_s,trizeps_l","brust_u,schulter_v"],["bankdips","Bankdips","bw","trizeps_s,trizeps_l","schulter_v,brust_u"],["kickbacks","Trizeps-Kickbacks","kg","trizeps_l,trizeps_s","schulter_h"],["schulterdruecken","Schulterdrücken (Kurzhantel)","kg","schulter_v","schulter_s,trizeps_s,trizeps_l,nacken"],["military-press","Schulterdrücken stehend (Langhantel)","kg","schulter_v","schulter_s,trizeps_s,brust_o,nacken,bauch"],["seitheben","Seitheben (Kurzhantel)","kg","schulter_s","schulter_v,nacken"],["seitheben-kabel","Seitheben am Kabel","kg","schulter_s","schulter_v,nacken"],["frontheben","Frontheben","kg","schulter_v","brust_o,schulter_s"],["reverse-flys","Reverse Flys","kg","schulter_h","rhomboiden,trapez_mu,rotatoren"],["facepulls","Face Pulls am Kabel","kg","schulter_h,rotatoren","rhomboiden,trapez_mu,nacken"],["aufrechtes-rudern","Aufrechtes Rudern","kg","schulter_s,nacken","schulter_v,bizeps"],["shrugs","Shrugs (Kurzhantel)","kg","nacken","trapez_mu,ua_beuger"],["klimmzuege","Klimmzüge","bw","latissimus,teres","rhomboiden,trapez_mu,schulter_h,bizeps,brachialis,ua_beuger"],["klimmzuege-eng","Klimmzüge eng (Untergriff)","bw","latissimus,bizeps","teres,brachialis,rhomboiden,trapez_mu"],["latzug","Latzug (breiter Griff)","kg","latissimus,teres","rhomboiden,trapez_mu,schulter_h,bizeps,brachialis"],["latzug-eng","Latzug eng (neutraler Griff)","kg","latissimus","teres,bizeps,brachialis,rhomboiden"],["lh-rudern","Langhantelrudern vorgebeugt","kg","latissimus,rhomboiden,trapez_mu","teres,schulter_h,bizeps,brachialis,ruecken_u,hams_a"],["kh-rudern","Kurzhantelrudern einarmig","kg","latissimus,rhomboiden","teres,trapez_mu,schulter_h,bizeps,brachialis"],["kabelrudern","Kabelrudern sitzend (enger Griff)","kg","latissimus,rhomboiden,trapez_mu","teres,schulter_h,bizeps,brachialis,ruecken_u"],["t-bar-rudern","T-Bar-Rudern","kg","rhomboiden,trapez_mu,latissimus","teres,schulter_h,bizeps,ruecken_u"],["maschinenrudern","Rudern an der Maschine","kg","rhomboiden,trapez_mu,latissimus","teres,schulter_h,bizeps"],["kabel-pullover","Kabel-Pullover (gestreckte Arme)","kg","latissimus","teres,trizeps_l"],["kreuzheben","Kreuzheben","kg","gluteus,ruecken_u,hams_a,hams_i","quad_vl,quad_vm,quad_rf,adduktoren,nacken,trapez_mu,ua_beuger"],["hyperextensions","Hyperextensions","bw","ruecken_u","gluteus,hams_a,hams_i"],["sz-curls","Langhantel-Curls (SZ-Stange)","kg","bizeps","brachialis,brachiorad"],["kh-curls","Kurzhantel-Curls","kg","bizeps","brachialis,brachiorad"],["hammer-curls","Hammer-Curls (Kurzhantel)","kg","brachialis,brachiorad","bizeps"],["schraegbank-curls","Schrägbank-Curls","kg","bizeps","brachialis"],["konzentrationscurls","Konzentrationscurls","kg","bizeps","brachialis"],["kabel-curls","Bizeps-Curls am Kabel","kg","bizeps","brachialis,brachiorad"],["scott-curls","Scott-Curls (Preacher)","kg","bizeps,brachialis","brachiorad"],["reverse-curls","Reverse Curls","kg","brachiorad,brachialis","ua_strecker,bizeps"],["handgelenk-curls","Handgelenk-Curls","kg","ua_beuger",""],["kniebeugen","Kniebeugen (Langhantel)","kg","quad_rf,quad_vl,quad_vm,gluteus","adduktoren,hams_a,hams_i,ruecken_u,soleus"],["frontkniebeugen","Frontkniebeugen","kg","quad_vl,quad_vm,quad_rf","gluteus,adduktoren,ruecken_u,bauch"],["goblet-squat","Goblet Squat","kg","quad_vl,quad_vm,quad_rf,gluteus","adduktoren,bauch"],["beinpresse","Beinpresse","kg","quad_vl,quad_vm,quad_rf,gluteus","adduktoren,hams_a,soleus"],["hackenschmidt","Hackenschmidt-Kniebeugen","kg","quad_vl,quad_vm,quad_rf","gluteus,adduktoren"],["ausfallschritte","Ausfallschritte","kg","quad_vl,quad_vm,quad_rf,gluteus","adduktoren,gluteus_m,hams_a,soleus"],["bulgarian","Bulgarische Split Squats","kg","quad_vl,quad_vm,gluteus","quad_rf,adduktoren,gluteus_m,hams_a"],["step-ups","Step-ups","kg","quad_vl,quad_vm,gluteus","quad_rf,gluteus_m,hams_a"],["beinstrecker","Beinstrecker","kg","quad_rf,quad_vl,quad_vm",""],["rdl","Rumänisches Kreuzheben","kg","hams_a,hams_i,gluteus","ruecken_u,adduktoren,ua_beuger,nacken"],["beinbeuger","Beinbeuger","kg","hams_a,hams_i","waden"],["beinbeuger-sitzend","Beinbeuger sitzend","kg","hams_a,hams_i","waden"],["hip-thrust","Hip Thrust","kg","gluteus","hams_a,hams_i,quad_vl,gluteus_m,adduktoren"],["abduktoren","Abduktoren (Maschine)","kg","gluteus_m","gluteus"],["adduktoren","Adduktoren (Maschine)","kg","adduktoren",""],["wadenheben","Wadenheben stehend","kg","waden","soleus"],["wadenheben-sitzend","Wadenheben sitzend","kg","soleus","waden"],["beinheben","Hängendes Beinheben","bw","hueftbeuger,bauch","bauch_s,quad_rf,ua_beuger"],["knieheben","Hängendes Knieheben","bw","hueftbeuger,bauch","bauch_s"],["plank","Plank","time","bauch","bauch_s,schulter_v,gluteus,quad_rf"],["seitstuetz","Seitstütz","time","bauch_s","gluteus_m,bauch"],["crunches","Crunches","bw","bauch","bauch_s"],["kabel-crunch","Kabel-Crunch","kg","bauch","bauch_s"],["russian-twist","Russian Twist","bw","bauch_s","bauch,hueftbeuger"],["ab-wheel","Ab Wheel Rollout","bw","bauch","bauch_s,latissimus,schulter_v,hueftbeuger"],["pallof","Pallof Press","kg","bauch_s","bauch"],["holzhacker","Holzhacker am Kabel","kg","bauch_s","bauch,schulter_v"],["burpees","Burpees","tr","quad_vl,quad_vm,brust_u,schulter_v,bauch","gluteus,trizeps_l,quad_rf,waden"],["mountain-climbers","Mountain Climbers","tr","bauch,hueftbeuger","schulter_v,brust_u,quad_rf"],["jumping-jacks","Jumping Jacks","tr","waden,schulter_s","gluteus_m,adduktoren,soleus"],["bear-crawl","Bear Crawl","tr","schulter_v,bauch","quad_vl,trizeps_l,brust_u"],["seilspringen","Seilspringen","time","waden,soleus","quad_vl,schulter_v,ua_beuger"],["kb-swings","Kettlebell Swings","kg","gluteus,hams_a,hams_i","ruecken_u,schulter_v,bauch"]];
-const TONE_HEX = { y: '#fff200', m: '#ec008c', c: '#00aeef' };
+const TONE_HEX = { y: '#fff200', m: '#ec008c', c: '#00aeef', g: '#3fd16b', r: '#ff4d3d', v: '#9b7bff' };
 const normName = s => String(s || '').toLowerCase().replace(/\(.*?\)/g, ' ').replace(/[^a-z0-9äöüß]+/g, ' ').trim();
 EX_LIB.push(
   ['beinheben-stuetz', 'Beinheben im Stütz', 'bw', 'hueftbeuger,bauch', 'bauch_s,quad_rf,trizeps_l'],
@@ -141,7 +144,8 @@ function cleanLib(x, base) {
     id: str(x.id || b.id, 64), name: str(x.name, 80).trim() || b.name || 'Übung', type, p, s: sx, kond: !!(x.kond ?? b.kond),
     sets: Math.min(10, int(x.sets) || int(b.sets) || ds), min, max: Math.max(min, int(x.max) || int(b.max) || dmax),
     cue: str(x.cue ?? b.cue ?? '', 1500), video: safeUrl(x.video ?? b.video), syn: str(x.syn ?? b.syn ?? '', 200),
-    hidden: !!(x.hidden ?? b.hidden), del: !!(x.del ?? b.del), into: str(x.into ?? b.into ?? '', 64), ts: str(x.ts || '', 40), by: str(x.by || '', 20), seed: !!LIB_SEED[x.id || b.id]
+    hidden: !!(x.hidden ?? b.hidden), del: !!(x.del ?? b.del), into: str(x.into ?? b.into ?? '', 64), ts: str(x.ts || '', 40), by: str(x.by || '', 20), seed: !!LIB_SEED[x.id || b.id],
+    owner: x.owner !== undefined ? x.owner || null : b.owner || null, crew: x.crew !== undefined ? x.crew || null : b.crew || null
   };
 }
 // Zeile aus dem Blatt → Eintrag. Unbekannte Muskelnamen werden übersprungen und als Hinweis gesammelt.
@@ -164,7 +168,7 @@ function libFromRow(r, warn) {
   const into = str(r.zusammen, 80).trim();
   return { id, name: str(r.name, 80).trim(), type: art || undefined, p: mus(r.haupt, 'Hauptmuskeln'), s: mus(r.neben, 'Nebenmuskeln'), kond: /kondition/i.test(String(r.gruppe || '')),
     sets: int(r.saetze), min: int(r.von), max: int(r.bis), cue: String(r.ausfuehrung || ''), video: String(r.video || ''), syn: String(r.suche || ''), hidden: yes(r.ausgeblendet), into,
-    ts: r.geaendert ? new Date(r.geaendert).toISOString() : '', by: str(r.vonPerson || '', 20) };
+    ts: r.geaendert ? new Date(r.geaendert).toISOString() : '', by: str(r.vonPerson || '', 20), owner: r.owner || null, crew: r.crew || null };
 }
 // Eintrag → lesbare Zeile fürs Blatt (gleiche Reihenfolge wie die Spalten in Code.gs)
 function libRow(L) {
@@ -226,8 +230,8 @@ function musBlock(x, tk) {
 // Übung zu einer Kennung finden (laufendes Training, Builder, Pläne)
 function exById(id) {
   if (draft) { const it = draft.items.find(it => it.ex.id === id); if (it) return it.ex; }
-  if (builder) for (const d of DAYS) { const x = builder.work[d].exercises.find(y => y.id === id); if (x) return x; }
-  for (const p of [cfg.me, partner()]) for (const d of DAYS) { const x = st().plans[p][d].exercises.find(y => y.id === id); if (x) return x; }
+  if (builder) for (const d of PD(builder.work)) { const x = builder.work[d].exercises.find(y => y.id === id); if (x) return x; }
+  for (const pl of [planOf(cfg.me, 'mine'), planOf(cfg.me), planOf(partner())]) for (const d of PD(pl)) { const x = pl[d].exercises.find(y => y.id === id); if (x) return x; }
   return null;
 }
 /* Zoom mit zwei Fingern (und Verschieben mit einem Finger, wenn gezoomt). onTap bekommt das angetippte Element. */
@@ -382,8 +386,8 @@ function duration(a, b) { const m = Math.max(1, Math.round((new Date(b) - new Da
 /* ---------- Flammen & Wochenstreak ----------
    Jedes abgeschlossene Training ist eine Flamme seines Tages. Drei Trainings in einer Kalenderwoche (Mo–So) ergeben eine Wochenflamme.
    Die Wochenstreak zählt die Wochen in Folge mit mindestens drei Trainings; die laufende Woche bricht sie erst, wenn sie ohne drei Trainings endet. */
-const FLAME = { A: 'flammen/flamme-a.webp', B: 'flammen/flamme-b.webp', C: 'flammen/flamme-c.webp', W: 'flammen/flamme-woche.webp' };
-const FLAME_HERO = { A: 'flammen/flamme-hero-a.webp', B: 'flammen/flamme-hero-b.webp', C: 'flammen/flamme-hero-c.webp', W: 'flammen/flamme-hero-woche.webp' };
+const FLAME = { A: 'flammen/flamme-a.webp', B: 'flammen/flamme-b.webp', C: 'flammen/flamme-c.webp', D: 'flammen/flamme-d.webp', E: 'flammen/flamme-e.webp', F: 'flammen/flamme-f.webp', W: 'flammen/flamme-woche.webp' };
+const FLAME_HERO = { A: 'flammen/flamme-hero-a.webp', B: 'flammen/flamme-hero-b.webp', C: 'flammen/flamme-hero-c.webp', D: 'flammen/flamme-hero-d.webp', E: 'flammen/flamme-hero-e.webp', F: 'flammen/flamme-hero-f.webp', W: 'flammen/flamme-hero-woche.webp' };
 function weekOf(ts) { const d = new Date(ts); return new Date(d.getFullYear(), d.getMonth(), d.getDate() - (d.getDay() + 6) % 7).getTime(); }
 function prevWeek(k) { const d = new Date(k); d.setDate(d.getDate() - 7); return d.getTime(); }
 function isoWeek(ts) {
@@ -393,7 +397,7 @@ function isoWeek(ts) {
 }
 function flameStats(p) {
   const ws = st().workouts.filter(w => w.person === p).sort((a, b) => new Date(a.ts) - new Date(b.ts));
-  const counts = { A: 0, B: 0, C: 0 }, perWeek = new Map();
+  const counts = Object.fromEntries(DAYS.map(d => [d, 0])), perWeek = new Map();
   ws.forEach(w => { counts[w.data.day]++; const k = weekOf(w.ts); if (!perWeek.has(k)) perWeek.set(k, []); perWeek.get(k).push(w); });
   const cur = weekOf(Date.now());
   let k = (perWeek.get(cur) || []).length >= 3 ? cur : prevWeek(cur), streak = 0;
@@ -408,7 +412,7 @@ function flameList() {
     const open = FLAME_OPEN.has(p), n = x.week.length;
     const wk = n >= 3 ? `${n} von 3 · Wochenflamme sicher` : `${n} von 3 diese Woche`;
     return `<div class="fl-row"><button class="fl-head" data-act="fl-toggle" data-p="${esc(p)}" aria-expanded="${open}">${avatar(p, 36)}<span class="fl-who"><b>${p === cfg.me ? 'Du' : nm(p)}</b><span class="small muted">${wk}</span></span><span class="fl-n" aria-label="${x.streak} ${x.streak === 1 ? 'Woche' : 'Wochen'} Streak"><img src="${FLAME.W}" alt=""><b>${x.streak}</b></span></button>
-      ${open ? `<div class="fl-days">${DAYS.map(d => `<span class="fl-day"><img src="${FLAME[d]}" alt=""><span class="fl-k" style="color:${TONE_HEX[DAY_TONE[d]]}">${esc(dl(d, p))}</span><b class="mono">${x.counts[d]}</b></span>`).join('')}</div>` : ''}</div>`;
+      ${open ? `<div class="fl-days">${DAYS.filter(d => x.counts[d] || pdays(p).includes(d)).map(d => `<span class="fl-day"><img src="${FLAME[d]}" alt=""><span class="fl-k" style="color:${TONE_HEX[DAY_TONE[d]]}">${esc(dl(d, p))}</span><b class="mono">${x.counts[d]}</b></span>`).join('')}</div>` : ''}</div>`;
   }).join('');
   return `<div class="sec-title" id="flammen"><h2>Flammen</h2></div><section class="card fl-list">${rows}</section>`;
 }
@@ -424,7 +428,7 @@ function viewDone(id) {
     ? `<h1 class="display done-t">Woche<br>geschafft</h1>
        <div class="mono done-s"><b>Wochenstreak ${streak}</b></div>
        <div class="mono muted small done-l">${streak > 1 ? `${streak} Wochen in Folge mit drei Trainings` : 'Deine erste Woche mit drei Trainings in Folge'}</div>`
-    : `<h1 class="display done-k t-${DAY_TONE[d]}">${esc(dl(d, p))}</h1>
+    : `<h1 class="display done-k t-${DAY_TONE[d]}">${esc(wlabel(w))}</h1>
        <div class="done-s">${esc(w.data.title)}</div>
        <div class="mono muted small done-l">${n < 3 ? `${n} von 3 diese Woche · noch ${n === 1 ? 'zwei' : 'eins'} bis zur Wochenflamme` : `${n}. Training diese Woche · Wochenflamme schon sicher`}</div>`;
   const abTxt = w.abort ? `<div class="mono small done-ab">Abgebrochen · ${w.abort.done} von ${w.abort.plan} Sätzen</div>` : '';
@@ -441,8 +445,10 @@ function viewDone(id) {
 function weekStart() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate() - (d.getDay() + 6) % 7); }
 
 // Tageskürzel (z. B. B&T) und Tagesfarbe
-const dl = (d, p) => { const pl = st().plans[p || cfg.me][d]; return (pl && pl.short) || DAY_SHORT[d]; };
-const dayChip = (d, p, extra = '') => `<span class="day t-${DAY_TONE[d]} ${extra}">${esc(dl(d, p))}</span>`;
+const dl = (d, p, k) => { p = p || cfg.me; const pl = (k === 'mine' ? planOf(p, 'mine') : st().plans[p] || {})[d] || planOf(p, 'mine')[d]; return (pl && pl.short) || DAY_SHORT[d]; };
+// Kürzel eines Trainings: ab 3.0 im Training gespeichert (Mein Plan anderer ist nicht sichtbar), sonst aus dem Plan
+const wlabel = w => (w && w.data && w.data.short) || dl(w.data.day, w.person, w.data.plan);
+const dayChip = (d, p, extra = '', k) => `<span class="day t-${DAY_TONE[d]} ${extra}">${esc(dl(d, p, k))}</span>`;
 // Avatar: Profilbild oder Glas mit weißem Buchstaben
 /* Profilbild-Ersatz und Chat-Namen: je Person ein fester, entsättigter Ton aus Cyan, Magenta oder Gelb.
    Heute aus dem Namen abgeleitet, ab 3.0 aus der Buddy-ID. Zwei Personen bekommen nie denselben Ton. */
@@ -460,10 +466,12 @@ const nameColor = p => AV_TEXT[avIdx(p)];
 function avatar(p, size = 32) {
   const img = st().avatars[p];
   const st_ = `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.4)}px`;
-  return img ? `<img class="av" src="${esc(img)}" alt="${nm(p)}" style="${st_}">` : `<span class="av" style="${st_};background:${AV_FILL[avIdx(p)]}" aria-hidden="true">${esc(p[0])}</span>`;
+  return img ? `<img class="av" src="${esc(img)}" alt="${nm(p)}" style="${st_}">` : `<span class="av" style="${st_};background:${AV_FILL[avIdx(p)]}" aria-hidden="true">${esc((pname(p)[0] || '?').toUpperCase())}</span>`;
 }
 
 const ICON = {
+  book: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2z"/><path d="M4 20a2 2 0 0 0 2 2h13v-4"/><path d="M9 7h6"/></svg>',
+  pen: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg>',
   mail: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
   copy: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg>',
   search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
@@ -521,8 +529,8 @@ let seenIds = new Set(events.map(e => e.id));
 
 function saveLog() { LS.set('events', events); LS.set('pending', pending); LS.set('lastSeq', lastSeq); }
 function saveDraft() { if (draft && draft.edit) { LS.set('edraft', draft); return; } LS.set('draft', draft); }
-function addEvent(type, data, summary) {
-  const e = { id: uid(), ts: new Date().toISOString(), person: cfg.me, type, data, summary };
+function addEvent(type, data, summary, opts = {}) {
+  const e = { id: uid(), ts: new Date().toISOString(), person: cfg.me, type, data, summary, ...(opts.private ? { private: true } : {}) };
   pending.push(e); saveLog(); invalidate();
   sync({ quiet: true });
   return e;
@@ -546,7 +554,7 @@ function cleanEx(x) {
   return o;
 }
 function cleanPlan(p, day) {
-  return { title: str(p && p.title, 40) || DEFAULT_PLAN[day].title, short: str(p && p.short, 6).trim() || DAY_SHORT[day],
+  return { title: str(p && p.title, 40) || (DEFAULT_PLAN[day] ? DEFAULT_PLAN[day].title : 'Tag ' + (DAYS.indexOf(day) + 1)), short: str(p && p.short, 6).trim() || DAY_SHORT[day],
     exercises: (Array.isArray(p && p.exercises) ? p.exercises : []).slice(0, 25).map(cleanEx) };
 }
 function cleanEntry(en) {
@@ -584,14 +592,14 @@ function st() { return _st || (_st = buildState()); }
 function buildState() {
   const all = events.slice().sort((a, b) => a.seq - b.seq)
     .concat(pending.filter(p => !seenIds.has(p.id)).sort((a, b) => a.ts.localeCompare(b.ts)));
-  const s = { spotSeen: {}, spotMyReact: {}, spotReacts: {}, plans: {}, last: {}, workouts: [], skips: [], swaps: [], feed: [], changes: {}, lastChange: {}, lastShared: {}, decisions: {}, lastAction: {}, hist: {}, wedits: [], exInfo: {}, bw: {}, avatars: {}, first: {}, lib: null, libWarn: [], libHist: {} };
+  const s = { spotSeen: {}, spotMyReact: {}, spotReacts: {}, plans: {}, mine: {}, last: {}, lastBy: {}, workouts: [], skips: [], swaps: [], feed: [], changes: {}, lastChange: {}, lastShared: {}, decisions: {}, lastAction: {}, hist: {}, wedits: [], exInfo: {}, bw: {}, avatars: {}, first: {}, lib: null, libWarn: [], libHist: {} };
   _st = s; // für dl() während des Aufbaus
   // Nachträgliche Änderungen an abgeschlossenen Trainings: es gilt die jeweils letzte, nur von derselben Person
   const edits = {}, libEv = [], planHints = {};
   all.forEach(e => { if (e.type === 'workout_edit' && e.data && typeof e.data.ref === 'string') edits[e.data.ref] = e; });
   // „undefined“: Platzhalter, solange es noch keinen Buddy gibt (partner() liefert dann nichts)
   [...PEOPLE, 'undefined'].forEach(p => { s.plans[p] = clone(DEFAULT_PLAN); s.hist[p] = {}; s.last[p] = null; s.bw[p] = []; });
-  DAYS.forEach(d => DEFAULT_PLAN[d].exercises.forEach(x => { s.exInfo[x.id] = { name: x.name, type: x.type }; }));
+  PD(DEFAULT_PLAN).forEach(d => DEFAULT_PLAN[d].exercises.forEach(x => { s.exInfo[x.id] = { name: x.name, type: x.type }; }));
   all.forEach((e, k) => {
     if (!PEOPLE.includes(e.person) || !e.id || !e.ts) return;
     const ed = e.type === 'workout' ? edits[e.id] : null;
@@ -607,13 +615,14 @@ function buildState() {
       d.deload = !!d.deload; d.deloadSkipped = !!d.deloadSkipped;
       if (isNaN(new Date(d.start))) d.start = e.ts;
       if (isNaN(new Date(d.end))) d.end = e.ts;
+      d.plan = d.plan === 'mine' ? 'mine' : 'crew';
       { // Abgebrochen: weniger Sätze als geplant. Neue Trainings speichern die geplante Zahl, alte rechnen mit dem Plan dieses Tages.
-        const pl = s.plans[e.person][d.day];
+        const pl = (d.plan === 'mine' && s.mine[e.person] ? s.mine[e.person] : s.plans[e.person])[d.day];
         const planned = int(d.plan) || (pl ? pl.exercises.reduce((a, x) => a + (d.deload ? Math.ceil((+x.sets || 1) / 2) : (+x.sets || 0)), 0) : 0);
         const doneN = d.entries.reduce((a, en) => a + en.sets.filter(st_ => int(st_.r) > 0).length, 0);
         e.abort = planned > 0 && doneN < planned ? { done: doneN, plan: planned } : null;
       }
-      s.workouts.push(e); s.last[e.person] = { day: d.day, ts: e.ts, kind: 'workout' };
+      s.workouts.push(e); s.last[e.person] = s.lastBy[e.person + '|' + d.plan] = { day: d.day, plan: d.plan, ts: e.ts, kind: 'workout' };
       d.entries.forEach(en => {
         (s.hist[e.person][en.exId] = s.hist[e.person][en.exId] || []).push({ ts: e.ts, wid: e.id, sets: en.sets, rm: en.rm || [], tt: en.tt || 0, note: en.note, feel: en.feel, type: en.type, name: en.name, day: d.day, person: e.person, deload: d.deload, load: en.load });
         s.exInfo[en.exId] = { name: en.name, type: en.type };
@@ -627,7 +636,8 @@ function buildState() {
       }
     } else if (e.type === 'skip') {
       if (!DAYS.includes(d.day)) return;
-      s.last[e.person] = { day: d.day, ts: e.ts, kind: 'skip' }; s.skips.push(e);
+      d.plan = d.plan === 'mine' ? 'mine' : 'crew';
+      s.last[e.person] = s.lastBy[e.person + '|' + d.plan] = { day: d.day, plan: d.plan, ts: e.ts, kind: 'skip' }; s.skips.push(e);
     } else if (e.type === 'plan_change') {
       if (!DAYS.includes(d.day)) return;
       // Pläne vor 2.0 trugen Muskeln, Ausführung und Video selbst: einmalig als Stand für die Bibliothek übernehmen
@@ -641,8 +651,21 @@ function buildState() {
         if (safeUrl(rx.video)) h.video = safeUrl(rx.video);
         if (int(rx.sets) && int(rx.min) && !seed) { h.sets = int(rx.sets); h.min = int(rx.min); h.max = int(rx.max); }
       });
+      if (d.plan === 'mine') {
+        // Mein Plan startet als Kopie des Crew-Plans zum Zeitpunkt der ersten eigenen Änderung
+        const mp = s.mine[e.person] = s.mine[e.person] || clone(s.plans[e.person]);
+        if (d.deleted) { if (PD(mp).length > 1) delete mp[d.day]; }
+        else { const p = cleanPlan(d, d.day); mp[d.day] = p; p.exercises.forEach(x => { s.exInfo[x.id] = s.exInfo[x.id] || { name: x.name, type: x.type }; }); }
+        return;
+      }
+      if (d.deleted) {
+        if (!s.plans[e.person][d.day] || PD(s.plans[e.person]).length < 2) return;
+        delete s.plans[e.person][d.day];
+        s.changes[e.id] = e; s.lastShared[e.person + '|' + d.day] = e; s.lastChange[e.person + '|' + d.day] = e; s.lastAction[e.person + '|' + d.day] = k;
+        return;
+      }
       const p = cleanPlan(d, d.day); d.title = p.title; d.short = p.short; d.exercises = p.exercises;
-      if (sharedDiff(s.plans[e.person][d.day], p).length) s.lastShared[e.person + '|' + d.day] = e;
+      if (sharedDiff(s.plans[e.person][d.day] || EMPTY_DAY, p).length) s.lastShared[e.person + '|' + d.day] = e;
       s.plans[e.person][d.day] = clone(p);
       p.exercises.forEach(x => { s.exInfo[x.id] = s.exInfo[x.id] || { name: x.name, type: x.type }; s.exInfo[x.id].name = x.name; });
       s.changes[e.id] = e; s.lastChange[e.person + '|' + d.day] = e; s.lastAction[e.person + '|' + d.day] = k;
@@ -651,7 +674,8 @@ function buildState() {
       const decision = d.decision === 'accepted' ? 'accepted' : 'dismissed';
       s.decisions[e.person + '|' + d.changeId] = { decision, k, ts: e.ts };
       if (ch && decision === 'accepted') {
-        s.plans[e.person][ch.data.day] = d.result && Array.isArray(d.result.exercises) ? cleanPlan(d.result, ch.data.day) : cleanPlan(ch.data, ch.data.day);
+        if ((d.result && d.result.deleted) || (!d.result && ch.data.deleted)) { if (PD(s.plans[e.person]).length > 1) delete s.plans[e.person][ch.data.day]; }
+        else s.plans[e.person][ch.data.day] = d.result && Array.isArray(d.result.exercises) ? cleanPlan(d.result, ch.data.day) : cleanPlan(ch.data, ch.data.day);
         s.lastAction[e.person + '|' + ch.data.day] = k;
       }
     } else if (e.type === 'swap') {
@@ -716,8 +740,8 @@ function buildLib(s, libEv, planHints) {
     const t = T(id); if (t === id) return;
     s.hist[p][t] = (s.hist[p][t] || []).concat(s.hist[p][id]).sort((a, b) => a.ts.localeCompare(b.ts)); delete s.hist[p][id];
   }));
-  PEOPLE.forEach(p => DAYS.forEach(d => {
-    const pl = s.plans[p][d], seen = new Set();
+  PEOPLE.flatMap(p => [s.plans[p], s.mine[p]]).filter(Boolean).forEach(plan => PD(plan).forEach(d => {
+    const pl = plan[d], seen = new Set();
     pl.exercises = pl.exercises.filter(x => {
       x.id = T(x.id); if (seen.has(x.id)) return false; seen.add(x.id);
       const L = lib[x.id];
@@ -738,7 +762,19 @@ function buildLib(s, libEv, planHints) {
   Object.values(lib).forEach(L => { if (!s.exInfo[L.id]) s.exInfo[L.id] = { name: L.name, type: L.type }; });
 }
 
-function nextDay(p) { const l = st().last[p]; return l ? DAYS[(DAYS.indexOf(l.day) + 1) % 3] : 'A'; }
+// Plan eines Menschen: Crew-Plan oder Mein Plan (ohne eigene Änderung = der Crew-Plan)
+const planOf = (p, k = 'crew') => (k === 'mine' ? st().mine[p] || st().plans[p] : st().plans[p]) || {};
+const pdays = (p, k = 'crew') => PD(planOf(p, k));
+const hasCrew = () => !!(CREW && CREW.id);
+// aktueller Plan: der, aus dem zuletzt trainiert wurde; ohne Crew immer Mein Plan
+function curPlan(p = cfg.me) { if (p === cfg.me && !hasCrew()) return 'mine'; const l = st().last[p]; return l && l.plan === 'mine' ? 'mine' : 'crew'; }
+function nextDay(p, k = curPlan(p)) {
+  const days = pdays(p, k), l = st().lastBy[p + '|' + k];
+  if (!days.length) return 'A';
+  if (!l) return days[0];
+  const i = DAYS.indexOf(l.day);
+  return days.find(d => DAYS.indexOf(d) > i) || days[0];
+}
 function isPending(id) { return !seenIds.has(id) && pending.some(p => p.id === id); }
 // Körpergewicht nach Zeitraum: jeder Eintrag gilt ab seinem Datum bis zum nächsten, davor gilt der erste
 function bwAt(p, when) {
@@ -995,7 +1031,7 @@ function lastSides(p, x, j) {
   return { plus, minus };
 }
 function plateauCount(p) {
-  return DAYS.reduce((a, d) => a + st().plans[p][d].exercises.filter(x => !isTimed(x.type) && isPlateau(normalSessions(p, x.id, x.type), x, p)).length, 0);
+  return pdays(p, curPlan(p)).reduce((a, d) => a + planOf(p, curPlan(p))[d].exercises.filter(x => !isTimed(x.type) && isPlateau(normalSessions(p, x.id, x.type), x, p)).length, 0);
 }
 
 /* ---------- Deload (für jede Person getrennt) ---------- */
@@ -1074,7 +1110,7 @@ function mergePlan(mine, theirs) {
   });
   return { title: theirs.title, short: theirs.short, exercises: result };
 }
-const DIFF_SIGN = { add: '+', remove: '−', replace: '⇄', edit: '~', order: '↕', title: '~', short: '~' };
+const DIFF_SIGN = { add: '+', remove: '−', replace: '⇄', edit: '~', order: '↕', title: '~', short: '~', addday: '+', delday: '−' };
 function diffText(d) {
   switch (d.k) {
     case 'add': return `Neu: ${d.b}`;
@@ -1084,6 +1120,8 @@ function diffText(d) {
     case 'order': return 'Reihenfolge geändert';
     case 'title': return `Name des Tages: ${d.a} → ${d.b}`;
     case 'short': return `Kürzel: ${d.a} → ${d.b}`;
+    case 'addday': return `Neuer Trainingstag: ${d.b}${d.t ? ' · ' + d.t : ''}`;
+    case 'delday': return `Trainingstag gelöscht: ${d.a}`;
   }
   return '';
 }
@@ -1091,10 +1129,13 @@ const diffList = list => `<ul class="diff">${list.map(d => `<li><span class="s">
 
 function bellItems() {
   const s = st(), me = cfg.me, other = partner(), out = [];
+  if (!other || !hasCrew() || !(CREW.members || []).includes(other)) return out;   // Planänderungen nur innerhalb der Crew
   DAYS.forEach(d => {
     const pc = s.lastShared[other + '|' + d];
     if (!pc) return;
-    const diff = sharedDiff(s.plans[me][d], s.plans[other][d]);
+    const mine = s.plans[me][d], theirs = s.plans[other][d];
+    if (!mine && !theirs) return;
+    const diff = !theirs ? [{ k: 'delday', a: mine.short }] : !mine ? [{ k: 'addday', b: theirs.short, t: theirs.title }] : sharedDiff(mine, theirs);
     if (!diff.length) return;
     const dec = s.decisions[me + '|' + pc.id];
     const myK = s.lastAction[me + '|' + d] ?? -1;
@@ -1103,7 +1144,7 @@ function bellItems() {
   });
   return out;
 }
-const openCount = () => (cfg.me ? bellItems().filter(x => x.status === 'open').length + notices().length : 0);
+const openCount = () => (cfg.me && cfg.me.length > 20 ? bellItems().filter(x => x.status === 'open').length + notices().length : 0);
 /* ---------- Hinweise in der Glocke (nur für dich) ----------
    Regeneration: mindestens REGEN_H Stunden zwischen zwei gleichen Trainingstagen; dreimal unterschritten in 4 Wochen = Hinweis.
    Sätze: dreimal in Folge mehr bzw. weniger Sätze als im Plan = Vorschlag, den Plan anzupassen. */
@@ -1123,8 +1164,8 @@ function notices() {
   const since = Math.max(Date.now() - 28 * 864e5, +LS.get('regen.ack', 0));
   const gaps = regenGaps(me).filter(g => new Date(g.w.ts) > since);
   if (gaps.length >= 3) out.push({ id: 'regen', kind: 'regen', ts: gaps[gaps.length - 1].w.ts, title: 'Mehr auf Regeneration achten',
-    text: `Du hast in den letzten 4 Wochen ${gaps.length}-mal weniger als ${REGEN_H} h Pause zwischen zwei gleichen Trainings gemacht. Muskeln wachsen in der Pause. Plane mehr Regeneration ein, z. B. mit der Rotation ${DAYS.map(d => dl(d)).join(' → ')}.` });
-  DAYS.forEach(d => s.plans[me][d].exercises.forEach(x => {
+    text: `Du hast in den letzten 4 Wochen ${gaps.length}-mal weniger als ${REGEN_H} h Pause zwischen zwei gleichen Trainings gemacht. Muskeln wachsen in der Pause. Plane mehr Regeneration ein, z. B. mit der Rotation ${pdays(me, curPlan()).map(d => dl(d, me, curPlan())).join(' → ')}.` });
+  pdays(me, curPlan()).forEach(d => planOf(me, curPlan())[d].exercises.forEach(x => {
     const h = normalSessions(me, x.id, x.type).slice(-3);
     if (h.length < 3) return;
     const cnt = sess => sess.sets.filter(st_ => int(st_.r) > 0 && st_.a !== 'r').length;
@@ -1280,13 +1321,14 @@ function sync({ overlay = false, quiet = false } = {}) {
       saveLog();
       // Bibliothek: fester Grundbestand (owner leer) und eigene bzw. Crew-Übungen
       ui.set(97, 'Lade Bibliothek …', '');
+      await libPush();
       const lr = await sb.from('library').select('id,owner,crew_id,data,deleted,updated_at');
-      if (!lr.error) { libSheet = (lr.data || []).filter(x => !x.deleted).map(libDbRow); LS.set('lib.sheet', libSheet); invalidate(); }
+      if (!lr.error) { libSheet = (lr.data || []).filter(x => !x.deleted).map(libDbRow); LIBQ.forEach(q => { libSheet = libSheet.filter(r => r.id !== q.id); if (!q.deleted) libSheet.push(libDbRow(q)); }); LS.set('lib.sheet', libSheet); invalidate(); }
       lastSync = new Date().toISOString(); LS.set('lastSync', lastSync); syncError = null;
       ui.set(100, 'Fertig', '');
       if (overlay) await sleep(400);
       if (rejected && !quiet) toast(rejected === 1 ? 'Ein Eintrag wurde abgelehnt.' : `${rejected} Einträge wurden abgelehnt.`);
-      setTimeout(() => { vaultSync().then(() => gallerySync()); spotSync().then(() => chatSync()); }, 0);
+      setTimeout(() => { notesSync(); vaultSync().then(() => gallerySync()); spotSync().then(() => chatSync()); }, 0);
       return { ok: true };
     } catch (err) {
       const code = (err && err.code) || 'server';
@@ -2296,7 +2338,7 @@ function spotContext(at) {
   if (draft) {
     const { done, tot } = workCount();
     const sub = done === 0 ? 'LOS GEHT’S' : done >= tot ? 'ALLE SÄTZE' : `SATZ ${done} VON ${tot}`;
-    return { kind: 'live', day: draft.day, tone: DAY_TONE[draft.day], head: dl(draft.day), lines: [[sub, 'sub'], [`${date} · ${time}`, 'time']] };
+    return { kind: 'live', day: draft.day, tone: DAY_TONE[draft.day], head: dl(draft.day, null, draft.plan), lines: [[sub, 'sub'], [`${date} · ${time}`, 'time']] };
   }
   const w = st().workouts.filter(x => x.person === cfg.me && dateKey(x.ts) === dateKey(at)).pop();
   if (w) return { kind: 'done', day: w.data.day, tone: DAY_TONE[w.data.day], head: dl(w.data.day), lines: [[SPOT_WORDS[hashStr(dateKey(at)) % SPOT_WORDS.length], 'sub'], [`${date} · ${time}`, 'time']] };
@@ -2683,7 +2725,7 @@ document.addEventListener('focusout', () => setTimeout(() => {
   pendingRender = false; if (view === 'training' && draft) refreshTraining(); else if (!view.startsWith('vault')) render();
 }, 50));
 
-function exerciseDay(id) { const p = st().plans[cfg.me]; return DAYS.find(d => p[d].exercises.some(x => x.id === id)) || null; }
+function exerciseDay(id, k = curPlan()) { const p = planOf(cfg.me, k); return PD(p).find(d => p[d].exercises.some(x => x.id === id)) || null; }
 
 /* ---------- Hintergrund: Noise-Verlauf (Mechanik wie die Blender-Nodes) ----------
    Wolken = grobes Gradient-Rauschen, Grain = feines Pixel-Rauschen, gemischt und über eine Rampe
@@ -2786,14 +2828,19 @@ function render() {
     if (view === 'spot-bild') SPOT.galDel = null;
     if (name === 'spot-bild') SPOT.back = view === 'chat' && CHAT.open ? '#chat:' + encodeURIComponent(CHAT.open) : view === 'start' || view === 'verlauf' ? '#' + view : '#profil';
     if (view === 'chat') { CHAT.open = null; CHAT.reply = null; }
+    if (name === 'notizen') { const ex = arg.split(':')[1]; NOTE_FOCUS = ex ? { ex, from: view, t: Date.now(), dim: true } : null; }
   }
   let html, tone = '';
   switch (name) {
     case 'training': if (!draft) { location.hash = '#start'; return; } html = viewTraining(); tone = DAY_TONE[draft.day]; break;
     case 'bearbeiten': if (!edraft) { location.hash = '#verlauf'; return; } html = withEd(viewEdit); tone = DAY_TONE[edraft.day]; break;
     case 'verlauf': html = head('Verlauf') + `<main class="view">${viewVerlauf()}</main>` + tabbar('verlauf'); break;
-    case 'plan': html = head('Plan') + `<main class="view"><div class="seg" role="group" aria-label="Bereich"><button data-act="ptab" data-v="plan" aria-pressed="${planTab === 'plan'}">Plan</button><button data-act="ptab" data-v="lib" aria-pressed="${planTab === 'lib'}">Bibliothek</button></div>${planTab === 'lib' ? viewLibrary() : viewPlan()}</main>` + tabbar('plan'); break;
-    case 'notizen': html = head('Notizen') + `<main class="view">${viewNotes()}</main>` + tabbar('notizen'); break;
+    case 'plan': html = head('Plan') + `<main class="view">${viewPlan()}</main>` + tabbar('plan'); tone = pkind() === 'crew' && !hasCrew() ? '' : DAY_TONE[builder.day] || ''; break;
+    case 'bibliothek': html = subhead('plan') + `<main class="view">${viewLibrary()}</main>` + tabbar('plan'); break;
+    case 'notizen': {
+      const fromTr = NOTE_FOCUS && NOTE_FOCUS.from === 'training' && draft;
+      html = `<header class="head" id="head">${fromTr ? backBtn('training', 'Zurück zum Training') : backBtn('plan')}<div class="brand"></div></header><main class="view">${viewNotes3(arg)}</main>` + (fromTr ? '' : tabbar('plan')); tone = 'y'; break;
+    }
     case 'glocke': html = subhead(draft ? 'training' : 'start') + `<main class="view">${viewBell()}</main>` + (draft ? '' : tabbar('')); break;
     case 'einstellungen': html = subhead(draft ? 'training' : 'start') + `<main class="view nobar">${viewSettings()}</main>`; break;
     case 'ueber': html = subhead('einstellungen') + `<main class="view nobar">${viewAbout()}</main>`; break;
@@ -2816,7 +2863,10 @@ function render() {
   }
   document.body.dataset.tone = tone;
   setPage(html, tone);
-  if (name !== view) { app.scrollTop = 0; view = name; }
+  if (name !== view) {
+    app.scrollTop = 0; view = name;
+    if (name === 'notizen' && NOTE_FOCUS) { const c = document.getElementById('nc-' + NOTE_FOCUS.ex); if (c) { c.scrollIntoView({ block: 'center' }); NOTE_FOCUS.t = Date.now(); } }
+  }
   tabSlideIn();
   pendingRender = false;
   onScroll();
@@ -2865,29 +2915,38 @@ function syncLine() {
     lastSync ? `Synchronisiert ${relDay(lastSync)}, ${fmtTime(lastSync)}` : 'Noch nicht synchronisiert';
   return `<div class="syncline"><i class="sdot ${waiting || old ? 'wait' : ''}"></i><span>${txt}</span><button class="linkbtn" data-act="sync">${ICON.sync} Sync</button></div>`;
 }
+let startKind = null;   // auf dem Start gewählter Plan, null = der zuletzt genutzte
+const skind = () => (draft ? draft.plan || 'crew' : hasCrew() ? startKind || curPlan() : 'mine');
+const todayWorkout = () => st().workouts.find(w => w.person === cfg.me && dateKey(w.ts) === todayStr());
 function viewStart() {
-  const s = st(), me = cfg.me, other = partner();
-  const nd = nextDay(me), plan = s.plans[me][nd];
+  const s = st(), me = cfg.me, other = partner(), sk = skind();
+  const nd = nextDay(me, sk), plan = planOf(me, sk)[nd] || EMPTY_DAY, done = !draft && todayWorkout();
   const dl_ = deloadState(me);
   const nSets = plan.exercises.reduce((a, x) => a + (+x.sets || 0), 0);
-  const lastDoneOf = d => s.workouts.filter(w => w.person === me && w.data.day === d).pop();
+  const lastDoneOf = d => s.workouts.filter(w => w.person === me && w.data.day === d && (w.data.plan || 'crew') === sk).pop();
   const lastDone = lastDoneOf(nd);
   const wd = new Date().toLocaleDateString('de-DE', { weekday: 'long' });
-  const rot = DAYS.map(d => {
+  const rot = pdays(me, sk).map(d => {
     const isNext = d === (draft ? draft.day : nd);
     const l = lastDoneOf(d);
     const label = isNext ? (draft ? 'läuft' : 'als Nächstes') : l ? 'zuletzt ' + new Date(l.ts).toLocaleDateString('de-DE', { weekday: 'short' }) : '–';
-    return `<div class="rot glass t-${DAY_TONE[d]} ${isNext ? 'next' : ''}"><b><i class="dot t-${DAY_TONE[d]}"></i>${esc(dl(d))}</b><span>${label}</span></div>`;
+    return `<div class="rot glass t-${DAY_TONE[d]} ${isNext ? 'next' : ''}"><b><i class="dot t-${DAY_TONE[d]}"></i>${esc(dl(d, me, sk))}</b><span>${label}</span></div>`;
   }).join('');
   let main;
   if (draft) {
     main = `<div class="eyebrow">Training läuft${draft.deload ? ' · Deload' : ''}</div>
-      <h1 class="kurz" style="color:${TONE_HEX[DAY_TONE[draft.day]]}">${esc(dl(draft.day))}</h1><div class="title">${esc(draft.title)}</div>
+      <h1 class="kurz" style="color:${TONE_HEX[DAY_TONE[draft.day]]}">${esc(dl(draft.day, me, draft.plan))}</h1><div class="title">${esc(draft.title)}</div>
       <div class="mono muted small">begonnen ${relDay(draft.start)} um ${fmtTime(draft.start)}</div>
       <div class="btnrow" style="padding-top:8px"><a class="btn primary" href="#training">Training fortsetzen</a></div>`;
+  } else if (done) {
+    main = `<div class="eyebrow">Heute schon trainiert · ${esc(dl(done.data.day, me, done.data.plan))}</div>
+      <h1 class="kurz" style="color:${TONE_HEX[DAY_TONE[nd]]}">${esc(dl(nd, me, sk))}</h1><div class="title">${esc(plan.title)}</div>
+      <div class="mono muted small">Als Nächstes · ab morgen</div>
+      <span class="small muted">Ein Training pro Tag. Gönn deinen Muskeln die Pause, sie wachsen in der Regeneration.</span>
+      <div class="btnrow" style="padding-top:8px"><a class="btn" href="#training-log:${encodeURIComponent(done.id)}">Heutiges Training ansehen</a></div>`;
   } else {
     main = `<div class="eyebrow">${dl_.active ? `Deload · Teil ${dl_.part} von 3` : `Als Nächstes · ${wd}`}</div>
-      <h1 class="kurz" style="color:${TONE_HEX[DAY_TONE[nd]]}">${esc(dl(nd))}</h1><div class="title">${esc(plan.title)}</div>
+      <h1 class="kurz" style="color:${TONE_HEX[DAY_TONE[nd]]}">${esc(dl(nd, me, sk))}</h1><div class="title">${esc(plan.title)}</div>
       <div class="mono muted small">${plan.exercises.length} Übungen · ${dl_.active ? `${plan.exercises.reduce((a, x) => a + Math.ceil((+x.sets || 1) / 2), 0)} Sätze (halbiert)` : `${nSets} Sätze`}${lastDone ? ` · zuletzt ${relDay(lastDone.ts)}` : ''}</div>
       ${regenHint(nd)}
       ${dl_.active ? `<div class="deload"><b>Deload-Woche</b><span class="muted">${esc(dl_.reason)}. Gewicht −10 %, halbe Sätze, Wiederholungen am unteren Ende. Danach geht es mit deinen bisherigen Gewichten weiter.</span></div>` : ''}
@@ -2897,8 +2956,8 @@ function viewStart() {
       ${dl_.active ? '<button class="btn ghost" data-act="start-normal">Heute normal trainieren</button>' : ''}
       ${otherDayAsk ? `<div class="confirm"><div><b>Welchen Tag trainierst du heute?</b><br><span class="small muted">Deine Rotation geht danach ab diesem Tag weiter.</span></div>
         <div class="excwarn">${ICON.warn}<span>Nur als Ausnahme: Häufiges Auslassen stört die Rotation und fördert muskuläres Ungleichgewicht.</span></div>
-        <div class="pick">${DAYS.filter(d => d !== nd).map(d => `<button data-act="start-day" data-v="${d}">${esc(dl(d))}</button>`).join('')}</div>
-        ${DAYS.filter(d => d !== nd).map(d => regenHint(d, true)).join('')}
+        <div class="pick">${pdays(me, sk).filter(d => d !== nd).map(d => `<button data-act="start-day" data-v="${d}">${esc(dl(d, me, sk))}</button>`).join('')}</div>
+        ${pdays(me, sk).filter(d => d !== nd).map(d => regenHint(d, true)).join('')}
         <button class="btn small ghost" data-act="other-no">Abbrechen</button></div>` : ''}
       ${otherDayAsk ? '' : `<button class="lnk" data-act="other-day" style="align-self:flex-start">Anderen Tag trainieren</button>`}`;
   }
@@ -2906,7 +2965,8 @@ function viewStart() {
     ? `<div class="install glass">Tipp: Tippe in Safari auf <b>Teilen</b> und dann <b>Zum Home-Bildschirm</b>. Dann läuft die App wie eine normale App und auch offline.</div>` : '';
   // Neuigkeiten: die letzten drei Ereignisse der vergangenen 7 Tage, Neues oben. Alles Weitere über „Alle“ im Verlauf.
   const week = s.feed.filter(e => Date.now() - new Date(e.ts) < 7 * 864e5), feed = week.slice(0, 3);
-  return `${install}
+  const kseg = hasCrew() && !draft ? `<div class="seg" role="group" aria-label="Plan"><button data-act="skind" data-v="mine" aria-pressed="${sk === 'mine'}">Mein Plan</button><button data-act="skind" data-v="crew" aria-pressed="${sk === 'crew'}">Crew-Plan</button></div>` : '';
+  return `${install}${kseg}
     <section class="hero">${main}</section>
     <div class="rotation" aria-label="Deine Rotation">${rot}</div>
     ${syncLine()}
@@ -2960,7 +3020,7 @@ function feedWorkout(e) {
   const wait = isPending(e.id) ? '<span class="chip wait">noch nicht synchronisiert</span>' : '';
   const recBtn = prs.length ? `<button class="fi-rec" data-act="feed-rec" data-id="${esc(e.id)}" aria-expanded="${open}" style="color:${col}">${ICON.trophy}${prs.length === 1 ? 'Rekord' : prs.length + ' Rekorde'}<svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>` : '';
   return `<div class="fi fi-w"><span class="avlink" data-act="goprof" data-p="${esc(p)}">${avatar(p, 34)}</span><div>
-      <a class="fi-link" href="#training-log:${encodeURIComponent(e.id)}"><div class="t">${dayChip(d.day, p)}<span><b>${me ? 'Du' : nm(p)}</b> ${me ? 'hast' : 'hat'} ${ab ? 'abgebrochen' : 'abgeschlossen'}</span></div>
+      <a class="fi-link" href="#training-log:${encodeURIComponent(e.id)}"><div class="t"><span class="day t-${DAY_TONE[d.day]}">${esc(wlabel(e))}</span><span><b>${me ? 'Du' : nm(p)}</b> ${me ? 'hast' : 'hat'} ${ab ? 'abgebrochen' : 'abgeschlossen'}</span></div>
       <div class="m">${fmtDate(e.ts)} · ${fmtTime(e.ts)} · ${duration(d.start, d.end)}</div></a>
       <div class="fi-l2"><span class="muted">${ab ? `${ab.done} von ${ab.plan} Sätzen` : `${n} ${n === 1 ? 'Satz' : 'Sätze'}`}</span>${d.deload ? '<span class="chip dl">Deload</span>' : ''}${recBtn}${wait}</div>
       ${open ? `<div class="fi-recs">${prs.map(i => `<div><span>${esc(i.name.replace(/\s*\(.*\)$/, ''))}</span><span class="mono" style="color:${col}">${esc(i.label)}</span></div>`).join('')}</div>` : ''}
@@ -3007,14 +3067,17 @@ function newItem(x, deload) {
 }
 function partnerSwapsToday(day) {
   const other = partner(), latest = {};
+  if (draft && draft.plan === 'mine') return [];
   st().swaps.filter(e => e.person === other && e.data.day === day && e.data.date === todayStr()).forEach(e => { latest[e.data.fromId] = e; });
   return Object.values(latest);
 }
-function startTraining(skipDeload, pick) {
-  const me = cfg.me, day = DAYS.includes(pick) ? pick : nextDay(me), plan = st().plans[me][day];
+function startTraining(skipDeload, pick, k = skind()) {
+  if (todayWorkout()) { toast('Heute schon trainiert. Morgen geht es weiter.'); return; }
+  const me = cfg.me, day = pdays(me, k).includes(pick) ? pick : nextDay(me, k), plan = planOf(me, k)[day];
+  if (!plan) return;
   const dlS = deloadState(me), deload = dlS.active && !skipDeload;
-  draft = { day, title: plan.title, start: new Date().toISOString(), deload, deloadSkipped: dlS.active && !!skipDeload, swapIgnored: [], items: plan.exercises.map(x => newItem(clone(x), deload)) };
-  partnerSwapsToday(day).forEach(sw => {
+  draft = { day, plan: k, title: plan.title, start: new Date().toISOString(), deload, deloadSkipped: dlS.active && !!skipDeload, swapIgnored: [], items: plan.exercises.map(x => newItem(clone(x), deload)) };
+  if (k === 'crew') partnerSwapsToday(day).forEach(sw => {
     const i = draft.items.findIndex(t => t.ex.id === sw.data.fromId);
     if (i < 0) return;
     const it = newItem(clone(sw.data.to), deload);
@@ -3023,14 +3086,14 @@ function startTraining(skipDeload, pick) {
   });
   saveDraft(); location.hash = '#training';
 }
-const hasEntries = it => it.sets.some(s => s.done || int(s.r) > 0) || !!(it.note || '').trim();
+const hasEntries = it => it.sets.some(s => s.done || int(s.r) > 0) || !!(it.note || '').trim() || !!(it.cnote || '').trim();
 const workCount = () => { let done = 0, tot = 0; draft.items.forEach(it => it.sets.forEach(s => { tot++; if (s.done) done++; })); return { done, tot }; };
 function trainCountText() { const { done, tot } = workCount(); return draft.edit ? `${done} / ${tot} Sätze` : `${done} / ${tot} Sätze · ${duration(draft.start, new Date().toISOString())}`; }
 function viewTraining() {
   const { done, tot } = workCount();
   return `<header class="trainhead" id="head">
       <div class="row">${backBtn('start', 'Zurück zum Start')}<span class="count" id="tp-count">${trainCountText()}</span>${bellBtn('tbell')}</div>
-      <div class="ttl"><div><h1 class="kurz">${esc(dl(draft.day))}</h1><div class="sub">${esc(draft.title)}</div></div>${draft.deload ? '<span class="pill dl">Deload</span>' : ''}</div>
+      <div class="ttl"><div><h1 class="kurz">${esc(dl(draft.day, null, draft.plan))}</h1><div class="sub">${esc(draft.title)}</div></div>${draft.deload ? '<span class="pill dl">Deload</span>' : ''}</div>
       <div class="bar"><i id="tp-bar" style="width:${tot ? done / tot * 100 : 0}%"></i></div>
     </header>
     <main class="view notab">${draft.items.map((it, i) => exCard(it, i)).join('')}</main>
@@ -3048,6 +3111,13 @@ function warmupLabel(it) {
   if (!(W > 0)) return `Aufwärmen · ${Math.round(p * 100)} % × ${reps}`;
   const kg = Math.min(W, Math.max(W >= 20 ? 20 : 0, roundTo(W * p, 2.5)));
   return `Aufwärmen · ${fmtN(kg)} kg × ${reps}`;
+}
+// Eingabe der Notiz im Training: Mein Plan nur privat, Crew-Plan mit Umschalter Privat / Crew (jede Seite mit eigenem Text)
+function noteInput(it, i) {
+  if (draft.plan === 'mine' || !hasCrew()) return `<label class="note"><span>${ICON_LOCK14} Notiz · Privat</span><textarea id="note-${i}" data-note="${i}" rows="2" placeholder="z. B. Schulter zwickt, nächstes Mal enger greifen">${esc(it.note || '')}</textarea></label>`;
+  const sc = it.nscope === 'crew' ? 'crew' : 'private';
+  return `<div class="note"><div class="seg nswitch" role="group" aria-label="Notiz für"><button type="button" data-act="nscope" data-i="${i}" data-v="private" aria-pressed="${sc === 'private'}">${ICON_LOCK14}Privat${(it.note || '').trim() && sc !== 'private' ? ' ·' : ''}</button><button type="button" data-act="nscope" data-i="${i}" data-v="crew" aria-pressed="${sc === 'crew'}">${ICON_CREW14}Crew${(it.cnote || '').trim() && sc !== 'crew' ? ' ·' : ''}</button></div>
+    <textarea id="note-${i}" data-note="${i}" data-scope="${sc}" rows="2" aria-label="${sc === 'crew' ? 'Notiz für deine Crew' : 'Private Notiz'}" placeholder="${sc === 'crew' ? 'Deine Crew sieht diese Notiz, z. B. Bank 3 wackelt' : 'Nur du siehst diese Notiz, z. B. Schulter zwickt'}">${esc(sc === 'crew' ? it.cnote || '' : it.note || '')}</textarea></div>`;
 }
 function exCard(it, i) {
   const x = it.ex, me = cfg.me;
@@ -3087,7 +3157,6 @@ function exCard(it, i) {
       <span class="tgt">${it.sets.length}×${x.min}–${x.max}${unit}</span></div>
     ${hint ? `<div class="exhint">${esc(hint)}${it.kind === 'plateau' && !draft.deload ? `<div class="btnrow"><button class="btn small" data-act="plateau-down" data-i="${i}">Heute −10 %</button></div><span class="small muted">Oder im Plan die Spanne anheben, z. B. ${x.min}–${x.max} → ${x.min + 2}–${x.max + 2}.</span>` : ''}</div>` : ''}
     ${sw ? `<div class="swaphint"><span><b>${nm(sw.person)}</b> hat heute ${esc(sw.data.fromName)} durch <b>${esc(sw.data.to.name)}</b> getauscht.</span><div class="btnrow"><button class="btn small primary" data-act="swap-follow" data-i="${i}" data-id="${esc(sw.id)}">Auch tauschen</button><button class="btn small ghost" data-act="swap-ignore" data-id="${esc(sw.id)}">Nein</button></div></div>` : ''}
-    ${mine && mine.note && !draft.edit ? `<div class="small muted">Deine Notiz vom letzten Mal: ${esc(mine.note)}</div>` : ''}
     <div class="howrow"><details class="how"><summary>Ausführung & Video</summary><div class="body">
       ${(() => { const Lx = libGet(x.id), cue = Lx ? Lx.cue : x.cue; return cue ? `<p style="white-space:pre-line">${esc(cue)}</p>` : '<p class="small warn-t">Noch keine Ausführungshinweise hinterlegt. Ergänzen unter Plan → Bibliothek.</p>'; })()}
       ${x.image ? `<img src="${esc(x.image)}" alt="${esc(x.name)}" loading="lazy">` : ''}
@@ -3097,7 +3166,7 @@ function exCard(it, i) {
     <div class="sets ${x.type}">${cols}${warm}${rows}</div>
     <div class="cardacts"><button class="addset" data-act="addset" data-i="${i}">+ Satz</button><button class="addset" data-act="delset" data-i="${i}" ${it.sets.length <= 1 ? 'disabled' : ''}>− Satz</button><span class="sp"></span>${it.removed ? '' : `<button class="addset" data-act="swap-open" data-i="${i}">${ICON.swap} ${draft.edit ? 'Tauschen' : 'Heute tauschen'}</button>`}</div>
     ${whyRow(it, i)}
-    <label class="note"><span>Notiz</span><textarea id="note-${i}" data-note="${i}" rows="2" placeholder="z. B. Schulter zwickt, nächstes Mal enger greifen">${esc(it.note)}</textarea></label>
+    ${draft.edit ? (it.note ? `<label class="note"><span>Notiz</span><textarea id="note-${i}" data-note="${i}" rows="2">${esc(it.note)}</textarea></label>` : '') : notesBlock(x.id, draft.plan === 'mine' ? 'mine' : 'crew') + noteInput(it, i)}
     ${!draft.edit ? '' : it.ask ? `<div class="btnrow"><button class="btn small danger" data-act="ed-rmex-yes" data-i="${i}">${esc(x.name)} entfernen</button><button class="btn small ghost" data-act="ed-rmex-no" data-i="${i}">Abbrechen</button></div>` : `<button class="lnk danger-t" data-act="ed-rmex" data-i="${i}" style="align-self:flex-start">Übung aus dem Training entfernen</button>`}
   </article>`;
 }
@@ -3214,7 +3283,8 @@ function collectEntries() {
       if (s.done && SET_FEEL[s.f]) o.f = s.f;
       return { ...o, ...a };
     }).filter(s => s.r > 0);
-    const en = { exId: x.id, name: x.name, type: x.type, sets, note: (it.note || '').trim(), feel: '' };
+    // ab 3.0 stehen Notizen in der eigenen Tabelle; nur beim Bearbeiten alter Trainings bleibt die alte Notiz im Eintrag
+    const en = { exId: x.id, name: x.name, type: x.type, sets, note: draft.edit ? (it.note || '').trim() : '', feel: '' };
     if (it.rm && it.rm.length) en.rm = it.rm.slice();
     if (x.type === 'tr') en.tt = it.tt;
     if (it.swappedFrom && it.swappedFrom.id !== x.id) en.from = { id: it.swappedFrom.id, name: it.swappedFrom.name };
@@ -3253,10 +3323,17 @@ function finishTraining() {
   const end = new Date().toISOString();
   const n = entries.reduce((a, en) => a + en.sets.length, 0);
   const swaps = draft.items.filter(it => it.swappedFrom).map(it => ({ fromId: it.swappedFrom.id, fromName: it.swappedFrom.name, toId: it.ex.id, toName: it.ex.name }));
-  const summary = `${dl(draft.day)} ${draft.title}${draft.deload ? ' (Deload)' : ''} · ${n} Sätze · ` + entries.map(en => `${en.name}: ${fmtSets(en.type, en.sets)}${feelText(en) ? ` [${feelText(en)}]` : ''}${en.note ? ` (Notiz: ${en.note})` : ''}`).join(' | ');
+  const summary = `${dl(draft.day, null, draft.plan)} ${draft.title}${draft.deload ? ' (Deload)' : ''} · ${n} Sätze · ` + entries.map(en => `${en.name}: ${fmtSets(en.type, en.sets)}${feelText(en) ? ` [${feelText(en)}]` : ''}${en.note ? ` (Notiz: ${en.note})` : ''}`).join(' | ');
   const { plan } = plannedSets();
-  const e = addEvent('workout', { day: draft.day, title: draft.title, start: draft.start, end, deload: !!draft.deload, deloadSkipped: !!draft.deloadSkipped, swaps, entries, plan }, summary + (n < plan ? ` · abgebrochen (${n} von ${plan} Sätzen)` : ''));
-  draft = null; saveDraft(); $('#modal').innerHTML = '';
+  const k = draft.plan === 'mine' ? 'mine' : 'crew';
+  const e = addEvent('workout', { day: draft.day, plan: k, date: todayStr(), short: dl(draft.day, null, k), title: draft.title, start: draft.start, end, deload: !!draft.deload, deloadSkipped: !!draft.deloadSkipped, swaps, entries, plan }, summary + (n < plan ? ` · abgebrochen (${n} von ${plan} Sätzen)` : ''));
+  // Notizen aus dem Training: privat und (im Crew-Plan) für die Crew
+  draft.items.forEach(it => {
+    const base = { plan: k, exId: it.ex.id, day: draft.day, workoutId: e.id, ts: end };
+    if ((it.note || '').trim()) addNote({ ...base, scope: 'private', body: it.note });
+    if (k === 'crew' && (it.cnote || '').trim()) addNote({ ...base, scope: 'crew', body: it.cnote });
+  });
+  draft = null; saveDraft(); $('#modal').innerHTML = ''; notesSync();
   const imp = improvements(e);
   if (imp.length) toast(`${imp.length} ${imp.length === 1 ? 'Steigerung' : 'Steigerungen'} gespeichert`);
   location.hash = '#geschafft:' + e.id;
@@ -3289,13 +3366,13 @@ function swapForm(i, keep) {
   PK.onSel = L => { const r = isTimed(L.type) !== isTimed(x.type); if (r || isTimed(L.type)) { $('#sw-min').value = L.min; $('#sw-max').value = L.max; } $('#sw-unit').textContent = isTimed(L.type) ? 'Sek. von' : 'Wdh. von'; };
   const v = (k, d) => esc(pkVal(k, d));
   $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet full form tone-${DAY_TONE[draft.day]}" id="swapform" data-i="${i}" novalidate>
-    ${sheetHead(`${esc(dl(draft.day))} · ${esc(x.name)}`, 'Heute tauschen')}
+    ${sheetHead(`${esc(dl(draft.day, null, draft.plan))} · ${esc(x.name)}`, 'Heute tauschen')}
     <h2>Heute tauschen</h2>
     <p class="help" style="margin:0">Ersetzt <b>${esc(x.name)}</b> nur in diesem Training. Dein Plan bleibt unverändert, die Ersatzübung bekommt ihren eigenen Verlauf.</p>
     ${pickBlock('Ersatzübung suchen')}
     <div class="grid3"><label>Sätze<input class="inp" id="sw-sets" name="sets" inputmode="numeric" value="${v('sets', x.sets)}"></label><label><span id="sw-unit">${isTimed(x.type) ? 'Sek. von' : 'Wdh. von'}</span><input class="inp" id="sw-min" name="min" inputmode="numeric" value="${v('min', x.min)}"></label><label>bis<input class="inp" id="sw-max" name="max" inputmode="numeric" value="${v('max', x.max)}"></label></div>
     <fieldset class="radios"><legend>Für wen?</legend>
-      <label class="chk"><input type="radio" name="who" value="both" ${pkVal('who', 'both') === 'both' ? 'checked' : ''}><span>Für uns beide heute<small>${nm(partner())} sieht den Tausch in seinem heutigen Training für ${esc(dl(draft.day))}.</small></span></label>
+      <label class="chk"><input type="radio" name="who" value="both" ${pkVal('who', 'both') === 'both' ? 'checked' : ''}><span>Für uns beide heute<small>${nm(partner())} sieht den Tausch in seinem heutigen Training für ${esc(dl(draft.day, null, draft.plan))}.</small></span></label>
       <label class="chk"><input type="radio" name="who" value="me" ${pkVal('who', 'both') === 'me' ? 'checked' : ''}><span>Nur für mich</span></label>
     </fieldset>
     <div class="err" id="sw-err" hidden></div>
@@ -3315,7 +3392,7 @@ function doSwap(i, x, from, by, shared, mode) {
   }
   if (hasEntries(it) && mode !== 'carry') draft.items.splice(i + 1, 0, ni); else draft.items.splice(i, 1, ni);
   saveDraft();
-  if (shared) addEvent('swap', { day: draft.day, date: todayStr(), fromId: from.id, fromName: from.name, to: x }, `${dl(draft.day)}: ${from.name} heute durch ${x.name} ersetzt (für beide)`);
+  if (shared) addEvent('swap', { day: draft.day, date: todayStr(), fromId: from.id, fromName: from.name, to: x }, `${dl(draft.day, null, draft.plan)}: ${from.name} heute durch ${x.name} ersetzt (für beide)`);
 }
 function submitSwap(form) {
   const f = new FormData(form), i = +form.dataset.i, it = draft.items[i];
@@ -3374,12 +3451,15 @@ function libSearch(q, group, x, o = {}) {
     const P = new Set(musOf(x).p);
     return list.map(L => ({ L, sc: L.p.filter(k => P.has(k)).length })).filter(v => v.sc > 0 && v.L.id !== x.id).sort((a, b) => b.sc - a.sc || a.L.name.localeCompare(b.L.name, 'de')).map(v => v.L);
   }
-  if (group === 'Ausgeblendet') return libAll().filter(L => L.hidden && toks.every(t => libText(L).includes(t))).sort((a, b) => a.name.localeCompare(b.name, 'de'));
-  return list.filter(L => inGroupL(L, group)).sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  const byOwn = (a, b) => (b.owner === cfg.me) - (a.owner === cfg.me) || a.name.localeCompare(b.name, 'de');
+  if (group === 'Ausgeblendet') return libAll().filter(L => L.hidden && toks.every(t => libText(L).includes(t))).sort(byOwn);
+  if (group === 'Eigene') return list.filter(L => L.owner === cfg.me).sort(byOwn);
+  return list.filter(L => inGroupL(L, group)).sort(byOwn);
 }
 function libItem(L, tk, act, sel) {
   const m = { p: L.p, s: L.s };
-  return `<button type="button" role="option" class="sugitem ${sel ? 'sel' : ''}" data-act="${act}" data-id="${esc(L.id)}" aria-selected="${!!sel}">${bodyFig(bestView(m), tk, m, { w: 22, nums: false })}<span class="sgt"><b>${esc(L.name)}</b><span>${esc(m.p.map(k => BODY.names[k][0]).join(', ') || 'Noch keine Muskeln')}</span></span><span class="tp">${sel ? 'Ändern' : TYPE_LABEL[L.type]}</span></button>`;
+  const own = L.owner === cfg.me;
+  return `<button type="button" role="option" class="sugitem ${sel ? 'sel' : ''} ${own ? 'own' : ''}" data-act="${act}" data-id="${esc(L.id)}" aria-selected="${!!sel}">${bodyFig(bestView(m), tk, m, { w: 22, nums: false })}<span class="sgt"><b>${own ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-label="Eigene Übung"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg>` : ''}${esc(L.name)}</b><span>${esc(m.p.map(k => BODY.names[k][0]).join(', ') || 'Noch keine Muskeln')}</span></span><span class="tp">${sel ? 'Ändern' : TYPE_LABEL[L.type]}</span></button>`;
 }
 const pickBlock = label => `<label>${label}<span class="swsearch">${ICON.search}<input class="inp" id="pk-q" value="${esc(PK.q || '')}" maxlength="60" autocomplete="off" placeholder="z. B. Beinpresse, Burpees"></span></label><div id="pk-sug" class="sug"></div>`;
 function renderPick() {
@@ -3402,38 +3482,104 @@ function pkKeep() { const f = $('#modal form'); if (!f || !PK) return; PK.vals =
 const pkVal = (k, d) => (PK && PK.vals && PK.vals[k] != null ? PK.vals[k] : d);
 // Übung aus der Bibliothek für Plan oder Training: Sätze und Spanne aus dem eigenen Plan, sonst Standard der Bibliothek
 function exFromLib(L, extra = {}) {
-  const def = PEOPLE.flatMap(p => DAYS.flatMap(d => st().plans[p][d].exercises)).find(y => y.id === L.id);
+  const def = PEOPLE.flatMap(p => [planOf(p, 'mine'), planOf(p)].flatMap(pl => PD(pl).flatMap(d => pl[d].exercises))).find(y => y.id === L.id);
   return cleanEx({ id: L.id, name: L.name, type: L.type, sets: def ? def.sets : L.sets, min: def ? def.min : L.min, max: def ? def.max : L.max, step: isTimed(L.type) ? 0 : def ? def.step : 2.5, warmup: false, muscles: { p: L.p, s: L.s }, cue: L.cue, video: L.video, ...extra });
 }
 // Übung ist irgendwo in Gebrauch (Verlauf, Pläne): dann nur ausblenden statt löschen und die Art bleibt fest
-const libUsed = id => PEOPLE.some(p => (st().hist[p][id] || []).length || DAYS.some(d => st().plans[p][d].exercises.some(x => x.id === id)));
+const libUsed = id => PEOPLE.some(p => (st().hist[p][id] || []).length || [planOf(p, 'mine'), planOf(p)].some(pl => PD(pl).some(d => pl[d].exercises.some(x => x.id === id))));
 const libHasHist = id => PEOPLE.some(p => (st().hist[p][id] || []).length);
-function libSave(rec, why) {
+
+/* ---------- Bibliothek (ab 3.0) ----------
+   Der Grundbestand ist fest und für niemanden änderbar. Eigene Übungen liegen in der Tabelle „library“ mit owner = ich,
+   sichtbar für mich und meine Crew. Offline zuerst: Änderungen stehen sofort in libSheet und gehen über LIBQ an die Datenbank. */
+const libOwn = id => { const L = libGet(id); return !!(L && L.owner && L.owner === cfg.me); };
+let LIBQ = (() => { const v = LS.get('lib.q', []); return Array.isArray(v) ? v : []; })();
+function libDbData(L) {
+  // „name“ zusätzlich klein: die Prüfung in der Datenbank (Sperrliste, doppelte Namen) liest dieses Feld
+  return { 'ID': L.id, 'Name': L.name, name: L.name, 'Art': TYPE_LABEL[L.type], 'Gruppe': L.kond ? 'Kondition' : '', 'Hauptmuskeln': L.p.map(k => BODY.names[k][0]).join('; '), 'Nebenmuskeln': L.s.map(k => BODY.names[k][0]).join('; '),
+    'Sätze': L.sets, 'Spanne von': L.min, 'Spanne bis': L.max, 'Ausführung': L.cue || '', 'Video': L.video || '', 'Suchbegriffe': L.syn || '', 'Ausgeblendet': !!L.hidden, 'Zusammengeführt in': L.into || '', 'Geändert am': new Date().toISOString(), 'Geändert von': pname(cfg.me) };
+}
+function libApplyRow(row) {
+  libSheet = (Array.isArray(libSheet) ? libSheet : []).filter(r => r.id !== row.id);
+  if (!row.deleted) libSheet.push(libDbRow(row));
+  LS.set('lib.sheet', libSheet); invalidate();
+}
+function libSaveOwn(rec) {
   const L = cleanLib(rec);
-  const data = {}; LIB_FIELDS.forEach(k => { data[k] = L[k]; }); data.id = L.id; data.row = libRow(L);
-  addEvent('lib', data, `Bibliothek: ${L.name} ${why}`);
+  const row = { id: L.id, owner: cfg.me, crew_id: hasCrew() ? CREW.id : null, data: libDbData(L), deleted: !!L.del };
+  LIBQ = LIBQ.filter(q => q.id !== L.id).concat([row]); LS.set('lib.q', LIBQ);
+  libApplyRow(row); libPush();
   return L.id;
 }
+let libPushing = null;
+function libPush() {
+  if (libPushing || !LIBQ.length || cfg.key !== 'supabase' || navigator.onLine === false) return libPushing || Promise.resolve();
+  libPushing = (async () => {
+    try {
+      for (const row of LIBQ.slice()) {
+        const r = await sb.from('library').upsert(row, { onConflict: 'id' });
+        if (r.error) { const c = sbErr(r.error); if (c.code === 'network') return; toast(/Bibliothek/.test(c.msg || '') ? 'Diese Übung gibt es schon in der Bibliothek.' : /anderen Namen/.test(c.msg || '') ? 'Bitte wähle einen anderen Namen.' : 'Übung nicht gespeichert'); }
+        LIBQ = LIBQ.filter(q => q !== row); LS.set('lib.q', LIBQ);
+      }
+    } finally { libPushing = null; }
+  })();
+  return libPushing;
+}
+// Eigene Übung als Vorschlag für den Grundbestand: landet als Feedback beim Betreiber
+async function libSuggest(id) {
+  const L = libGet(id); if (!L) return;
+  const text = `Vorschlag für die Bibliothek: ${L.name} (${TYPE_LABEL[L.type]}, ${L.sets} × ${L.min}–${L.max})\nHaupt: ${L.p.map(k => BODY.names[k][0]).join(', ') || '–'}\nNeben: ${L.s.map(k => BODY.names[k][0]).join(', ') || '–'}\nAusführung: ${L.cue || '–'}${L.video ? '\nVideo: ' + L.video : ''}\nKennung: ${L.id}`;
+  const r = await sb.from('feedback').insert({ kind: 'uebung', text: text.slice(0, 4000), app_version: APP_VERSION, platform: /iPhone|iPad/.test(navigator.userAgent) ? 'iOS' : 'Web' });
+  toast(r.error ? 'Vorschlag nicht gesendet. Bitte später noch einmal.' : 'Danke! Dein Vorschlag ist angekommen.');
+}
+// Übung aus dem Grundbestand (oder eine Crew-Übung) ansehen, mit „Als Vorlage nutzen“
+function libView(L, opts = {}) {
+  const tk = opts.tk || 'y', timed = isTimed(L.type);
+  LF = { id: L.id, tk, opts, view: true };
+  $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><div class="sheet full form tone-${tk}" role="dialog" aria-modal="true">
+    ${sheetHead(L.owner ? 'Übung deiner Crew' : 'Bibliothek', esc(L.name))}
+    <h2>${esc(L.name)}</h2>
+    <div class="ro"><span class="eyebrow">Art</span><div class="rotag"><span class="tag kgtag" style="margin:0">${TYPE_LABEL[L.type]}</span><span class="tag" style="margin:0">Standard ${L.sets} × ${L.min}–${L.max}${timed ? ' s' : ''}</span>${L.kond ? '<span class="tag" style="margin:0">Kondition</span>' : ''}</div></div>
+    <div class="musform"><span class="eyebrow">Muskeln</span>${musPreview({ p: L.p, s: L.s }, tk)}</div>
+    ${L.cue ? `<div class="ro"><span class="eyebrow">Ausführung</span><p style="margin:0">${esc(L.cue)}</p></div>` : ''}
+    <div class="ro"><span class="eyebrow">Video</span><a class="vlink" href="${esc(videoUrl(L))}" target="_blank" rel="noopener">▶ ${L.video ? 'Video ansehen' : 'Shorts auf YouTube'}</a></div>
+    <div class="sbar"><button class="btn primary" type="button" data-act="lib-tpl" data-id="${esc(L.id)}">${ICON.copy || ''}Als Vorlage nutzen</button></div>
+  </div></div>`;
+}
+const libSig = L => JSON.stringify([L.type, L.p.slice().sort(), L.s.slice().sort(), !!L.kond, +L.sets, +L.min, +L.max, (L.cue || '').trim(), (L.video || '').trim(), (L.syn || '').trim()]);
+// Formularwerte als Übung (für den Vergleich mit der Vorlage)
+function lfRead(form) {
+  const f = new FormData(form);
+  let m; try { m = cleanMuscles(JSON.parse(f.get('muscles') || 'null')) || { p: [], s: [] }; } catch (e) { m = { p: [], s: [] }; }
+  return { name: String(f.get('name') || '').trim(), type: TYPE_LABEL[f.get('type')] ? f.get('type') : (LF && LF.lockType) || 'kg', p: m.p, s: m.s, kond: f.get('kond') === 'on', sets: int(f.get('sets')), min: int(f.get('min')), max: int(f.get('max')), cue: String(f.get('cue') || '').trim(), video: String(f.get('video') || '').trim(), syn: String(f.get('syn') || '').trim() };
+}
+// Mit Vorlage: speichern erst, wenn sich mehr als der Name geändert hat
+function lfCheck() {
+  const form = $('#libform'); if (!form || !LF || !LF.tpl) return;
+  const same = libSig(cleanLib({ ...lfRead(form), id: 'x' })) === LF.tpl;
+  const b = form.querySelector('.sbar .btn.primary'), w = form.querySelector('.sbar .why');
+  if (b) { b.disabled = same; b.style.opacity = same ? '.4' : ''; }
+  if (w) w.hidden = !same;
+}
 
-/* ---------- Übung in der Bibliothek erstellen oder bearbeiten ---------- */
-let LF = null;   // { id, tk, opts }
+/* ---------- Eigene Übung erstellen oder bearbeiten ---------- */
+let LF = null;   // { id, tk, opts, tpl }
 function libForm(L, opts = {}) {
+  if (L && L.owner !== cfg.me) { libView(L, opts); return; }   // Grundbestand und Crew-Übungen: nur ansehen
+  const tpl = opts.tpl ? libGet(opts.tpl) : null;
   const isNew = !L;
-  const x = L || cleanLib({ id: 'neu', name: opts.name || '', type: opts.type || 'kg' });
-  if (isNew) x.name = (opts.name || '').trim();
+  const x = L || (tpl ? cleanLib({ ...tpl, id: 'neu', owner: null, hidden: false, into: '' }) : cleanLib({ id: 'neu', name: opts.name || '', type: opts.type || 'kg' }));
+  if (isNew && !tpl) x.name = (opts.name || '').trim();
   const tk = opts.tk || (builder && DAY_TONE[builder.day]) || (L && DAY_TONE[exerciseDay(L.id)]) || 'y';
-  LF = { id: isNew ? '' : x.id, tk, opts };
   const lockType = !isNew && libHasHist(x.id);
+  LF = { id: isNew ? '' : x.id, tk, opts, tpl: tpl ? libSig(tpl) : null, lockType: lockType ? x.type : null };
   const used = !isNew && libUsed(x.id);
-  const seed = !isNew && LIB_SEED[x.id];
-  const differs = seed && LIB_FIELDS.some(k => !['hidden', 'del', 'into'].includes(k) && JSON.stringify(seed[k]) !== JSON.stringify(x[k]));
-  const merged = isNew ? [] : Object.values(st().lib).filter(y => y.into === x.id && !y.del);
-  const hist = isNew ? [] : (st().libHist[x.id] || []).slice(-8).reverse();
+  const merged = isNew ? [] : Object.values(st().lib).filter(y => y.into === x.id && !y.del && y.owner === cfg.me);
   const timed = isTimed(x.type);
   $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet full form tone-${tk}" id="libform" novalidate>
-    ${sheetHead('Bibliothek', isNew ? 'Neue Übung' : 'Übung bearbeiten')}
-    <h2>${isNew ? 'Neue Übung' : esc(x.name)}</h2>
-    <p class="help" style="margin:0">${isNew ? 'Die Übung kommt in die gemeinsame Bibliothek und steht danach überall zur Auswahl.' : `Gilt für dich und ${nm(partner())}, in allen Plänen und im Verlauf.`}${!isNew ? ` <span class="mono small">${x.ts ? `Zuletzt geändert ${fmtDate(x.ts)}${x.by ? ' von ' + esc(x.by === cfg.me ? 'dir' : x.by) : ''}` : 'Startbestand'}</span>` : ''}</p>
+    ${sheetHead('Eigene Übung', isNew ? 'Neue eigene Übung' : esc(x.name))}
+    <h2>${isNew ? 'Eigene Übung' : esc(x.name)}</h2>
+    ${tpl ? `<p class="tplchip">${ICON.copy.replace(/18/g, '14')}Vorlage: ${esc(tpl.name)}</p>` : ''}
     <label>Name<input class="inp" id="lf-name" name="name" value="${esc(x.name)}" maxlength="80" required autocomplete="off"></label>
     <div id="lf-sim"></div>
     <fieldset class="radios"><legend>Art</legend><div class="typeseg" role="group" aria-label="Art der Übung">${Object.entries(TYPE_LABEL).map(([k, v]) => `<label class="tsb"><input type="radio" name="type" value="${k}" ${x.type === k ? 'checked' : ''} ${lockType && x.type !== k ? 'disabled' : ''}><span>${v}</span></label>`).join('')}</div>
@@ -3446,24 +3592,24 @@ function libForm(L, opts = {}) {
     <div class="grid3"><label>Sätze<input class="inp" name="sets" inputmode="numeric" value="${x.sets}"></label>
       <label><span id="lf-unit">${timed ? 'Sek. von' : 'Wdh. von'}</span><input class="inp" name="min" inputmode="numeric" value="${x.min}"></label>
       <label>bis<input class="inp" name="max" inputmode="numeric" value="${x.max}"></label></div>
-    <span class="help" style="margin-top:-6px">Standard beim Hinzufügen zum Plan. Im Plan kann jeder seine Spanne anpassen.</span>
+    <span class="help" style="margin-top:-6px">Standard beim Hinzufügen zum Plan.</span>
     <label>Ausführung<textarea name="cue" rows="4" maxlength="1500" placeholder="Worauf es ankommt, z. B. Rücken gerade, langsam absenken">${esc(x.cue)}</textarea></label>
     <label>Video-Link (optional)<input class="inp" name="video" type="url" inputmode="url" value="${esc(x.video)}" placeholder="https://youtube.com/shorts/…"><span class="help">Leer: Die App sucht passende YouTube Shorts.</span></label>
     <label>Suchbegriffe (optional)<input class="inp" name="syn" value="${esc(x.syn)}" maxlength="200" placeholder="z. B. Captain's Chair, Pull-ups"><span class="help">Weitere Namen, unter denen die Suche die Übung findet.</span></label>
+    <div class="vis">${ICON_CREW14.replace(/14/g, '18')}<span><b>${hasCrew() ? 'Sichtbar für dich und deine Crew.' : 'Nur für dich sichtbar.'}</b>${hasCrew() ? '' : ' Sobald du in einer Crew bist, kann deine Crew sie auch nutzen.'}</span></div>
     <div class="err" id="lf-err" hidden></div>
     ${isNew ? '' : `<div class="libmore">
       ${merged.length ? `<div class="eyebrow">Zusammengeführt</div>${merged.map(y => `<div class="devrow"><span class="small" style="flex:1">${esc(y.name)}</span><button type="button" class="btn small ghost" data-act="lib-unmerge" data-id="${esc(y.id)}">Trennen</button></div>`).join('')}` : ''}
       <div class="btnrow wrap">
-        <button type="button" class="btn small" data-act="lib-merge">Mit anderer Übung zusammenführen</button>
-        ${differs ? '<button type="button" class="btn small ghost" data-act="lib-restore">Ursprünglichen Stand wiederherstellen</button>' : ''}
+        <button type="button" class="btn small" data-act="lib-suggest" data-id="${esc(x.id)}">Für die Bibliothek vorschlagen</button>
+        <button type="button" class="btn small ghost" data-act="lib-merge">Mit anderer Übung zusammenführen</button>
         ${x.hidden ? '<button type="button" class="btn small ghost" data-act="lib-show">Wieder einblenden</button>' : used ? '<button type="button" class="btn small ghost" data-act="lib-hide">Ausblenden</button>' : '<button type="button" class="btn small ghost danger-t" data-act="lib-del">Löschen</button>'}
       </div>
       ${used && !x.hidden ? '<span class="help">Wird in Plänen oder im Verlauf genutzt. Ausblenden versteckt sie in der Auswahl, der Verlauf bleibt.</span>' : ''}
-      ${hist.length ? `<div class="eyebrow">Änderungen</div><div class="libhist">${hist.map(e => `<div><span class="mono small">${fmtDate(e.ts)}</span><span class="small">${esc(e.person === cfg.me ? 'Du' : e.person)}: ${esc(String(e.summary || '').replace(/^Bibliothek: /, ''))}</span></div>`).join('')}</div>` : ''}
     </div>`}
-    <div class="sbar"><button class="btn primary" type="submit">${isNew ? 'Erstellen' : 'Speichern'}</button></div>
+    <div class="sbar"><span class="why" ${tpl ? '' : 'hidden'}>Ändere mehr als den Namen.</span><button class="btn primary" type="submit">${isNew ? 'Speichern' : 'Speichern'}</button></div>
   </form></div>`;
-  libSim();
+  libSim(); lfCheck();
   if (isNew) setTimeout(() => { const n = $('#lf-name'); if (n && !n.value) n.focus(); }, 50);
 }
 // Ähnliche Namen beim Erstellen anzeigen (gegen doppelte Übungen)
@@ -3475,24 +3621,24 @@ function libSim() {
   box.innerHTML = sim.length ? `<div class="simbox"><span class="eyebrow">Gibt es vielleicht schon</span>${sim.map(L => `<button type="button" class="pchip" data-act="lf-use" data-id="${esc(L.id)}">${esc(L.name)}</button>`).join('')}</div>` : '';
 }
 function submitLib(form) {
-  const f = new FormData(form), err = m => { const e = $('#lf-err'); e.textContent = m; e.hidden = false; e.scrollIntoView({ block: 'center' }); };
-  const name = String(f.get('name') || '').trim(), sets = int(f.get('sets')), min = int(f.get('min')), max = int(f.get('max'));
-  if (!name) return err('Bitte gib einen Namen ein.');
-  if (!sets || sets > 10) return err('Sätze: bitte eine Zahl von 1 bis 10.');
-  if (!min || !max || min > max) return err('Bitte gib eine gültige Spanne an, z. B. 8 bis 12.');
-  const same = v => String(v).trim().toLowerCase().replace(/\s+/g, ' ');
-  const dup = libVisible().find(L => L.id !== LF.id && same(L.name) === same(name));
-  if (dup) return err(`„${dup.name}“ gibt es schon. Bitte dort bearbeiten oder die beiden zusammenführen.`);
-  let m; try { m = cleanMuscles(JSON.parse(f.get('muscles') || 'null')) || { p: [], s: [] }; } catch (e) { m = { p: [], s: [] }; }
+  const err = m => { const e = $('#lf-err'); e.textContent = m; e.hidden = false; e.scrollIntoView({ block: 'center' }); };
+  const v = lfRead(form);
+  if (!v.name) return err('Bitte gib einen Namen ein.');
+  if (!v.sets || v.sets > 10) return err('Sätze: bitte eine Zahl von 1 bis 10.');
+  if (!v.min || !v.max || v.min > v.max) return err('Bitte gib eine gültige Spanne an, z. B. 8 bis 12.');
+  if (LF.tpl && libSig(cleanLib({ ...v, id: 'x' })) === LF.tpl) return err('Ändere mehr als den Namen. Sonst nimm einfach die Übung aus der Bibliothek.');
+  const same = s => String(s).trim().toLowerCase().replace(/\s+/g, ' ');
+  const base = Object.values(st().lib).find(L => !L.owner && !L.del && same(L.name) === same(v.name));
+  if (base && base.id !== LF.id) return err(`„${base.name}“ gibt es schon in der Bibliothek. Wähle einen anderen Namen oder nutze sie als Vorlage.`);
+  const dup = libVisible().find(L => L.id !== LF.id && same(L.name) === same(v.name));
+  if (dup) return err(`„${dup.name}“ gibt es schon. Bitte wähle einen anderen Namen.`);
   const old = LF.id ? st().lib[LF.id] : null;
-  const type = old && libHasHist(old.id) ? old.type : (TYPE_LABEL[f.get('type')] ? f.get('type') : 'kg');
-  let id = LF.id;
-  if (!id) { const base = slug(name).slice(0, 40) || 'uebung'; id = st().lib[base] ? base + '-' + uid().slice(0, 4) : base; }
-  const rec = { ...(old || {}), id, name, type, p: m.p, s: m.s, kond: f.get('kond') === 'on', sets, min, max, cue: String(f.get('cue') || '').trim(), video: String(f.get('video') || '').trim(), syn: String(f.get('syn') || '').trim(), hidden: old ? old.hidden : false, del: false, into: old ? old.into : '' };
-  const ch = old ? LIB_FIELDS.filter(k => JSON.stringify(old[k]) !== JSON.stringify(cleanLib(rec)[k])).map(k => ({ name: 'Name', type: 'Art', p: 'Muskeln', s: 'Muskeln', kond: 'Gruppe', sets: 'Sätze', min: 'Spanne', max: 'Spanne', cue: 'Ausführung', video: 'Video', syn: 'Suchbegriffe' }[k])).filter(Boolean) : [];
-  if (old && !ch.length) { libFormDone(id); return; }
-  libSave(rec, old ? `geändert (${[...new Set(ch)].join(', ')})` : 'erstellt');
-  toast(old ? 'Übung gespeichert. Gilt für euch beide.' : 'Übung erstellt');
+  const type = old && libHasHist(old.id) ? old.type : v.type;
+  const id = LF.id || ((slug(v.name).slice(0, 40) || 'uebung') + '-' + uid().slice(0, 6));
+  const rec = { ...(old || {}), ...v, id, type, hidden: old ? old.hidden : false, del: false, into: old ? old.into : '', owner: cfg.me };
+  if (old && libSig(cleanLib(rec)) === libSig(old) && old.name === v.name) { libFormDone(id); return; }
+  libSaveOwn(rec);
+  toast(old ? 'Übung gespeichert' : 'Eigene Übung erstellt');
   libFormDone(id);
 }
 function libFormDone(id) {
@@ -3500,11 +3646,10 @@ function libFormDone(id) {
   if (o && o.done) o.done(id); else { $('#modal').innerHTML = ''; render(); }
 }
 function libAct(kind) {
-  const L = LF && st().lib[LF.id]; if (!L) return;
-  if (kind === 'restore') { const S = LIB_SEED[L.id]; libSave({ ...S, hidden: L.hidden, into: L.into }, 'auf den Startbestand zurückgesetzt'); toast('Ursprünglicher Stand wiederhergestellt'); }
-  if (kind === 'hide') { libSave({ ...L, hidden: true }, 'ausgeblendet'); toast('Ausgeblendet. Unter „Ausgeblendet“ wieder einblenden.'); }
-  if (kind === 'show') { libSave({ ...L, hidden: false }, 'wieder eingeblendet'); toast('Wieder eingeblendet'); }
-  if (kind === 'del') { if (libUsed(L.id)) return; libSave({ ...L, del: true }, 'gelöscht'); toast('Übung gelöscht'); }
+  const L = LF && st().lib[LF.id]; if (!L || L.owner !== cfg.me) return;
+  if (kind === 'hide') { libSaveOwn({ ...L, hidden: true }); toast('Ausgeblendet. Unter „Ausgeblendet“ wieder einblenden.'); }
+  if (kind === 'show') { libSaveOwn({ ...L, hidden: false }); toast('Wieder eingeblendet'); }
+  if (kind === 'del') { if (libUsed(L.id)) return; libSaveOwn({ ...L, del: true }); toast('Übung gelöscht'); }
   libFormDone(kind === 'del' ? '' : L.id);
 }
 // Zusammenführen: Verlauf, Pläne und Notizen der einen Übung zählen danach für die andere
@@ -3529,7 +3674,7 @@ function mergePreview() {
   const L = st().lib[PK.src], T = PK.sel && libGet(PK.sel);
   if (!T) { box.innerHTML = ''; return; }
   const n = p => (st().hist[p][L.id] || []).length;
-  const plans = PEOPLE.flatMap(p => DAYS.filter(d => st().plans[p][d].exercises.some(x => x.id === L.id)).map(d => `${p === cfg.me ? 'dein' : p + 's'} ${dl(d, p)}`));
+  const plans = PEOPLE.flatMap(p => pdays(p).filter(d => planOf(p)[d].exercises.some(x => x.id === L.id)).map(d => `${p === cfg.me ? 'dein' : gen(pname(p))} ${dl(d, p)}`));
   const notes = PEOPLE.reduce((a, p) => a + (st().hist[p][L.id] || []).filter(h => h.note).length, 0);
   box.innerHTML = `<div class="abortbox"><span class="eyebrow">Wandert zu ${esc(T.name)}</span><div class="openlist">${PEOPLE.map(p => `<div><span>Trainings ${esc(p === cfg.me ? 'von dir' : 'von ' + p)}</span><span>${n(p)}</span></div>`).join('')}<div><span>Pläne</span><span>${esc(plans.join(', ') || 'keine')}</span></div><div><span>Notizen</span><span>${notes}</span></div></div></div>`;
 }
@@ -3538,29 +3683,31 @@ function submitMerge() {
   const L = st().lib[PK.src], T = PK.sel && libGet(PK.sel);
   if (!T) return err('Bitte wähle die Übung, die bleiben soll.');
   if (T.type !== L.type) return err('Nur Übungen derselben Art lassen sich zusammenführen.');
-  libSave({ ...L, into: T.id }, `in ${T.name} zusammengeführt`);
+  if (L.owner !== cfg.me) return err('Nur eigene Übungen lassen sich zusammenführen.');
+  libSaveOwn({ ...L, into: T.id });
   builder = null; PK = null; LF = null; $('#modal').innerHTML = '';
   toast(`${L.name} ist jetzt Teil von ${T.name}`); render();
 }
 
 /* ---------- Bibliothek im Plan-Tab ---------- */
-let planTab = 'plan';
+// Fokus in der Notizen-Ansicht endet beim ersten eigenen Scrollen oder Tippen
+document.addEventListener('pointerdown', () => { if (NOTE_FOCUS && NOTE_FOCUS.dim && view === 'notizen' && Date.now() - NOTE_FOCUS.t > 300) noteFocusEnd(); }, true);
+document.addEventListener('scroll', () => { if (NOTE_FOCUS && view === 'notizen' && Date.now() - NOTE_FOCUS.t > 500) noteFocusEnd(); }, true);
 const LIBV = { q: '', group: 'Alle' };
 function libListHTML() {
-  const groups = ['Alle', 'Kondition', ...Object.keys(BODY.groups), 'Ausgeblendet'];
+  const anyHidden = libAll().some(L => L.hidden && L.owner === cfg.me);
+  const groups = ['Alle', 'Eigene', 'Kondition', ...Object.keys(BODY.groups), ...(anyHidden ? ['Ausgeblendet'] : [])];
+  if (!groups.includes(LIBV.group)) LIBV.group = 'Alle';
   const hits = libSearch(LIBV.q, LIBV.group, null, {});
-  const tk = 'y';
-  return `<div class="chips scroll" role="group" aria-label="Nach Muskelgruppe filtern">${groups.map(g => `<button type="button" class="pchip ${g === LIBV.group ? 'tonep' : ''}" data-act="lib-g" data-v="${g}" aria-pressed="${g === LIBV.group}">${g}</button>`).join('')}</div>
-    <div class="eyebrow" style="margin:4px 2px 0">${hits.length} ${hits.length === 1 ? 'Übung' : 'Übungen'}</div>
-    <div class="suglist">${hits.map(L => libItem(L, tk, 'lib-open')).join('') || '<div class="empty">Keine Übung gefunden.</div>'}
-    <button type="button" class="sugitem new" data-act="lib-new"><span class="plus">+</span><span class="sgt"><b>${LIBV.q.trim() ? `„${esc(LIBV.q.trim())}“ als neue Übung erstellen` : 'Neue Übung erstellen'}</b><span>Name, Art, Muskeln und Ausführung festlegen</span></span></button></div>`;
+  const own = hits.filter(L => L.owner === cfg.me).length;
+  return `<div class="chips scroll" role="group" aria-label="Filter">${groups.map(g => `<button type="button" class="pchip ${g === LIBV.group ? 'tonep' : ''}" data-act="lib-g" data-v="${g}" aria-pressed="${g === LIBV.group}">${g}</button>`).join('')}</div>
+    <div class="eyebrow" style="margin:4px 2px 0">${hits.length} ${hits.length === 1 ? 'Übung' : 'Übungen'}${own ? ` · ${own} ${own === 1 ? 'eigene' : 'eigene'}` : ''}</div>
+    <div class="suglist">${hits.map(L => libItem(L, 'y', 'lib-open')).join('') || `<div class="empty">${LIBV.group === 'Eigene' ? 'Noch keine eigenen Übungen.' : 'Keine Übung gefunden.'}</div>`}</div>`;
 }
 function viewLibrary() {
-  const warn = st().libWarn || [];
-  const noSheet = cfg.url && scriptVersion != null && scriptVersion < LIB_MIN_SCRIPT;
-  return `${noSheet ? `<section class="card notice"><b>Bibliothek noch nicht in der Tabelle</b><span class="small">Das Google-Skript ist noch Version ${scriptVersion}. Mit Version ${LIB_MIN_SCRIPT} erscheint die Bibliothek als eigenes Blatt. Bis dahin gleichen sich Änderungen trotzdem über den Log ab.</span></section>` : ''}
-    ${warn.length ? `<section class="card notice"><b>${warn.length} ${warn.length === 1 ? 'Eintrag' : 'Einträge'} im Blatt nicht erkannt</b><span class="small">Bitte im Blatt „Bibliothek“ korrigieren (Muskelnamen wie im Blatt „Muskeln“):</span><ul class="small" style="margin:0;padding-left:18px">${warn.slice(0, 8).map(w => `<li>${esc(w)}</li>`).join('')}</ul></section>` : ''}
+  return `<h1 class="display" style="font-size:30px">Bibliothek</h1>
     <label class="libsearch"><span class="swsearch">${ICON.search}<input class="inp" id="lib-q" value="${esc(LIBV.q)}" autocomplete="off" placeholder="Übung suchen" aria-label="Übung suchen"></span></label>
+    <div class="newitem"><button type="button" class="sugitem new" data-act="lib-new"><span class="plus">+</span><span class="sgt"><b>Eigene Übung erstellen</b><span>Leer starten oder eine Übung als Vorlage nehmen</span></span></button></div>
     <div id="lib-list">${libListHTML()}</div>`;
 }
 
@@ -3577,7 +3724,8 @@ function viewVerlauf() {
     return `<a class="exrow" href="#uebung:${encodeURIComponent(x.id)}"><div class="n"><b>${esc(x.name)}</b><span class="small muted">${TYPE_LABEL[x.type]}${x.personal ? ' · nur ich' : ''}</span></div>
       <div class="vals"><span>${a ? metricLabel(a.type, a.sets) : '–'}</span><span class="r">${b ? metricLabel(b.type, b.sets) : '–'}</span></div><span class="chev">›</span></a>`;
   };
-  const days = DAYS.map(d => `<div class="sec-title"><h2 style="display:flex;gap:8px;align-items:center">${dayChip(d)} ${esc(s.plans[me][d].title)}</h2></div><section class="card" style="padding:4px 16px">${s.plans[me][d].exercises.map(row).join('') || '<div class="empty">Keine Übungen</div>'}</section>`).join('');
+  const vk = curPlan(), vp = planOf(me, vk);
+  const days = PD(vp).map(d => `<div class="sec-title"><h2 style="display:flex;gap:8px;align-items:center">${dayChip(d, me, '', vk)} ${esc(vp[d].title)}</h2></div><section class="card" style="padding:4px 16px">${vp[d].exercises.map(row).join('') || '<div class="empty">Keine Übungen</div>'}</section>`).join('');
   const archived = Object.keys(s.exInfo).filter(id => !inPlan.has(id) && (s.hist[me][id] || s.hist[other][id]));
   const legend = `<div class="legend"><span>oben: du</span><span>unten: ${nm(other)}</span><span>· letzte Einheit</span></div>`;
   return seg + legend + days + (archived.length ? `<div class="sec-title"><h2>Archiv</h2></div><div class="small muted" style="margin:0 2px">Ausgetauschte, entfernte oder spontan getauschte Übungen. Ihr Verlauf bleibt erhalten.</div><section class="card" style="padding:4px 16px">${archived.map(id => row({ id, ...s.exInfo[id] })).join('')}</section>` : '');
@@ -3599,7 +3747,7 @@ function viewCalendar() {
   return `<section class="card cal">
       <div class="calnav"><button class="iconbtn" data-act="calmove" data-v="-1" aria-label="Voriger Monat">${ICON.left}</button><b>${title}</b><button class="iconbtn" data-act="calmove" data-v="1" aria-label="Nächster Monat">${ICON.right}</button></div>
       <div class="calgrid">${['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map(w => `<span class="wd">${w}</span>`).join('')}${cells}</div>
-      <div class="legend">${DAYS.map(d => `<span class="ln"><i class="cm t-${DAY_TONE[d]}">M</i>${esc(dl(d))}</span>`).join('')}<span class="ln"><i class="cm t-y abort">M</i>abgebrochen</span><span class="ln"><i class="cm t-y deload">M</i>Deload</span></div>
+      <div class="legend">${DAYS.filter(d => s.workouts.some(w => w.data.day === d)).map(d => `<span class="ln"><i class="cm t-${DAY_TONE[d]}">M</i>${esc(dl(d))}</span>`).join('')}<span class="ln"><i class="cm t-y abort">M</i>abgebrochen</span><span class="ln"><i class="cm t-y deload">M</i>Deload</span></div>
     </section>
     <div class="sec-title"><h2>${new Date(cal.sel + 'T12:00').toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}</h2></div>
     <section class="card" style="padding:4px 16px">${sel.length ? `<div class="feed">${sel.map(feedItem).join('')}</div>` : '<div class="empty">An diesem Tag hat niemand trainiert.</div>'}</section>`;
@@ -3658,8 +3806,8 @@ const zusLabel = h => { const ss = h.sets.filter(x => int(x.r) > 0); if (!ss.len
 // Startseite: Fortschritt der letzten 4 Wochen je Trainingstag, Durchschnitt über die gemeinsamen Übungen
 function progressCard() {
   const s = st(), me = cfg.me, other = partner();
-  const rows = DAYS.map(d => {
-    const ids = s.plans[me][d].exercises.filter(x => !x.personal && s.plans[other][d].exercises.some(y => y.id === x.id)).map(x => x.id);
+  const rows = pdays(me).map(d => {
+    const ids = s.plans[me][d].exercises.filter(x => !x.personal && (s.plans[other][d] || EMPTY_DAY).exercises.some(y => y.id === x.id)).map(x => x.id);
     const of = p => ids.map(id => progress(p, id, '4w')).filter(r => r && r.pct != null).map(r => r.pct);
     return { d, a: of(me), b: of(other) };
   });
@@ -3677,7 +3825,7 @@ function viewExercise(id) {
   const L = libGet(id), info = s.exInfo[id];
   if (!info && !L) return '<div class="empty">Diese Übung gibt es nicht.</div>';
   const day = exerciseDay(id);
-  const def = DAYS.map(d => s.plans[me][d].exercises.find(x => x.id === id)).find(Boolean) || DAYS.map(d => s.plans[other][d].exercises.find(x => x.id === id)).find(Boolean);
+  const def = [planOf(me, 'mine'), planOf(me), planOf(other)].flatMap(pl => PD(pl).map(d => pl[d].exercises.find(x => x.id === id))).find(Boolean);
   const type = (def && def.type) || (L && L.type) || info.type, name = (L && L.name) || (def && def.name) || info.name;
   const cue = L ? L.cue : def && def.cue, video = (L && L.video) || (def && def.video);
   const sessionsOf = p => normalSessions(p, id, type);
@@ -3713,12 +3861,17 @@ function viewExercise(id) {
     <section class="card">${sessions.length ? sessions.map(h => `<div class="sess"><div class="top"><span class="who" style="color:var(--fg)">${h.person === me ? 'Du' : nm(h.person)}</span><span class="mono">${fmtDate(h.ts)}${h.deload ? ' · Deload' : ''}</span></div>
       ${sessLine(h)}${h.note ? `<p class="quote muted">${esc(h.note)}</p>` : ''}</div>`).join('') : '<div class="empty">Noch nicht trainiert.</div>'}</section>`;
 }
+function workoutNotes(w, en) {
+  const ns = liveNotes().filter(n => n.workout_id === w.id && noteEx(n) === en.exId && (n.scope === 'crew' || n.user_id === cfg.me)).sort((a, b) => a.ts.localeCompare(b.ts));
+  if (!ns.length) return en.note ? `<p class="quote muted">${esc(en.note)}</p>` : '';
+  return ns.map(n => `<p class="quote muted" style="display:flex;gap:6px;align-items:baseline">${n.scope === 'private' ? ICON_LOCK14 : ICON_CREW14}<span>${esc(n.body)}</span></p>`).join('');
+}
 function viewWorkout(id) {
   const e = st().workouts.find(w => w.id === id);
   if (!e) return '<div class="empty">Training nicht gefunden.</div>';
   const d = e.data, imp = improvements(e);
   return `<div style="display:flex;flex-direction:column;gap:8px"><span class="who">${avatar(e.person, 28)}${e.person === cfg.me ? 'Du' : nm(e.person)}</span>
-      <h1 class="kurz" style="font-size:64px;color:${TONE_HEX[DAY_TONE[d.day]]}">${esc(dl(d.day, e.person))}</h1><div style="font-size:18px;font-weight:600">${esc(d.title)}</div>
+      <h1 class="kurz" style="font-size:64px;color:${TONE_HEX[DAY_TONE[d.day]]}">${esc(wlabel(e))}</h1><div style="font-size:18px;font-weight:600">${esc(d.title)}</div>
       <div class="mono muted small">${fmtDate(e.ts)}, ${fmtTime(d.start)}–${fmtTime(d.end)} · ${duration(d.start, d.end)}${d.deload ? ' · Deload' : ''}</div>
       ${e.abort ? `<span class="chip" style="align-self:flex-start">Abgebrochen · ${e.abort.done} von ${e.abort.plan} Sätzen</span>` : ''}
       ${(() => { const prs = imp.filter(i => i.pr), rest = imp.filter(i => !i.pr), col = TONE_HEX[DAY_TONE[d.day]];
@@ -3726,11 +3879,11 @@ function viewWorkout(id) {
           + (rest.length ? `<div class="chips">${rest.map(i => `<span class="chip">${esc(i.name)} ${esc(i.label)}</span>`).join('')}</div>` : ''); })()}</div>
     ${d.edited ? `<span class="small muted">Nachträglich bearbeitet${d.editedBy && d.editedBy !== e.person ? ` von ${d.editedBy === cfg.me ? 'dir' : esc(d.editedBy)}` : ''} am ${fmtDate(d.edited)}, ${fmtTime(d.edited)}</span>` : ''}
     <section class="card">${d.entries.map(en => `<a class="sess" href="#uebung:${encodeURIComponent(en.exId)}"><div class="top"><b style="color:var(--fg)">${esc(en.name)}${en.from ? ` <span class="small muted" style="font-weight:400">statt ${esc(en.from.name)}</span>` : ''}</b><span class="mono">${en.sets.length} ${en.sets.length === 1 ? 'Satz' : 'Sätze'}</span></div>
-      ${(() => { const ft = feelText(en); return `<div class="v">${fmtSets(en.type, en.sets)}</div>${ft ? `<div class="small muted">${esc(ft)}</div>` : ''}`; })()}${en.note ? `<p class="quote muted">${esc(en.note)}</p>` : ''}</a>`).join('')}</section>
+      ${(() => { const ft = feelText(en); return `<div class="v">${fmtSets(en.type, en.sets)}</div>${ft ? `<div class="small muted">${esc(ft)}</div>` : ''}`; })()}${workoutNotes(e, en)}</a>`).join('')}</section>
     ${e.person === cfg.me ? (wDelAsk === e.id
-      ? `<section class="card"><b>Training endgültig löschen?</b><span class="small muted">Es verschwindet bei dir und bei ${nm(partner())} aus Verlauf, Statistik und Rotation.</span><div class="btnrow"><button class="btn small danger" data-act="w-del-yes" data-id="${esc(e.id)}">Löschen</button><button class="btn small ghost" data-act="w-del-no">Abbrechen</button></div></section>`
+      ? `<section class="card"><b>Training endgültig löschen?</b><span class="small muted">Es verschwindet aus deinem Verlauf, der Statistik und der Rotation, auch bei deinen Buddies.</span><div class="btnrow"><button class="btn small danger" data-act="w-del-yes" data-id="${esc(e.id)}">Löschen</button><button class="btn small ghost" data-act="w-del-no">Abbrechen</button></div></section>`
       : `<div class="btnrow"><button class="btn glass" data-act="w-edit" data-id="${esc(e.id)}">Bearbeiten</button><button class="btn ghost danger-t" data-act="w-del" data-id="${esc(e.id)}">Löschen</button></div>`)
-      : LS.get('dev', false) ? `<div class="btnrow"><button class="btn glass" data-act="w-edit" data-id="${esc(e.id)}">Bearbeiten (Entwickleroptionen)</button></div>` : ''}`;
+      : ''}`;
 }
 /* ---------- Abgeschlossenes Training bearbeiten: gleiche Karten und Möglichkeiten wie im Training ----------
    Das Training wird als eigener Entwurf (edraft) geladen. Beim Anzeigen und bei Aktionen tritt er kurz an die Stelle
@@ -3747,7 +3900,7 @@ function edSetOf(type, x) {
 }
 const edItem = (ex, sets, extra = {}) => ({ ex, note: '', feel: '', wu: [], swappedFrom: null, swapBy: null, removed: false, hint: '', kind: '', sets, tt: ex.type === 'tr' ? ex.min : 0, rm: [], ...extra });
 function openEdit(w) {
-  const pl = st().plans[w.person][w.data.day];
+  const pl = planOf(w.person, w.data.plan)[w.data.day] || EMPTY_DAY;
   const planN = x => (w.data.deload ? Math.ceil((+x.sets || 1) / 2) : +x.sets || 1);
   const items = w.data.entries.map(en => {
     const L = libGet(en.exId), def = pl.exercises.find(y => y.id === en.exId);
@@ -3839,7 +3992,7 @@ function saveEdit() {
   location.hash = '#training-log:' + ref;
 }
 function closeModal() {
-  if (LF && LF.opts && LF.opts.cancel && $('#libform')) { const c = LF.opts.cancel; LF = null; c(); return; }
+  if (LF && LF.opts && LF.opts.cancel && ($('#libform') || LF.view)) { const c = LF.opts.cancel; LF = null; c(); return; }
   if (PK && PK.ctx === 'merge' && PK.back && $('#mergeform')) { const b = PK.back; PK = null; const L = st().lib[b.id]; LF = null; if (L) libForm(L, b.opts); else $('#modal').innerHTML = ''; return; }
   PK = null; LF = null; $('#modal').innerHTML = '';
 }
@@ -3847,7 +4000,7 @@ function viewProfile(p) {
   const s = st(), own = p === cfg.me;
   const ws = s.workouts.filter(w => w.person === p);
   const wk = weekStart();
-  const counts = DAYS.map(d => ws.filter(w => w.data.day === d).length);
+  const counts = DAYS.map(d => ws.filter(w => w.data.day === d).length);   // Tage ohne Training werden unten ausgelassen
   const tot = ws.length;
   const bw = s.bw[p]; let ci = bw.length ? 0 : -1; bw.forEach((b, i) => { if (b.from <= todayStr()) ci = i; });
   const lb = ci >= 0 ? bw[ci] : null, pb = ci > 0 ? bw[ci - 1] : null;
@@ -3856,7 +4009,7 @@ function viewProfile(p) {
   const ring = `<div class="pf-ring">${avatar(p, 114)}${own ? `<label class="pf-cam" aria-label="Profilbild ändern">${ICON.cam.replace('width="22" height="22"', 'width="16" height="16"')}<input type="file" id="av-file" accept="image/*" hidden></label>` : ''}</div>`;
   const bar = `<section class="card"><div class="rowbetween"><span class="eyebrow">Trainings nach Tag</span><span class="mono muted small">${tot}</span></div>
       <div class="daybar">${tot ? DAYS.map((d, i) => counts[i] ? `<i class="t-${DAY_TONE[d]}" style="flex:${counts[i]}"></i>` : '').join('') : ''}</div>
-      <div class="legend mono">${DAYS.map((d, i) => `<span>${esc(dl(d, p))} ${counts[i]}</span>`).join('')}</div></section>`;
+      <div class="legend mono">${DAYS.map((d, i) => counts[i] || pdays(p).includes(d) ? `<span>${esc(dl(d, p))} ${counts[i]}</span>` : '').join('')}</div></section>`;
   if (own) {
     return `<div class="pf">${ring}<h1 class="display">${nm(p)}</h1><span class="mono muted small">${meta}</span></div>
       <div class="stat2">
@@ -3976,18 +4129,6 @@ function viewBodyweight() {
 }
 
 /* ---------- Notizen ---------- */
-function viewNotes() {
-  const items = [];
-  st().workouts.forEach(w => (w.data.entries || []).forEach(en => { if (en.note) items.push({ w, en }); }));
-  items.reverse();
-  const shown = items.filter(x => notesFilter === 'Alle' || x.w.person === notesFilter);
-  const seg = `<div class="seg" role="group" aria-label="Filter">${['Alle', ...PEOPLE].map(f => `<button data-act="nfilter" data-v="${f}" aria-pressed="${notesFilter === f}">${f === cfg.me ? 'Meine' : f}</button>`).join('')}</div>`;
-  return seg + (shown.length ? shown.map(({ w, en }) => `<a class="card" href="#uebung:${encodeURIComponent(en.exId)}" style="text-decoration:none;color:var(--fg);gap:8px">
-      <div style="display:flex;align-items:center;gap:8px">${dayChip(w.data.day, w.person)}<b style="flex:1;min-width:0">${esc(en.name)}</b><span class="mono muted small">${fmtDate(w.ts)}</span></div>
-      <p class="quote" style="font-size:16px">${esc(en.note)}</p>
-      <div class="who small muted">${avatar(w.person, 20)}${w.person === cfg.me ? 'Du' : nm(w.person)} · <span class="mono">${fmtSets(en.type, en.sets)}</span></div></a>`).join('')
-    : '<section class="card"><div class="empty">Noch keine kommentierten Übungen. Im Training kannst du zu jeder Übung eine Notiz schreiben.</div></section>');
-}
 
 /* ---------- Planänderungen (Glocke) ---------- */
 function viewBell() {
@@ -3995,10 +4136,10 @@ function viewBell() {
   const label = { open: 'Neu', dismissed: 'Ausgeblendet', diverged: 'Weicht ab' };
   const oldOf = x => { const dec = s.decisions[cfg.me + '|' + x.pc.id]; return x.status !== 'open' && Date.now() - new Date((dec && dec.ts) || x.pc.ts) > 14 * 864e5; };
   const items = list.map(x => {
-    const c = x.pc, inDraft = draft && draft.day === x.day;
+    const c = x.pc, inDraft = draft && draft.plan !== 'mine' && draft.day === x.day && !!s.plans[c.person][x.day];
     return `<section class="card" style="gap:14px">
       <div style="display:flex;align-items:center;gap:10px">${avatar(c.person, 36)}<div style="flex:1;display:flex;flex-direction:column"><b>${nm(c.person)}</b><span class="mono muted small">${fmtDate(c.ts)} · ${fmtTime(c.ts)}${x.status === 'diverged' ? ' · du hast den Tag danach geändert' : ''}</span></div><span class="pill ${x.status}">${label[x.status]}</span></div>
-      <div style="display:flex;align-items:center;gap:8px">${dayChip(x.day, cfg.me, 'lg')}<b style="font-size:16px">${esc(s.plans[c.person][x.day].title)}</b></div>
+      <div style="display:flex;align-items:center;gap:8px"><span class="day t-${DAY_TONE[x.day]} lg">${esc((s.plans[c.person][x.day] || s.plans[cfg.me][x.day] || {}).short || DAY_SHORT[x.day])}</span><b style="font-size:16px">${esc((s.plans[c.person][x.day] || s.plans[cfg.me][x.day] || {}).title || '')}</b></div>
       ${diffList(x.diff)}
       <span class="small muted">Deine abweichenden Übungen und persönlichen Werte bleiben erhalten.</span>
       <div class="btnrow"><button class="btn primary" data-act="accept" data-id="${esc(c.id)}">In meinen Plan übernehmen</button>
@@ -4009,7 +4150,8 @@ function viewBell() {
   const recent = items.filter((h, i) => !oldOf(list[i])), older = items.filter((h, i) => oldOf(list[i]));
   const mine = DAYS.map(d => s.lastChange[cfg.me + '|' + d]).filter(Boolean);
   const mineHtml = mine.map(c => {
-    const same = !sharedDiff(s.plans[other][c.data.day], s.plans[cfg.me][c.data.day]).length;
+    const a = s.plans[other][c.data.day], b = s.plans[cfg.me][c.data.day];
+    const same = (!a && !b) || (!!a && !!b && !sharedDiff(a, b).length);
     return `<div class="sess"><div class="top"><span style="display:flex;gap:8px;align-items:center;color:var(--fg)">${dayChip(c.data.day)}<b>${esc(c.data.title)}</b></span><span class="pill ${same ? 'accepted' : ''}">${same ? `bei ${nm(other)} gleich` : `bei ${nm(other)} offen`}</span></div><span class="mono muted small">zuletzt gespeichert ${fmtDate(c.ts)}, ${fmtTime(c.ts)}</span></div>`;
   }).join('');
   const nts = notices();
@@ -4021,10 +4163,11 @@ function viewBell() {
 }
 function acceptChange(changeId, intoDraft) {
   const s = st(), c = s.changes[changeId]; if (!c) return;
-  const merged = mergePlan(s.plans[cfg.me][c.data.day], s.plans[c.person][c.data.day]);
+  const theirs = s.plans[c.person][c.data.day];
+  const merged = theirs ? mergePlan(s.plans[cfg.me][c.data.day] || EMPTY_DAY, theirs) : { deleted: true };
   addEvent('plan_decision', { changeId, decision: 'accepted', result: merged }, `Änderung von ${c.person} an ${dl(c.data.day)} übernommen`);
   if (builder && !Object.values(builder.dirty).some(Boolean)) builder = null;
-  if (intoDraft && draft && draft.day === c.data.day) { applyToDraft(merged); toast(`${dl(c.data.day)} übernommen, auch ins laufende Training`); location.hash = '#training'; return; }
+  if (intoDraft && draft && draft.day === c.data.day && !merged.deleted) { applyToDraft(merged); toast(`${dl(c.data.day)} übernommen, auch ins laufende Training`); location.hash = '#training'; return; }
   toast(`${dl(c.data.day)} übernommen. Gilt ab dem nächsten Training.`);
   render();
 }
@@ -4035,35 +4178,305 @@ function dismissChange(changeId) {
   render();
 }
 
-/* ---------- Plan-Builder ---------- */
+/* ======================= Notizen (ab 3.0) =======================
+   Eigene Tabelle „notes“, getrennt von den Trainings. Privat: nur ich, über alle Pläne. Crew: alle in meiner Crew.
+   Offline zuerst: Änderungen stehen sofort in NOTES (mit „pend“) und gehen beim nächsten Sync an die Datenbank. */
+let NOTES = (() => { const v = LS.get('notes', []); return Array.isArray(v) ? v : []; })();
+const NOTE_OPEN = new Set();                        // aufgeklappte „Mehr …“ je Übung und Art
+const ICON_LOCK14 = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+const ICON_CREW14 = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/></svg>';
+const ICON_DOWN14 = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+const ICON_UP14 = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>';
+function saveNotes() { LS.set('notes', NOTES); }
+const liveNotes = () => NOTES.filter(n => n.pend !== 'del');
+// Übungs-Kennung über Zusammenführungen in der Bibliothek auflösen
+const noteEx = n => { const lib = st().lib; return lib ? libTarget(lib, n.ex_id) : n.ex_id; };
+function notesFor(exId, k = 'crew') {
+  const all = liveNotes().filter(n => noteEx(n) === exId).sort((a, b) => b.ts.localeCompare(a.ts));
+  const priv = all.filter(n => n.scope === 'private' && n.user_id === cfg.me);
+  const crew = k === 'crew' && hasCrew() ? all.filter(n => n.scope === 'crew' && n.crew_id === CREW.id) : [];
+  return { priv, crew };
+}
+// Zeit: heute nur die Uhrzeit, sonst das Datum (ohne Namen mit Wochentag)
+function noteWhen(ts, withDay) {
+  if (dateKey(ts) === todayStr()) return fmtTime(ts);
+  const d = new Date(ts);
+  return (withDay ? ['So.', 'Mo.', 'Di.', 'Mi.', 'Do.', 'Fr.', 'Sa.'][d.getDay()] + ' ' : '') + `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}.`;
+}
+function noteItem(n, solo) {
+  const who = n.user_id === cfg.me ? 'Ich' : nm(n.user_id);
+  const ed = n.edited_at ? ' <span class="edited">· bearbeitet</span>' : '';
+  return solo
+    ? `<div class="item solo" data-note="${esc(n.id)}"><span class="meta"><span class="t">${noteWhen(n.ts, true)}</span>${ed}</span><p>${esc(n.body)}</p></div>`
+    : `<div class="item" data-note="${esc(n.id)}">${avatar(n.user_id, 18)}<span class="meta"><b>${who}</b> · <span class="t">${noteWhen(n.ts)}</span>${ed}</span><p>${esc(n.body)}</p></div>`;
+}
+// Ein Abschnitt: neueste Notiz, darunter „Mehr …“ (höchstens drei ältere), danach der Verweis in die Notizen-Ansicht
+function noteSec(exId, list, kind, k, label) {
+  if (!list.length) return '';
+  const solo = kind === 'priv', key = exId + '|' + kind, open = NOTE_OPEN.has(key), older = list.slice(1);
+  const ic = kind === 'priv' ? ICON_LOCK14 : ICON_CREW14;
+  const more = older.length ? `<button type="button" class="more${solo ? ' solo-more' : ''}" data-act="note-more" data-v="${esc(key)}" aria-expanded="${open}">${open ? 'Weniger' : 'Mehr …'} ${ic}<span class="mono">${older.length}</span>${open ? ICON_UP14 : ICON_DOWN14}</button>` : '';
+  const target = kind === 'priv' ? 'mine' : 'crew';
+  const all = open && older.length > 3 ? `<a class="all" href="#notizen:${target}:${encodeURIComponent(exId)}">${kind === 'priv' ? 'Alle privaten Notizen' : 'Alle Crew-Notizen'} ›</a>` : '';
+  return `<div class="sec">${label ? `<div class="lab">${kind === 'priv' ? ICON.lock.replace(/width="22" height="22"/, 'width="14" height="14"') : ICON_CREW14}${label}</div>` : ''}${noteItem(list[0], solo)}${more}${open ? `<div class="older${solo ? ' solo' : ''}">${older.slice(0, 3).map(n => noteItem(n, solo)).join('')}</div>${all}` : ''}</div>`;
+}
+// Notizen zu einer Übung in Plan und Training. Mein Plan: nur der private Teil, ohne Überschrift.
+function notesBlock(exId, k) {
+  const { priv, crew } = notesFor(exId, k);
+  if (!priv.length && !crew.length) return '';
+  if (k === 'mine') return `<div class="n3">${noteSec(exId, priv, 'priv', k, '')}</div>`;
+  return `<div class="n3">${noteSec(exId, priv, 'priv', k, 'Privat')}${noteSec(exId, crew, 'crew', k, 'Crew')}</div>`;
+}
+// Neue Notiz anlegen (aus dem Training)
+function addNote({ scope, plan, exId, day, workoutId, body, ts }) {
+  body = String(body || '').trim().slice(0, 2000); if (!body) return null;
+  if (scope === 'crew' && !hasCrew()) scope = 'private';
+  const n = { id: uid(), user_id: cfg.me, scope, crew_id: scope === 'crew' ? CREW.id : null, plan: plan === 'mine' ? 'mine' : 'crew', ex_id: exId, day: day || null, workout_id: workoutId || null, ts: ts || new Date().toISOString(), body, edited_at: null, pend: 'ins' };
+  NOTES.push(n); saveNotes(); return n;
+}
+function editNote(id, body) {
+  const n = NOTES.find(x => x.id === id && x.user_id === cfg.me); body = String(body || '').trim().slice(0, 2000);
+  if (!n || !body || body === n.body) return;
+  n.body = body; n.edited_at = new Date().toISOString(); if (n.pend !== 'ins') n.pend = 'upd'; saveNotes();
+}
+function deleteNote(id) {
+  const i = NOTES.findIndex(x => x.id === id && x.user_id === cfg.me); if (i < 0) return;
+  if (NOTES[i].pend === 'ins') NOTES.splice(i, 1); else NOTES[i].pend = 'del';
+  saveNotes();
+}
+// Notizen aus 2.2.1 (im Training gespeichert) einmalig als Crew-Notizen übernehmen, nur die eigenen
+function legacyNotes() {
+  if (LS.get('notes.mig.' + cfg.me, false)) return;
+  // Übernommene Konten: die Crew entsteht erst, wenn der Buddy auch übernommen hat. Bis dahin warten, damit die Notizen geteilt bleiben.
+  if (!hasCrew() && PROFILES[cfg.me] && PROFILES[cfg.me].legacy_name) return;
+  const have = new Set(NOTES.map(n => n.id));
+  st().workouts.filter(w => w.person === cfg.me).forEach(w => (w.data.entries || []).forEach(en => {
+    const body = String(en.note || '').trim(); if (!body) return;
+    const id = `legacy-${w.id}-${en.exId}`.slice(0, 80); if (have.has(id)) return;
+    NOTES.push({ id, user_id: cfg.me, scope: hasCrew() ? 'crew' : 'private', crew_id: hasCrew() ? CREW.id : null, plan: 'crew', ex_id: en.exId, day: w.data.day, workout_id: w.id, ts: w.ts, body: body.slice(0, 2000), edited_at: null, pend: 'ins' });
+  }));
+  saveNotes(); LS.set('notes.mig.' + cfg.me, true);
+}
+const noteRow = n => ({ id: n.id, scope: n.scope, crew_id: n.crew_id, plan: n.plan, ex_id: n.ex_id, day: n.day, workout_id: n.workout_id, ts: n.ts, body: n.body });
+let notesSyncing = null;
+function notesSync() {
+  if (notesSyncing) return notesSyncing;
+  if (!cfg.me || cfg.key !== 'supabase' || navigator.onLine === false) return Promise.resolve();
+  notesSyncing = (async () => {
+    let changed = false;
+    try {
+      legacyNotes();
+      for (const n of NOTES.filter(x => x.pend && x.user_id === cfg.me)) {
+        let r;
+        if (n.pend === 'ins') r = await sb.from('notes').upsert([noteRow(n)], { onConflict: 'id', ignoreDuplicates: true });
+        else if (n.pend === 'upd') r = await sb.from('notes').update({ body: n.body, edited_at: n.edited_at }).eq('id', n.id);
+        else r = await sb.from('notes').delete().eq('id', n.id);
+        if (r.error) {
+          const c = sbErr(r.error);
+          if (c.code === 'network') throw r.error;
+          n.err = String(c.msg || '').includes('anders') ? 'Bitte formuliere die Notiz anders.' : 'Nicht gespeichert';
+          if (n.pend === 'del') { n.pend = null; delete n.err; }   // gibt es schon nicht mehr
+          else n.pend = null;
+          if (n.err && n.ts && !String(n.id).startsWith('legacy-')) toast(n.err);
+          NOTES = NOTES.filter(x => x !== n || !x.err); changed = true; continue;
+        }
+        if (n.pend === 'del') NOTES = NOTES.filter(x => x !== n); else n.pend = null;
+        changed = true;
+      }
+      saveNotes();
+      const r = await sb.from('notes').select('id,user_id,scope,crew_id,plan,ex_id,day,workout_id,ts,body,edited_at').order('ts', { ascending: false }).limit(3000);
+      if (r.error) throw r.error;
+      const keep = NOTES.filter(n => n.pend);
+      const next = (r.data || []).map(n => ({ ...n, ts: new Date(n.ts).toISOString() })).filter(n => !keep.some(k => k.id === n.id)).concat(keep);
+      if (JSON.stringify(next.map(n => [n.id, n.body, n.edited_at])) !== JSON.stringify(NOTES.map(n => [n.id, n.body, n.edited_at]))) changed = true;
+      NOTES = next; saveNotes();
+    } catch (e) { /* nächster Versuch beim nächsten Sync */ }
+    finally { notesSyncing = null; if (changed && ['plan', 'notizen', 'training', 'training-log'].includes(view)) safeRender(); }
+  })();
+  return notesSyncing;
+}
+/* Gedrückt halten auf einer Notiz: eigene bearbeiten oder löschen, fremde melden */
+let NG = null;
+document.addEventListener('pointerdown', ev => {
+  if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+  const it = ev.target.closest('.n3 .item[data-note]'); if (!it) return;
+  NG = { id: it.dataset.note, x0: ev.clientX, y0: ev.clientY };
+  NG.lp = setTimeout(() => { if (NG) { if (navigator.vibrate) navigator.vibrate(8); openNoteMenu(NG.id); NG = null; } }, 450);
+});
+document.addEventListener('pointermove', ev => { if (NG && (Math.abs(ev.clientX - NG.x0) > 10 || Math.abs(ev.clientY - NG.y0) > 10)) { clearTimeout(NG.lp); NG = null; } });
+['pointerup', 'pointercancel'].forEach(t => document.addEventListener(t, () => { if (NG) { clearTimeout(NG.lp); NG = null; } }));
+function openNoteMenu(id, mode) {
+  const n = liveNotes().find(x => x.id === id); if (!n) return;
+  const mine = n.user_id === cfg.me;
+  const ic = d => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  if (mode === 'edit') {
+    $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet form" id="noteedit" data-id="${esc(id)}" novalidate>
+      <span class="eyebrow">${n.scope === 'crew' ? ICON_CREW14 + ' Crew-Notiz' : ICON_LOCK14 + ' Private Notiz'}</span><h2>Notiz bearbeiten</h2>
+      <textarea class="inp" id="ne-body" rows="4" maxlength="2000">${esc(n.body)}</textarea>
+      <div class="btnrow col"><button class="btn primary" type="submit">Speichern</button><button class="btn ghost" type="button" data-act="mclose">Abbrechen</button></div></form></div>`;
+    setTimeout(() => { const t = $('#ne-body'); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } }, 30);
+    return;
+  }
+  if (mode === 'del') {
+    sheet(`<h2>Notiz löschen?</h2><div class="cdel-prev">${esc(n.body)}</div><p class="muted" style="margin:0">${n.scope === 'crew' ? 'Sie verschwindet auch bei deiner Crew.' : 'Sie verschwindet auf all deinen Geräten.'}</p>
+      <div class="btnrow col"><button class="btn danger" data-act="note-del-yes" data-id="${esc(id)}">Löschen</button><button class="btn ghost" data-act="mclose">Abbrechen</button></div>`);
+    return;
+  }
+  $('#modal').innerHTML = `<div class="cm-ov" data-act="mclose-bg"><div class="cm-box them" role="dialog" aria-modal="true" aria-label="Notiz">
+    <div class="cm-msg">${esc(n.body)}</div>
+    <div class="cm-acts">${mine
+      ? `<button type="button" data-act="note-edit" data-id="${esc(id)}">Bearbeiten${ic('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>')}</button>
+         <button type="button" class="danger-t" data-act="note-del" data-id="${esc(id)}">Löschen${ic('<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>')}</button>`
+      : `<button type="button" data-act="note-copy" data-id="${esc(id)}">Kopieren${ic('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h9"/>')}</button>
+         <button type="button" class="danger-t" data-act="note-report" data-id="${esc(id)}">Melden${ic('<path d="M5 21V4h11l-1.5 4L16 12H5"/>')}</button>`}</div>
+  </div></div>`;
+}
+async function reportNote(id) {
+  const n = liveNotes().find(x => x.id === id); if (!n) return;
+  const r = await sb.from('reports').insert({ target_type: 'note', target_id: id, content: n.body.slice(0, 4000) });
+  const h = LS.get('notes.hidden.' + cfg.me, []); if (!h.includes(id)) h.push(id); LS.set('notes.hidden.' + cfg.me, h);
+  NOTES = NOTES.filter(x => x.id !== id || x.user_id === cfg.me); saveNotes();
+  closeModal(); toast(r.error ? 'Ausgeblendet. Melden klappt beim nächsten Mal.' : 'Gemeldet und ausgeblendet'); safeRender();
+}
+
+/* Notizen-Ansicht: eine Karte pro Übung mit allen Notizen, sortiert nach der neuesten Notiz.
+   Crew-Plan: Crew-Notizen, Filter nach Person. Mein Plan: private Notizen, Filter nach Tag.
+   Aus dem Training: Sprung zur Übung, Rest abgedunkelt bis zum ersten Scrollen oder Tippen. */
+let notesFilter3 = { crew: 'all', mine: 'all' }, NOTE_FOCUS = null;
+function viewNotes3(arg) {
+  const [k0, ex0] = String(arg || '').split(':');
+  const k = k0 === 'mine' ? 'mine' : k0 === 'crew' && hasCrew() ? 'crew' : (hasCrew() ? 'crew' : 'mine');
+  const hidden = LS.get('notes.hidden.' + cfg.me, []);
+  const lib = st().lib || {}, exName = id => (lib[id] && lib[id].name) || (st().exInfo[id] || {}).name || 'Übung';
+  let list = liveNotes().filter(n => !hidden.includes(n.id) && (k === 'crew' ? n.scope === 'crew' && n.crew_id === CREW.id : n.scope === 'private' && n.user_id === cfg.me));
+  const f = notesFilter3[k];
+  let chips;
+  if (k === 'crew') {
+    const ppl = [cfg.me, ...(CREW.members || []).filter(p => p !== cfg.me)];
+    chips = `<button class="dchip p" data-act="nfilt" data-k="crew" data-v="all" aria-pressed="${f === 'all'}">Alle</button>` + ppl.map(p => `<button class="dchip p" data-act="nfilt" data-k="crew" data-v="${esc(p)}" aria-pressed="${f === p}">${avatar(p, 24)}${p === cfg.me ? 'Ich' : nm(p)}</button>`).join('');
+    if (f !== 'all') list = list.filter(n => n.user_id === f);
+  } else {
+    const days = pdays(cfg.me, 'mine'), pl = planOf(cfg.me, 'mine');
+    chips = `<button class="dchip p" data-act="nfilt" data-k="mine" data-v="all" aria-pressed="${f === 'all'}">Alle</button>` + days.map(d => `<button class="dchip" data-act="nfilt" data-k="mine" data-v="${d}" aria-pressed="${f === d}"><i style="background:${TONE_HEX[DAY_TONE[d]]}"></i>${esc(dl(d, cfg.me, 'mine'))}</button>`).join('');
+    if (f !== 'all' && pl[f]) { const ids = new Set(pl[f].exercises.map(x => x.id)); list = list.filter(n => ids.has(noteEx(n))); }
+  }
+  // Tag einer Übung im jeweiligen Plan, sonst der Tag der Notiz
+  const pl = planOf(cfg.me, k), dayOf = (id, n) => PD(pl).find(d => pl[d].exercises.some(x => x.id === id)) || (DAYS.includes(n.day) ? n.day : 'A');
+  const groups = new Map();
+  list.slice().sort((a, b) => b.ts.localeCompare(a.ts)).forEach(n => { const id = noteEx(n); if (!groups.has(id)) groups.set(id, []); groups.get(id).push(n); });
+  const focus = NOTE_FOCUS && NOTE_FOCUS.dim && NOTE_FOCUS.ex;
+  const cards = [...groups.entries()].map(([id, ns]) => {
+    const d = dayOf(id, ns[0]);
+    return `<section class="card xcard${id === focus ? ' hl' : focus ? ' ndim' : ''}" id="nc-${esc(id)}"><div class="xh">${dayChip(d, cfg.me, '', k)}<b>${esc(exName(id))}</b></div><div class="n3"><div class="sec">${ns.map(n => noteItem(n, k === 'mine')).join('')}</div></div></section>`;
+  }).join('');
+  const n = k === 'crew' ? (CREW.members || []).length : 0;
+  return `<h1 class="display" style="font-size:30px">Notizen</h1>
+    <span class="eyebrow" style="margin-top:-6px;display:flex;gap:8px;align-items:center">${k === 'crew' ? ICON_CREW14 + ` Crew-Plan · ${n} ${n === 1 ? 'Person' : 'Personen'}` : ICON_LOCK14 + ' Mein Plan · nur für dich'}</span>
+    <div class="dscroll${focus ? ' ndim' : ''}" style="margin-right:-16px"><div class="rowc" role="group" aria-label="${k === 'crew' ? 'Nach Buddy filtern' : 'Nach Tag filtern'}">${chips}</div></div>
+    ${cards || `<section class="card"><div class="empty">${k === 'crew' ? 'Noch keine Crew-Notizen. Notizen schreibst du im Training unter jeder Übung.' : 'Noch keine privaten Notizen. Notizen schreibst du im Training unter jeder Übung.'}</div></section>`}`;
+}
+function noteFocusEnd() { if (!NOTE_FOCUS || !NOTE_FOCUS.dim) return; NOTE_FOCUS.dim = false; document.querySelectorAll('.ndim').forEach(el => el.classList.remove('ndim')); document.querySelectorAll('.xcard.hl').forEach(el => el.classList.remove('hl')); }
+
+/* ---------- Plan-Builder ----------
+   Oben Mein Plan / Crew-Plan, darunter die Trainingstage als Kürzel (bis zu 6), „+ Tag“ und der Stift für Name, Kürzel und Löschen.
+   Änderungen am Crew-Plan gehen als Vorschlag an die Crew (Glocke), Mein Plan gilt nur für mich. */
+let planKind = null;   // gewählter Plan im Plan-Tab, null = der aktuelle
+const pkind = () => (planKind === 'crew' && !hasCrew() ? 'crew' : planKind || curPlan());
+const builderDirty = () => !!builder && Object.values(builder.dirty).some(Boolean);
 function ensureBuilder() {
-  if (builder && Object.values(builder.dirty).some(Boolean)) return;
-  const cur = builder ? builder.day : nextDay(cfg.me);
-  builder = { day: cur, work: clone(st().plans[cfg.me]), dirty: {} };
+  const k = pkind();
+  if (builder && builder.kind === k && builderDirty()) return;
+  const work = clone(planOf(cfg.me, k));
+  const cur = builder && builder.kind === k && work[builder.day] ? builder.day : (draft && draft.plan === k && work[draft.day] ? draft.day : nextDay(cfg.me, k));
+  builder = { kind: k, day: work[cur] ? cur : PD(work)[0], work, dirty: {} };
 }
 function viewPlan() {
+  const k = pkind();
+  const seg = `<div class="seg" role="group" aria-label="Plan"><button data-act="pkind" data-v="mine" aria-pressed="${k === 'mine'}">Mein Plan</button><button data-act="pkind" data-v="crew" aria-pressed="${k === 'crew'}">Crew-Plan</button></div>`;
+  if (k === 'crew' && !hasCrew()) return `${seg}<section class="card nocrew"><h2>Du bist noch in keiner Crew</h2><p>Gründe eine mit deinen Buddies und trainiert nach einem gemeinsamen Plan.</p>
+      <a class="btn primary" href="#crew-neu" style="width:100%">${ICON_CREW14.replace(/14/g, '20')}Crew gründen</a></section>
+      <p class="small muted" style="margin:0 2px">Bis dahin trainierst du mit „Mein Plan“.</p>`;
   ensureBuilder();
-  const b = builder, d = b.day, w = b.work[d], other = partner();
-  const seg = `<div class="seg" role="group" aria-label="Trainingstag">${DAYS.map(k => `<button data-act="bday" data-v="${k}" aria-pressed="${k === d}"><i class="dot t-${DAY_TONE[k]}" style="width:9px;height:9px;margin-right:6px;vertical-align:1px"></i>${esc(b.work[k].short || DAY_SHORT[k])}${b.dirty[k] ? '<i class="mark"></i>' : ''}</button>`).join('')}</div>`;
+  const b = builder, d = b.day, w = b.work[d], crew = k === 'crew';
+  const days = PD(b.work);
+  const chips = days.map(x => `<button class="dchip" data-act="bday" data-v="${x}" aria-pressed="${x === d}"><i style="background:${TONE_HEX[DAY_TONE[x]]}"></i>${esc(b.work[x].short || DAY_SHORT[x])}${b.dirty[x] ? '<span class="mark" aria-label="geändert"></span>' : ''}</button>`).join('')
+    + (days.length < DAYS.length ? `<button class="dchip add" data-act="bday-add">+ Tag</button>` : '');
   const rows = w.exercises.map((x, i) => `<div class="prow">
       <div class="n"><b>${esc(x.name)}</b><span class="small muted">${TYPE_LABEL[x.type]} · ${x.sets}×${x.min}–${x.max}${isTimed(x.type) ? ' s' : ''}${x.type !== 'time' && x.step ? ` · +${fmtN(x.step)} kg` : ''}</span>
-        ${x.personal || x.warmup ? `<span class="tags">${x.personal ? '<span class="tag">Nur ich</span>' : ''}${x.warmup ? '<span class="tag">Aufwärmsatz</span>' : ''}</span>` : ''}</div>
+        ${(crew && x.personal) || x.warmup || libOwn(x.id) ? `<span class="tags">${crew && x.personal ? '<span class="tag">Nur ich</span>' : ''}${x.warmup ? '<span class="tag">Aufwärmsatz</span>' : ''}${libOwn(x.id) ? '<span class="tag">Eigene</span>' : ''}</span>` : ''}</div>
       <div class="tools"><button class="tool" data-act="bmove" data-i="${i}" data-v="-1" aria-label="Nach oben" ${i === 0 ? 'disabled' : ''}>${ICON.up}</button><button class="tool" data-act="bmove" data-i="${i}" data-v="1" aria-label="Nach unten" ${i === w.exercises.length - 1 ? 'disabled' : ''}>${ICON.down}</button></div>
+      ${notesBlock(x.id, k)}
       <div class="acts"><button data-act="bedit" data-i="${i}">Bearbeiten</button><button data-act="breplace" data-i="${i}">Austauschen</button><button class="del" data-act="bremove" data-i="${i}">Entfernen</button></div>
     </div>`).join('');
-  const changes = b.dirty[d] ? diffPlan(st().plans[cfg.me][d], w, false) : [];
+  const changes = b.dirty[d] ? diffPlan(planOf(cfg.me, k)[d] || EMPTY_DAY, w, false) : [];
+  const mates = crew ? (CREW.members || []).filter(p => p !== cfg.me) : [];
   return `${seg}
-    <section class="card form"><div class="dayinputs">
-      <label>Name des Trainingstags<input class="inp" id="b-title" data-b="title" value="${esc(w.title)}" maxlength="40"></label>
-      <label>Kürzel<input class="inp" id="b-short" data-b="short" value="${esc(w.short || DAY_SHORT[d])}" maxlength="6" autocapitalize="characters"></label>
-    </div></section>
+    <div class="dayrow"><div class="dscroll"><div class="rowc" role="group" aria-label="Trainingstag">${chips}</div></div><button class="iconbtn" data-act="bday-edit" aria-label="Trainingstag umbenennen" style="width:44px;height:44px">${ICON.pen || '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg>'}</button></div>
+    <div class="pbtns"><a class="btn ghost glass" href="#bibliothek">${ICON.book}Bibliothek</a><a class="btn ghost glass" href="#notizen:${k}">${ICON.note.replace('<svg ', '<svg width="20" height="20" ')}Notizen</a></div>
+    <div class="dayt"><span class="day t-${DAY_TONE[d]}">${esc(w.short || DAY_SHORT[d])}</span><b>${esc(w.title)}</b></div>
     <section class="card" style="padding:4px 16px 16px">${rows || '<div class="empty">Noch keine Übungen an diesem Tag.</div>'}
       <button class="btn ghost" data-act="badd" style="margin-top:8px">+ Übung hinzufügen</button></section>
-    <p class="small muted" style="margin:0 2px">${nm(other)} bekommt nur Änderungen an gemeinsamen Übungen gemeldet: Übung, Art, Reihenfolge, Sätze, Wiederholungen, Aufwärmsatz, Name und Kürzel des Tages. Steigerung, Ausführung und Links sind persönlich. Übungen mit „Nur ich“ lösen nie eine Meldung aus.</p>
+    ${crew && mates.length ? `<p class="small muted" style="margin:0 2px">${mates.map(nm).join(', ')} ${mates.length === 1 ? 'bekommt' : 'bekommen'} nur Änderungen an gemeinsamen Übungen gemeldet. Übungen mit „Nur ich“ lösen nie eine Meldung aus.</p>` : ''}
     ${changes.length ? `<section class="card"><b>Ungespeicherte Änderungen</b>${diffList(changes)}</section>` : ''}
     ${b.dirty[d] ? `<div style="height:56px"></div><div class="savebar"><span>${esc(w.short || DAY_SHORT[d])} geändert</span><button class="btn ghost" data-act="bdiscard">Verwerfen</button><button class="btn primary" data-act="bsave">Speichern</button></div>` : ''}`;
 }
-function markDirty() { builder.dirty[builder.day] = diffPlan(st().plans[cfg.me][builder.day], builder.work[builder.day], false).length > 0; }
+function markDirty() { builder.dirty[builder.day] = diffPlan(planOf(cfg.me, builder.kind)[builder.day] || EMPTY_DAY, builder.work[builder.day], false).length > 0; }
+// Neuer Tag: nächste freie Kennung, Name und Kürzel gleich im Stift-Dialog
+function addPlanDay() {
+  const free = DAYS.find(x => !builder.work[x]); if (!free) return;
+  const n = PD(builder.work).length + 1;
+  builder.work[free] = { title: 'Tag ' + n, short: 'T' + n, exercises: [] };
+  builder.day = free; builder.dirty[free] = true; dayEditSheet(true);
+}
+function dayEditSheet(isNew, askDel) {
+  const b = builder, d = b.day, w = b.work[d], crew = b.kind === 'crew';
+  const mates = crew && hasCrew() ? (CREW.members || []).filter(p => p !== cfg.me) : [];
+  const canDel = PD(b.work).length > 1 && (planOf(cfg.me, b.kind)[d] || isNew);
+  $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet form tone-${DAY_TONE[d]}" id="dayform" role="dialog" aria-modal="true" aria-labelledby="rn-t" novalidate>
+    <span class="eyebrow">${crew ? 'Crew-Plan' : 'Mein Plan'} · ${esc(w.short || DAY_SHORT[d])}</span>
+    <h2 id="rn-t">${isNew ? 'Neuer Trainingstag' : 'Trainingstag umbenennen'}</h2>
+    <div class="dayinputs"><label>Name<input class="inp" id="dn-title" value="${esc(w.title)}" maxlength="40"></label><label>Kürzel<input class="inp" id="dn-short" value="${esc(w.short || DAY_SHORT[d])}" maxlength="6" autocapitalize="characters"></label></div>
+    <span class="help">${crew ? (mates.length ? `Wird mit deiner Crew abgeglichen. ${mates.map(nm).join(', ')} ${mates.length === 1 ? 'bekommt' : 'bekommen'} die Änderung über die Glocke.` : 'Wird mit deiner Crew abgeglichen.') : 'Gilt nur für deinen Plan.'}</span>
+    <div class="err" id="dn-err" hidden></div>
+    ${askDel ? `<div class="confirm"><b>${esc(w.short)} wirklich löschen?</b><span class="small muted">${crew ? 'Deine Crew bekommt die Änderung über die Glocke. ' : ''}Deine Trainings an diesem Tag bleiben im Verlauf.</span>
+      <div class="btnrow"><button class="btn small danger" type="button" data-act="bday-del-yes">Ja, löschen</button><button class="btn small ghost" type="button" data-act="bday-del-no">Abbrechen</button></div></div>`
+    : `<div class="btnrow col"><button class="btn primary" type="submit">${isNew ? 'Tag anlegen' : 'Speichern'}</button>${canDel && !isNew ? '<button class="btn ghost danger-t" type="button" data-act="bday-del">Tag löschen</button>' : ''}<button class="btn ghost" type="button" data-act="${isNew ? 'bday-cancel' : 'mclose'}">Abbrechen</button></div>`}
+  </form></div>`;
+  if (isNew) setTimeout(() => { const t = $('#dn-title'); if (t) t.select(); }, 30);
+}
+function submitDayForm() {
+  const title = $('#dn-title').value.trim(), short = $('#dn-short').value.trim().toUpperCase();
+  const err = m => { const e = $('#dn-err'); e.textContent = m; e.hidden = false; };
+  if (!title) return err('Bitte gib dem Tag einen Namen.');
+  if (!short) return err('Bitte gib ein Kürzel an, z. B. B&T.');
+  const w = builder.work[builder.day]; w.title = title.slice(0, 40); w.short = short.slice(0, 6);
+  closeModal(); markDirty(); savePlan();
+}
+function deletePlanDay() {
+  const b = builder, d = b.day, k = b.kind;
+  if (!planOf(cfg.me, k)[d]) { delete b.work[d]; delete b.dirty[d]; b.day = PD(b.work)[0]; closeModal(); render(); return; }
+  if (PD(b.work).length < 2) return;
+  const short = b.work[d].short || DAY_SHORT[d];
+  addEvent('plan_change', { day: d, deleted: true, short, title: b.work[d].title, ...(k === 'mine' ? { plan: 'mine' } : {}) }, `${short} gelöscht`, { private: k === 'mine' });
+  builder = null; closeModal(); toast(`${short} gelöscht`); render();
+}
+function savePlan() {
+  const b = builder, d = b.day, w = b.work[d], k = b.kind;
+  w.short = (w.short || '').trim() || DAY_SHORT[d];
+  const before = planOf(cfg.me, k)[d] || EMPTY_DAY;
+  const changes = diffPlan(before, w, false);
+  if (!changes.length && planOf(cfg.me, k)[d]) { b.dirty[d] = false; render(); return; }
+  if (k === 'mine') {
+    addEvent('plan_change', { plan: 'mine', day: d, title: w.title, short: w.short, exercises: clone(w.exercises), changes, v2: true }, `Mein Plan: ${w.short} geändert`, { private: true });
+    b.dirty[d] = false; toast(`${w.short} gespeichert.`); render(); return;
+  }
+  const mates = hasCrew() ? (CREW.members || []).filter(p => p !== cfg.me) : [];
+  const notify = mates.some(p => sharedDiff(before, w).length > 0 && sharedDiff(st().plans[p][d] || EMPTY_DAY, w).length > 0);
+  addEvent('plan_change', { day: d, title: w.title, short: w.short, exercises: clone(w.exercises), changes, v2: true }, `${w.short} geändert: ${changes.map(diffText).join('; ')}`);
+  b.dirty[d] = false;
+  toast(notify ? `${w.short} gespeichert. ${mates.length === 1 ? pname(mates[0]) + ' bekommt' : 'Deine Crew bekommt'} einen Hinweis.` : `${w.short} gespeichert.`);
+  render();
+}
 const sheetHead = (eyebrow, title) => `<div class="shead"><button type="button" class="iconbtn" data-act="mclose" aria-label="Zurück ohne Speichern">${ICON.left}</button><span class="shead-t"><span class="eyebrow">${eyebrow}</span><b>${title}</b></span></div>`;
 function exerciseForm(mode, i, keep) {
   const w = builder.work[builder.day], old = mode === 'add' ? null : w.exercises[i];
@@ -4076,7 +4489,7 @@ function exerciseForm(mode, i, keep) {
   const title = mode === 'add' ? 'Neue Übung' : mode === 'edit' ? 'Übung im Plan' : 'Übung austauschen';
   const v = (k, d) => esc(pkVal(k, d));
   $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet full form tone-${DAY_TONE[builder.day]}" id="exform" data-mode="${mode}" data-i="${i ?? ''}" novalidate>
-    ${sheetHead(`${esc(w.short || DAY_SHORT[builder.day])} · ${esc(w.title || '')}`, title)}
+    ${sheetHead(`${builder.kind === 'mine' ? 'Mein Plan' : 'Crew-Plan'} · ${esc(w.short || DAY_SHORT[builder.day])}`, title)}
     <h2>${title}</h2>
     ${mode === 'replace' ? `<p class="help" style="margin:0">Ersetzt <b>${esc(old.name)}</b>. Deren bisherige Einträge bleiben im Archiv erhalten.</p>` : ''}
     ${mode === 'edit' ? '' : pickBlock('Übung aus der Bibliothek')}
@@ -4084,8 +4497,8 @@ function exerciseForm(mode, i, keep) {
     <div class="grid3"><label>Sätze<input class="inp" id="f-sets" name="sets" inputmode="numeric" value="${v('sets', x.sets)}"></label>
       <label><span id="f-unit-min">${isTimed(x.type) ? 'Sek. von' : 'Wdh. von'}</span><input class="inp" id="f-min" name="min" inputmode="numeric" value="${v('min', x.min)}"></label>
       <label>bis<input class="inp" id="f-max" name="max" inputmode="numeric" value="${v('max', x.max)}"></label></div>
-    <label class="chk" id="f-warm-l" ${x.type === 'kg' ? '' : 'hidden'}><input type="checkbox" id="f-warmup" name="warmup" ${pkVal('warmup', x.warmup ? 'on' : '') === 'on' ? 'checked' : ''}><span>Aufwärmsatz<small>Ein Satz mit 60 % × 6 vor den Arbeitssätzen. Wird mit ${nm(partner())} abgeglichen.</small></span></label>
-    <label class="chk"><input type="checkbox" id="f-personal" name="personal" ${pkVal('personal', x.personal ? 'on' : '') === 'on' ? 'checked' : ''}><span>Abweichende Übung (nur ich)<small>Gehört nicht zum gemeinsamen Training und löst bei ${nm(partner())} nie eine Meldung aus.</small></span></label>
+    <label class="chk" id="f-warm-l" ${x.type === 'kg' ? '' : 'hidden'}><input type="checkbox" id="f-warmup" name="warmup" ${pkVal('warmup', x.warmup ? 'on' : '') === 'on' ? 'checked' : ''}><span>Aufwärmsatz<small>Ein Satz mit 60 % × 6 vor den Arbeitssätzen.${builder.kind === 'crew' ? ' Wird mit deiner Crew abgeglichen.' : ''}</small></span></label>
+    ${builder.kind === 'crew' ? `<label class="chk"><input type="checkbox" id="f-personal" name="personal" ${pkVal('personal', x.personal ? 'on' : '') === 'on' ? 'checked' : ''}><span>Abweichende Übung (nur ich)<small>Gehört nicht zum gemeinsamen Training und löst bei deiner Crew nie eine Meldung aus.</small></span></label>` : ''}
     <div class="persbox"><div class="eyebrow">Persönlich · wird nicht abgeglichen</div>
       <label id="f-step-l" ${isTimed(x.type) ? 'hidden' : ''}><span id="f-step-t">${x.type === 'bw' ? 'Steigerung Zusatzgewicht in kg (0 = keine)' : 'Steigerung in kg'}</span><input class="inp" id="f-step" name="step" inputmode="decimal" value="${v('step', fmtIn(x.step || 0))}"><span class="help">Wird vorgeschlagen, wenn alle Sätze die obere Wdh.-Zahl erreichen.</span></label>
       <label>Bild-Link (optional)<input class="inp" id="f-image" name="image" type="url" inputmode="url" value="${v('image', x.image || '')}" placeholder="https://…/bild.jpg"></label>
@@ -4104,7 +4517,7 @@ function planFormSel(L, fill) {
   box.innerHTML = `<div class="pfinfo"><div class="rowbetween"><b>${esc(L.name)}</b><span class="tag" style="margin:0">${TYPE_LABEL[L.type]}</span></div>
     ${musPreview({ p: L.p, s: L.s }, tk)}
     <span class="small ${L.cue ? 'muted' : 'warn-t'}">${L.cue ? esc(L.cue) : 'Noch keine Ausführungshinweise hinterlegt.'}</span>
-    <button type="button" class="btn small ghost" data-act="lib-edit" data-id="${esc(L.id)}" style="align-self:flex-start">In der Bibliothek bearbeiten</button></div>`;
+    <button type="button" class="btn small ghost" data-act="lib-edit" data-id="${esc(L.id)}" style="align-self:flex-start">${L.owner === cfg.me ? 'Eigene Übung bearbeiten' : 'In der Bibliothek ansehen'}</button></div>`;
   if (fill && PK.mode !== 'edit') { $('#f-sets').value = L.sets; $('#f-min').value = L.min; $('#f-max').value = L.max; if (timed) $('#f-step').value = '0'; else if (!num($('#f-step').value)) $('#f-step').value = fmtIn(2.5); }
   $('#f-unit-min').textContent = timed ? 'Sek. von' : 'Wdh. von';
   $('#f-warm-l').hidden = L.type !== 'kg';
@@ -4127,18 +4540,6 @@ function submitExercise(form) {
   else w.exercises.splice(i, 1, { ...data, replaces: old.id });
   PK = null; $('#modal').innerHTML = ''; markDirty(); render();
 }
-function savePlan() {
-  const d = builder.day, w = builder.work[d];
-  w.short = (w.short || '').trim() || DAY_SHORT[d];
-  const changes = diffPlan(st().plans[cfg.me][d], w, false);
-  if (!changes.length) { builder.dirty[d] = false; render(); return; }
-  const notify = sharedDiff(st().plans[cfg.me][d], w).length > 0 && sharedDiff(st().plans[partner()][d], w).length > 0;
-  addEvent('plan_change', { day: d, title: w.title, short: w.short, exercises: clone(w.exercises), changes, v2: true }, `${w.short} geändert: ${changes.map(diffText).join('; ')}`);
-  builder.dirty[d] = false;
-  toast(notify ? `${w.short} gespeichert. ${pname(partner())} bekommt einen Hinweis.` : `${w.short} gespeichert.`);
-  render();
-}
-
 /* ---------- Einstellungen & Einrichtung ---------- */
 /* ---------- Über BUILT und Rechtliches (Platzhalter, werden vor einem öffentlichen Start überarbeitet) ---------- */
 function viewAbout() {
@@ -4444,7 +4845,23 @@ const actions = {
   breplace: t => exerciseForm('replace', +t.dataset.i),
   badd: () => exerciseForm('add'),
   bremove: t => { const a = builder.work[builder.day].exercises; const x = a.splice(+t.dataset.i, 1)[0]; markDirty(); render(); toast(`${x.name} entfernt. Speichern nicht vergessen.`); },
-  bdiscard: () => { builder.work[builder.day] = clone(st().plans[cfg.me][builder.day]); builder.dirty[builder.day] = false; render(); },
+  bdiscard: () => { const saved = planOf(cfg.me, builder.kind)[builder.day]; if (saved) builder.work[builder.day] = clone(saved); else { delete builder.work[builder.day]; builder.day = PD(builder.work)[0]; } builder.dirty[builder.day] = false; render(); },
+  pkind: t => { if (builderDirty() && builder.kind !== t.dataset.v) { toast('Speichere oder verwirf zuerst deine Änderungen.'); return; } planKind = t.dataset.v; render(); },
+  'bday-add': () => addPlanDay(),
+  'bday-edit': () => dayEditSheet(false),
+  'bday-del': () => dayEditSheet(false, true),
+  'bday-del-no': () => dayEditSheet(false),
+  'bday-del-yes': () => deletePlanDay(),
+  'bday-cancel': () => { const d = builder.day; if (!planOf(cfg.me, builder.kind)[d]) { delete builder.work[d]; delete builder.dirty[d]; builder.day = PD(builder.work)[0]; } closeModal(); render(); },
+  nscope: t => { const it = draft && draft.items[+t.dataset.i]; if (!it) return; it.nscope = t.dataset.v; saveDraft(); render(); setTimeout(() => { const ta = document.getElementById('note-' + t.dataset.i); if (ta) ta.focus(); }, 30); },
+  skind: t => { startKind = t.dataset.v; otherDayAsk = false; render(); },
+  'note-more': t => { const k = t.dataset.v; if (NOTE_OPEN.has(k)) NOTE_OPEN.delete(k); else NOTE_OPEN.add(k); safeRender(); },
+  'note-edit': t => openNoteMenu(t.dataset.id, 'edit'),
+  'note-del': t => openNoteMenu(t.dataset.id, 'del'),
+  'note-del-yes': t => { deleteNote(t.dataset.id); closeModal(); toast('Notiz gelöscht'); safeRender(); notesSync(); },
+  'note-copy': t => { const n = liveNotes().find(x => x.id === t.dataset.id); try { navigator.clipboard.writeText(n.body); toast('Kopiert'); } catch (e) {} closeModal(); },
+  'note-report': t => reportNote(t.dataset.id),
+  nfilt: t => { notesFilter3[t.dataset.k] = t.dataset.v; noteFocusEnd(); render(); },
   bsave: () => savePlan(),
   'w-edit': t => { const w = st().workouts.find(x => x.id === t.dataset.id); if (!w || (w.person !== cfg.me && !LS.get('dev', false))) return; openEdit(w); },
   'ed-addex': () => edPickForm('add'),
@@ -4453,14 +4870,14 @@ const actions = {
   'ed-rmex-yes': t => { draft.items.splice(+t.dataset.i, 1); saveDraft(); render(); },
   'ed-save': () => saveEdit(),
   'ed-cancel': () => { const ref = draft && draft.ref; draft = null; LS.set('edraft', null); location.hash = ref ? '#training-log:' + encodeURIComponent(ref) : '#verlauf'; },
-  ptab: t => { planTab = t.dataset.v; render(); },
   'lib-g': t => { LIBV.group = t.dataset.v; const l = $('#lib-list'); if (l) l.innerHTML = libListHTML(); },
-  'lib-open': t => libForm(libGet(t.dataset.id)),
-  'lib-new': () => libForm(null, { name: LIBV.q }),
+  'lib-open': t => libForm(libGet(t.dataset.id), { tk: 'y' }),
+  'lib-new': () => libForm(null, { name: LIBV.q, tk: 'y' }),
+  'lib-tpl': t => { const o = LF && LF.opts; libForm(null, { ...(o || {}), tpl: t.dataset.id }); },
+  'lib-suggest': t => libSuggest(t.dataset.id),
   'lib-edit': t => { pkKeep(); const snap = PK, back = () => { PK = snap; snap.reopen(); }; libForm(libGet(t.dataset.id), { tk: DAY_TONE[snap.day], done: back, cancel: back }); },
   'lib-merge': () => { if (LF && LF.id) libMergeForm(LF.id); },
-  'lib-unmerge': t => { const y = st().lib[t.dataset.id]; if (!y) return; const cur = LF && LF.id, o = LF && LF.opts; libSave({ ...y, into: '' }, 'wieder getrennt'); toast(`${y.name} ist wieder eigenständig`); if (cur) libForm(st().lib[cur], o); },
-  'lib-restore': () => libAct('restore'),
+  'lib-unmerge': t => { const y = st().lib[t.dataset.id]; if (!y || y.owner !== cfg.me) return; const cur = LF && LF.id, o = LF && LF.opts; libSaveOwn({ ...y, into: '' }); toast(`${y.name} ist wieder eigenständig`); if (cur) libForm(st().lib[cur], o); },
   'lib-hide': () => libAct('hide'),
   'lib-show': () => libAct('show'),
   'lib-del': () => libAct('del'),
@@ -4619,6 +5036,8 @@ document.addEventListener('keydown', e => {
 });
 document.addEventListener('submit', e => {
   if (e.target.id === 'exform') { e.preventDefault(); submitExercise(e.target); }
+  if (e.target.id === 'dayform') { e.preventDefault(); submitDayForm(); }
+  if (e.target.id === 'noteedit') { e.preventDefault(); editNote(e.target.dataset.id, $('#ne-body').value); closeModal(); toast('Notiz gespeichert'); safeRender(); notesSync(); }
   if (e.target.id === 'swapform') { e.preventDefault(); submitSwap(e.target); }
   if (e.target.id === 'edpick') { e.preventDefault(); withEd(() => submitEdPick(e.target)); }
   if (e.target.id === 'libform') { e.preventDefault(); submitLib(e.target); }
@@ -4670,7 +5089,8 @@ document.addEventListener('input', e => {
   if (t.id === 'sp-size' && SPOT.ed) { SPOT.ed.textSize = +t.value; layoutEditor(); return; }
   if (view === 'bearbeiten' && edraft && (t.dataset.f || t.dataset.note != null)) { withEd(() => draftInput(t)); return; }
   if (t.id === 'pk-q' && PK) { PK.q = t.value; PK.sel = ''; renderPick(); return; }
-  if (t.id === 'lf-name') { libSim(); return; }
+  if (t.id === 'lf-name') { libSim(); lfCheck(); return; }
+  if (t.closest && t.closest('#libform')) lfCheck();
   if (t.id === 'lib-q') { LIBV.q = t.value; const l = $('#lib-list'); if (l) l.innerHTML = libListHTML(); return; }
   if (t.id === 'me-q' && musEd) { musEd.q = t.value; musHits(); return; }
   if (t.id === 'sv-in') { if (SPOT.view && SPOT.view.compose === 'text') { t.style.height = ''; t.style.height = Math.min(t.scrollHeight, 132) + 'px'; } return; }
@@ -4701,7 +5121,7 @@ function draftInput(t) {
     return true;
   }
   if (t.dataset.note != null && draft) {
-    draft.items[+t.dataset.note].note = t.value;
+    if (t.dataset.scope === 'crew') draft.items[+t.dataset.note].cnote = t.value; else draft.items[+t.dataset.note].note = t.value;
     if (draft.edit) saveDraft(); else { clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 300); }
     return true;
   }

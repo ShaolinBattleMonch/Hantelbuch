@@ -4,8 +4,8 @@ const VERSION = 'built-v30';
 const SHELL = [
   './', './index.html', './styles.css', './app.js', './vendor/supabase-2.118.0.js', './manifest.webmanifest',
   './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png',
-  './flammen/flamme-a.webp', './flammen/flamme-b.webp', './flammen/flamme-c.webp', './flammen/flamme-woche.webp',
-  './flammen/flamme-hero-a.webp', './flammen/flamme-hero-b.webp', './flammen/flamme-hero-c.webp', './flammen/flamme-hero-woche.webp',
+  './flammen/flamme-a.webp', './flammen/flamme-b.webp', './flammen/flamme-c.webp', './flammen/flamme-d.webp', './flammen/flamme-e.webp', './flammen/flamme-f.webp', './flammen/flamme-woche.webp',
+  './flammen/flamme-hero-a.webp', './flammen/flamme-hero-b.webp', './flammen/flamme-hero-c.webp', './flammen/flamme-hero-d.webp', './flammen/flamme-hero-e.webp', './flammen/flamme-hero-f.webp', './flammen/flamme-hero-woche.webp',
   './fonts/unbounded.woff2', './fonts/geist.woff2', './fonts/geist-mono.woff2'
 ];
 
