@@ -4,7 +4,7 @@
    zuerst auf dem Handy, beim Sync in der Google-Tabelle. Der aktuelle Stand wird immer aus dem Log berechnet.
    Ausnahme: der Vault. Seine Bilder bleiben verschlüsselt nur auf diesem Handy und werden nie synchronisiert. */
 
-const APP_VERSION = '3.3.0';
+const APP_VERSION = '3.4.0';
 const SCRIPT_MIN = 0;            // Google-Skript entfällt ab 3.0
 /* Supabase: Projekt in Frankfurt. Der Publishable Key ist öffentlich, Zugriff regeln die Zeilenrechte in der Datenbank. */
 const SB_URL = (() => { try { return localStorage.getItem('built.sb.url') || 'https://orfbfukamifoqpnpdckb.supabase.co'; } catch (e) { return 'https://orfbfukamifoqpnpdckb.supabase.co'; } })();
@@ -613,6 +613,7 @@ function cleanEx(x) {
     warmup: type === 'kg' && (x.warmup === undefined ? WARMUP_DEFAULT.has(id) : !!x.warmup), personal: !!x.personal
   };
   o.muscles = cleanMuscles(x.muscles) || libMuscles(id, o.name);
+  if (type === 'kg' && ['lh', 'sz', 'kh', 'smith', 'ma', 'bw'].includes(x.gear)) o.gear = x.gear;
   if (x.replaces) o.replaces = str(x.replaces, 64);
   return o;
 }
@@ -991,7 +992,20 @@ function planTr(x, h, n) {
    Neue Stufe: Satz an der Obergrenze und „locker“ oder zweimal „passt“ (ohne Bewertung = passt). „Limit“ hält.
    Ausgleich: leichtere Sätze holen auf, die schwersten halten (Toleranz eine Stufe); nach 3 Trainings ohne Ausgleich steigt jeder Satz für sich.
    Wiederholungen: Summe der Sätze mit gleichem Gewicht + 1, gleichmäßig verteilt, als Mindestziel. */
-const isBarbell = x => x.type === 'kg' && /langhantel|sz-stange|sz stange/i.test(x.name || '');
+// 3.4: Gerät je Übung. Vorbelegung für die Bibliotheks-Übungen; eigene Übungen ohne Angabe gelten vorsichtig als Maschine.
+const GEAR = [['lh', 'Langhantel'], ['sz', 'SZ-Stange'], ['kh', 'Kurzhantel'], ['smith', 'Smith-Maschine'], ['ma', 'Maschine / Kabel'], ['bw', 'Körpergewicht']];
+const GEAR_DEFAULT = (() => {
+  const g = {
+    lh: 'bankdruecken lh-schraegbank negativbank enges-bankdruecken military-press lh-rudern t-bar-rudern kreuzheben kniebeugen frontkniebeugen rdl hip-thrust aufrechtes-rudern',
+    sz: 'french-press sz-curls scott-curls reverse-curls',
+    kh: 'kh-bankdruecken schraegbank kh-flys pullover kickbacks schulterdruecken seitheben frontheben reverse-flys shrugs kh-rudern kh-curls hammer-curls schraegbank-curls konzentrationscurls handgelenk-curls goblet-squat ausfallschritte bulgarian step-ups kb-swings',
+    ma: 'brustpresse kabelflys butterfly ueberkopf-trizeps trizeps-seil trizeps-stange seitheben-kabel facepulls latzug latzug-eng kabelrudern maschinenrudern kabel-pullover kabel-curls beinpresse hackenschmidt beinstrecker beinbeuger beinbeuger-sitzend abduktoren adduktoren wadenheben wadenheben-sitzend kabel-crunch pallof holzhacker'
+  };
+  const o = {}; Object.entries(g).forEach(([k, v]) => v.split(' ').forEach(id => { o[id] = k; })); return o;
+})();
+const gearOf = x => x.gear || GEAR_DEFAULT[x.id] || (x.type === 'kg' ? '' : 'bw');
+// Feste Stufe nach Plan: Stangen, Smith-Maschine, Körpergewicht mit Zusatzgewicht
+const isBarbell = x => x.type === 'kg' && ['lh', 'sz', 'smith', 'bw'].includes(gearOf(x));
 function knownWeights(p, x) { return [...new Set(normalSessions(p, x.id, x.type).flatMap(s => s.sets.filter(z => int(z.r) > 0).map(z => num(z.w))))].sort((a, b) => a - b); }
 // Gelernte Stufe: kleinster Abstand zwischen zwei eingetragenen Gewichten (nur Maschinen und Kurzhanteln)
 function learnedStep(p, x) {
@@ -1010,7 +1024,7 @@ function progress32(x, h, n, p) {
   const exact = bw || isBarbell(x), K = knownWeights(p, x), canStep = !bw || hasStep;
   const r2 = v => Math.round(v * 100) / 100;
   // Kurzhanteln gibt es in festen Abständen: ohne bekanntes Gewicht einfach + Stufe. Nur an Maschinen fragt die App nach der Platte.
-  const dumbbell = /kurzhantel/i.test(x.name || '');
+  const dumbbell = gearOf(x) === 'kh';
   const next = w => { if (exact) return { w: r2(w + plan) }; const c = K.find(k => k > w + step * 0.25 + 1e-9 && k <= w + step * 2 + 1e-9); return c !== undefined ? { w: c } : dumbbell ? { w: r2(w + plan) } : { w: null, ph: w }; };
   const feel = (s, j) => setFeel(s, j) || 'passt';
   const set = (arr, j) => arr[j] || arr[arr.length - 1];
@@ -1176,6 +1190,9 @@ const deloadW = W => (W > 0 ? W * 0.9 : W < 0 ? W * 1.1 : 0);
 
 /* ---------- Plan-Abgleich ---------- */
 const SHARED_FIELDS = ['name', 'type', 'sets', 'min', 'max', 'warmup'];
+const gearLabel = g => (GEAR.find(z => z[0] === g) || [0, 'ohne Angabe'])[1];
+const gearBar = (g, type) => `<div class="gearf" id="f-gear-l" ${type === 'kg' ? '' : 'hidden'}><span class="gl">Gerät</span><input type="hidden" id="f-gear" name="gear" value="${esc(g)}"><div class="chips scroll gearbar" role="group" aria-label="Gerät">${GEAR.map(([k, l]) => `<button type="button" class="pchip tonep" data-act="gear-pick" data-v="${k}" aria-pressed="${g === k}">${l}</button>`).join('')}</div><span class="help" id="f-gear-h">${gearHelp(g)}</span></div>`;
+const gearHelp = g => ({ lh: 'Steigt in festen Stufen nach Plan, mindestens 2,5 kg.', sz: 'Steigt in festen Stufen nach Plan, mindestens 2,5 kg.', smith: 'Steigt in festen Stufen nach Plan, mindestens 2,5 kg.', bw: 'Steigt in festen Stufen nach Plan.', kh: 'Nächstes Gewicht, das du schon genutzt hast, sonst + Stufe.' }[g] || 'Nächste bekannte Stufe, sonst „↑ letztes Gewicht“ zum Eintragen. Ohne Angabe gilt: Maschine.');
 function fieldChanges(a, b, sharedOnly) {
   const c = [];
   if (a.name !== b.name) c.push('Name');
@@ -1185,6 +1202,7 @@ function fieldChanges(a, b, sharedOnly) {
   if (!!a.warmup !== !!b.warmup) c.push(b.warmup ? 'Aufwärmsatz an' : 'Aufwärmsatz aus');
   if (sharedOnly) return c;
   if (!isTimed(b.type) && (a.step || 0) !== (b.step || 0)) c.push(`Steigerung ${fmtN(a.step || 0)} → ${fmtN(b.step || 0)} kg`);
+  if (gearOf(a) !== gearOf(b)) c.push(`Gerät ${gearLabel(gearOf(a))} → ${gearLabel(gearOf(b))}`);
   if ((a.cue || '') !== (b.cue || '')) c.push('Ausführung');
   if ((a.video || '') !== (b.video || '')) c.push('Video');
   if ((a.image || '') !== (b.image || '')) c.push('Bild');
@@ -5159,7 +5177,7 @@ function exerciseForm(mode, i, keep) {
   }
   PK.reopen = () => exerciseForm(mode, i, true);
   PK.onSel = L => planFormSel(L, true);
-  const x = mode === 'edit' ? old : { sets: old ? old.sets : 3, min: old ? old.min : 8, max: old ? old.max : 12, step: old && !isTimed(old.type) ? old.step : 2.5, warmup: false, personal: old ? old.personal : false, image: '', type: old ? old.type : 'kg' };
+  const x = mode === 'edit' ? old : { sets: old ? old.sets : 3, min: old ? old.min : 8, max: old ? old.max : 12, step: old && !isTimed(old.type) ? old.step : 2.5, warmup: false, personal: old ? old.personal : false, image: '', type: old ? old.type : 'kg', gear: old ? old.gear : '' };
   const title = mode === 'add' ? 'Neue Übung' : mode === 'edit' ? 'Übung im Plan' : 'Übung austauschen';
   const v = (k, d) => esc(pkVal(k, d));
   $('#modal').innerHTML = `<div class="backdrop" data-act="mclose-bg"><form class="sheet full form tone-${DAY_TONE[builder.day]}" id="exform" data-mode="${mode}" data-i="${i ?? ''}" novalidate>
@@ -5174,7 +5192,8 @@ function exerciseForm(mode, i, keep) {
     <label class="chk" id="f-warm-l" ${x.type === 'kg' ? '' : 'hidden'}><input type="checkbox" id="f-warmup" name="warmup" ${pkVal('warmup', x.warmup ? 'on' : '') === 'on' ? 'checked' : ''}><span>Aufwärmsatz<small>Ein Satz mit 60 % × 6 vor den Arbeitssätzen.${builder.kind === 'crew' ? ' Wird mit deiner Crew abgeglichen.' : ''}</small></span></label>
     ${builder.kind === 'crew' ? `<label class="chk"><input type="checkbox" id="f-personal" name="personal" ${pkVal('personal', x.personal ? 'on' : '') === 'on' ? 'checked' : ''}><span>Abweichende Übung (nur ich)<small>Gehört nicht zum gemeinsamen Training und löst bei deiner Crew nie eine Meldung aus.</small></span></label>` : ''}
     <div class="persbox"><div class="eyebrow">Persönlich · wird nicht abgeglichen</div>
-      <label id="f-step-l" ${isTimed(x.type) ? 'hidden' : ''}><span id="f-step-t">${x.type === 'bw' ? 'Steigerung Zusatzgewicht in kg (0 = keine)' : 'Steigerung in kg'}</span><input class="inp" id="f-step" name="step" inputmode="decimal" value="${v('step', fmtIn(x.step || 0))}"><span class="help">${isBarbell(x) ? 'Langhantel: immer genau diese Stufe, mindestens 2,5 kg.' : 'Eine Stufe mehr, wenn ein Satz die obere Wdh.-Zahl locker oder zweimal mit „passt“ schafft.'}</span>${(() => { const lst = learnedStep(cfg.me, x); return lst > (x.step || 0) ? `<span class="help">Gelernt aus euren Einträgen: <b style="color:var(--fg)">${fmtN(lst)} kg</b>. Die App nimmt die größere Stufe. <button type="button" class="lnk" data-act="step-adopt" data-v="${lst}" style="padding:0;font-size:13px">${fmtN(lst)} kg übernehmen</button></span>` : ''; })()}</label>
+      ${gearBar(pkVal('gear', mode === 'edit' ? gearOf(x) : (x.gear || '')), x.type)}
+      <label id="f-step-l" ${isTimed(x.type) ? 'hidden' : ''}><span id="f-step-t">${x.type === 'bw' ? 'Steigerung Zusatzgewicht in kg (0 = keine)' : 'Steigerung in kg'}</span><input class="inp" id="f-step" name="step" inputmode="decimal" value="${v('step', fmtIn(x.step || 0))}"><span class="help">Eine Stufe mehr, wenn ein Satz die obere Wdh.-Zahl locker oder zweimal mit „passt“ schafft.</span>${(() => { const lst = learnedStep(cfg.me, x); return lst > (x.step || 0) ? `<span class="help">Gelernt aus euren Einträgen: <b style="color:var(--fg)">${fmtN(lst)} kg</b>. Die App nimmt die größere Stufe. <button type="button" class="lnk" data-act="step-adopt" data-v="${lst}" style="padding:0;font-size:13px">${fmtN(lst)} kg übernehmen</button></span>` : ''; })()}</label>
       <label>Bild-Link (optional)<input class="inp" id="f-image" name="image" type="url" inputmode="url" value="${v('image', x.image || '')}" placeholder="https://…/bild.jpg"></label>
     </div>
     <div class="err" id="f-err" hidden></div>
@@ -5195,8 +5214,14 @@ function planFormSel(L, fill) {
   if (fill && PK.mode !== 'edit') { $('#f-sets').value = L.sets; $('#f-min').value = L.min; $('#f-max').value = L.max; if (timed) $('#f-step').value = '0'; else if (!num($('#f-step').value)) $('#f-step').value = fmtIn(2.5); }
   $('#f-unit-min').textContent = timed ? 'Sek. von' : 'Wdh. von';
   $('#f-warm-l').hidden = L.type !== 'kg';
+  if ($('#f-gear-l')) { $('#f-gear-l').hidden = L.type !== 'kg'; if (fill && PK.mode !== 'edit') setGear(GEAR_DEFAULT[L.id] || ''); }
   $('#f-step-l').hidden = timed;
   $('#f-step-t').textContent = L.type === 'bw' ? 'Steigerung Zusatzgewicht in kg (0 = keine)' : 'Steigerung in kg';
+}
+function setGear(g) {
+  const i = $('#f-gear'); if (!i) return; i.value = g;
+  document.querySelectorAll('[data-act="gear-pick"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === g)));
+  $('#f-gear-h').textContent = gearHelp(g);
 }
 function submitExercise(form) {
   const f = new FormData(form), mode = form.dataset.mode, i = +form.dataset.i;
@@ -5208,7 +5233,7 @@ function submitExercise(form) {
   if (!sets || sets > 10) return err('Sätze: bitte eine Zahl von 1 bis 10.');
   if (!min || !max || min > max) return err('Bitte gib eine gültige Spanne an, z. B. 8 bis 12.');
   if (w.exercises.some((y, k) => y.id === L.id && !(mode !== 'add' && k === i))) return err(`${L.name} ist schon in diesem Trainingstag.`);
-  const data = { id: L.id, name: L.name, type: L.type, sets, min, max, step: isTimed(L.type) ? 0 : Math.max(0, num(f.get('step'))), cue: L.cue, video: L.video, image: safeUrl(f.get('image')), warmup: L.type === 'kg' && f.get('warmup') === 'on', personal: f.get('personal') === 'on', muscles: { p: L.p.slice(), s: L.s.slice() } };
+  const data = { id: L.id, name: L.name, type: L.type, sets, min, max, step: isTimed(L.type) ? 0 : Math.max(0, num(f.get('step'))), cue: L.cue, video: L.video, image: safeUrl(f.get('image')), warmup: L.type === 'kg' && f.get('warmup') === 'on', gear: L.type === 'kg' ? (GEAR.some(z => z[0] === f.get('gear')) ? f.get('gear') : '') : '', personal: f.get('personal') === 'on', muscles: { p: L.p.slice(), s: L.s.slice() } };
   if (mode === 'edit') Object.assign(w.exercises[i], data);
   else if (mode === 'add') w.exercises.push(data);
   else w.exercises.splice(i, 1, { ...data, replaces: old.id });
@@ -5514,6 +5539,7 @@ const actions = {
   'start-normal': () => startTraining(true),
   'other-day': () => { otherDayAsk = true; render(); },
   'pause-open': () => pauseOpen(),
+  'gear-pick': t => setGear($('#f-gear').value === t.dataset.v ? '' : t.dataset.v),
   'step-adopt': t => { const el = $('#f-step'); if (el) { el.value = fmtIn(+t.dataset.v); el.dispatchEvent(new Event('input', { bubbles: true })); } t.closest('.help').remove(); },
   'kurz-open': () => { const k = (PROFILES[cfg.me] || {}).kurz || '';
     sheet(`<h2>Kürzel im Kalender</h2><p class="muted" style="margin:0">Steht in den Marken im Kalender, damit deine Crew dich erkennt. 1–2 Buchstaben oder Ziffern. Leer lassen: Die App wählt automatisch.</p>

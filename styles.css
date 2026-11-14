@@ -1144,3 +1144,10 @@ img.pz-gray { filter: grayscale(1) brightness(.8); }
 .field .wph { position: absolute; right: 28px; top: 0; bottom: 0; display: flex; align-items: center; padding: 0; font: 700 18px var(--mono); line-height: 1; color: rgba(255,255,255,.35); pointer-events: none; white-space: pre; }
 .field .wph b { color: var(--tone); font: 700 18px var(--mono); line-height: 1; }
 .field input:not(:placeholder-shown) ~ .wph { display: none; }
+
+/* 3.4: Gerät je Übung (scrollbare Leiste im Übungs-Formular) */
+.form .gearf { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.form .gearf .gl { font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: .12em; color: var(--dim); }
+.form .gearbar { margin-top: 0; }
+.form .gearbar .pchip { min-height: 38px; font-size: 14px; white-space: nowrap; }
+.persbox .gearbar { margin: 0 -12px; padding: 0 12px 2px; }
