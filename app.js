@@ -4,7 +4,7 @@
    zuerst auf dem Handy, beim Sync in der Google-Tabelle. Der aktuelle Stand wird immer aus dem Log berechnet.
    Ausnahme: der Vault. Seine Bilder bleiben verschlüsselt nur auf diesem Handy und werden nie synchronisiert. */
 
-const APP_VERSION = '3.2.0';
+const APP_VERSION = '3.3.0';
 const SCRIPT_MIN = 0;            // Google-Skript entfällt ab 3.0
 /* Supabase: Projekt in Frankfurt. Der Publishable Key ist öffentlich, Zugriff regeln die Zeilenrechte in der Datenbank. */
 const SB_URL = (() => { try { return localStorage.getItem('built.sb.url') || 'https://orfbfukamifoqpnpdckb.supabase.co'; } catch (e) { return 'https://orfbfukamifoqpnpdckb.supabase.co'; } })();
@@ -534,6 +534,8 @@ const ICON = {
   search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
   play: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5v14l12-7z"/></svg>',
   pause: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>',
+  ticket: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4z"/><path d="M14 6v12" stroke-dasharray="2 2.5"/></svg>',
+  share: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>',
   hourglass: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12M6 21h12"/><path d="M7.5 3v1.5c0 3 4.5 4.5 4.5 7.5 0-3 4.5-4.5 4.5-7.5V3M7.5 21v-1.5c0-3 4.5-4.5 4.5-7.5 0 3 4.5 4.5 4.5 7.5V21"/></svg>',
   thermo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 14.6V5a2 2 0 0 0-4 0v9.6a4 4 0 1 0 4 0z"/><path d="M12 10v7"/></svg>',
   plaster: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g transform="rotate(-45 12 12)"><rect x="2" y="8" width="20" height="8" rx="4"/><path d="M9 8v8M15 8v8"/></g></svg>',
@@ -1468,7 +1470,7 @@ function sync({ overlay = false, quiet = false } = {}) {
       ui.set(100, 'Fertig', '');
       if (overlay) await sleep(400);
       if (rejected && !quiet) toast(rejected === 1 ? 'Ein Eintrag wurde abgelehnt.' : `${rejected} Einträge wurden abgelehnt.`);
-      setTimeout(() => { flushUsage(); pushFlame(); notesSync(); vaultSync().then(() => gallerySync()); spotSync().then(() => chatSync()); }, 0);
+      setTimeout(() => { flushUsage(); pushFlame(); loadAccess().then(a => { if (a && a.access === false) render(); else if (a && a.admin && !INV.list) invLoad(); }); notesSync(); vaultSync().then(() => gallerySync()); spotSync().then(() => chatSync()); }, 0);
       return { ok: true };
     } catch (err) {
       const code = (err && err.code) || 'server';
@@ -2987,6 +2989,7 @@ function setPage(html, tone) {
 function render() {
   const app = $('#app');
   if (!cfg.me) { document.body.dataset.tone = ''; setPage(viewSetup(), ''); return; }
+  if (ACCESS && ACCESS.access === false) { document.body.dataset.tone = ''; ONB.inv = true; setPage(viewInvite(), ''); return; }
   const h = decodeURIComponent(location.hash.slice(1)) || 'start';
   const [name, arg] = h.includes(':') ? [h.slice(0, h.indexOf(':')), h.slice(h.indexOf(':') + 1)] : [h, ''];
   if (name !== view) {
@@ -3008,6 +3011,7 @@ function render() {
     case 'bearbeiten': if (!edraft) { location.hash = '#verlauf'; return; } html = withEd(viewEdit); tone = DAY_TONE[edraft.day]; break;
     case 'verlauf': html = head('Verlauf') + `<main class="view">${viewVerlauf()}</main>` + tabbar('verlauf'); break;
     case 'plan': html = head('Plan') + `<main class="view">${viewPlan()}</main>` + tabbar('plan'); tone = pkind() === 'crew' && !hasCrew() ? '' : DAY_TONE[builder.day] || ''; break;
+    case 'einladungen': html = subhead('einstellungen') + `<main class="view nobar">${ACCESS && ACCESS.admin ? viewInvites() : '<div class="empty">Nur für Admins.</div>'}</main>`; if (name !== view && ACCESS && ACCESS.admin) invLoad(); break;
     case 'privatsphaere': html = subhead(PZS && PZS.reopen ? 'start' : 'einstellungen') + `<main class="view nobar">${viewPrivacy()}</main>`; break;
     case 'daten': html = subhead('einstellungen') + `<main class="view nobar">${viewData()}</main>`; break;
     case 'feedback': html = subhead('einstellungen') + `<main class="view nobar">${viewFeedback()}</main>`; break;
@@ -5279,6 +5283,7 @@ function viewSettings() {
       <div class="row">Letzter Sync<span class="v">${lastSync ? fmtDate(lastSync) + ', ' + fmtTime(lastSync) : '–'}</span></div>
       <div class="row">Einträge<span class="v">${events.length} synchronisiert, ${waiting} wartend</span></div>
     </div>
+    ${ACCESS && ACCESS.admin ? `<div class="secl">Testphase</div><div class="rows glass"><a class="row" href="#einladungen">Einladungen<span class="v">${INV.list ? `${INV.list.filter(x => !x.used_at && new Date(x.expires_at) > Date.now()).length} offen` : '›'}</span></a></div>` : ''}
     <div class="secl">Daten und Hilfe</div>
     <div class="rows glass"><a class="row" href="#privatsphaere">Privatsphäre<span class="v">›</span></a><a class="row" href="#daten">Deine Daten<span class="v">Export, Löschen</span></a><a class="row" href="#feedback">Feedback geben<span class="v">›</span></a></div>
     <div class="secl">Über BUILT</div>
@@ -5307,12 +5312,13 @@ function vaultCloudText() {
    E-Mail → 6-stelliger Code → (einmalig: Übernahme des alten Profils) → Zu dir → Wochenziel → Datenschutz → Buddy-ID.
    Der Fortschritt liegt in ONB und überlebt ein Neuladen. Fertig ist man, wenn cfg.me gesetzt ist. */
 const ONB = Object.assign({ step: 'welcome', email: '', code: '', err: '', busy: false, legacy: null, claim: null, name: '', goal: 3, ok: false, buddy: '' }, LS.get('onb', {}));
-const onbSave = () => LS.set('onb', { step: ONB.step, email: ONB.email, claim: ONB.claim, name: ONB.name, goal: ONB.goal, buddy: ONB.buddy });
+const onbSave = () => LS.set('onb', { step: ONB.step, email: ONB.email, claim: ONB.claim, name: ONB.name, goal: ONB.goal, buddy: ONB.buddy, inv: ONB.inv, inviter: ONB.inviter });
 const onbGo = step => { ONB.step = step; ONB.err = ''; ONB.busy = false; onbSave(); render(); setTimeout(() => { const i = $('#onb-in'); if (i) i.focus(); }, 60); };
 // 2.2.1-Gerät: cfg.me war ein Name („Manu“). Alte Einstellungen für die Übernahme beiseitelegen.
 (() => { if (cfg.me && cfg.me.length < 20) { LS.set('legacy.cfg', { name: cfg.me, url: cfg.url, key: cfg.key }); cfg = { me: null }; LS.set('cfg', cfg); } })();
 const onbSegs = (n, total = 6) => `<div class="segs" role="progressbar" aria-label="Schritt ${n} von ${total}" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${n - 1}">${Array.from({ length: total }, (_, i) => `<i class="${i + 1 < n ? 'on' : i + 1 === n ? 'cur' : ''}"></i>`).join('')}</div>`;
-const onbHead = (back, n) => `<div class="onb-head">${back ? `<button class="iconbtn" data-act="onb-back" data-v="${back}" aria-label="Zurück">${ICON.left}</button>` : ''}${n ? onbSegs(n) : `<span class="eyebrow" style="flex:1">Einmalig</span>`}</div>`;
+// Mit Einladungsschritt sind es 7 Schritte, ab „Zu dir“ verschiebt sich die Zählung um eins
+const onbHead = (back, n) => `<div class="onb-head">${back ? `<button class="iconbtn" data-act="onb-back" data-v="${back}" aria-label="Zurück">${ICON.left}</button>` : ''}${n ? onbSegs(ONB.inv && n >= 3 ? n + 1 : n, ONB.inv ? 7 : 6) : `<span class="eyebrow" style="flex:1">Einmalig</span>`}</div>`;
 const onbErr = () => ONB.err ? `<div class="err" role="alert">${esc(ONB.err)}</div>` : '';
 const onbBtn = (act, label, dis) => `<button class="btn primary" data-act="${act}" ${dis || ONB.busy ? 'disabled' : ''}>${ONB.busy ? 'Moment …' : label}</button>`;
 function viewSetup() {
@@ -5332,6 +5338,11 @@ function viewSetup() {
         <input id="onb-in" class="otp" data-onb="code" value="${esc(ONB.code)}" inputmode="numeric" autocomplete="one-time-code" maxlength="6" aria-label="6-stelliger Code"></label>${onbErr()}
       <div class="onb-links"><button class="lnk" data-act="onb-send">Code erneut senden</button><button class="lnk" data-act="onb-go" data-v="email">Andere E-Mail</button></div></div>
     <div class="onb-cta">${onbBtn('onb-verify', 'Weiter', ONB.code.length !== 6)}</div></div>`;
+  if (s === 'invite') return viewInvite();
+  if (s === 'invok') return `<div class="onb"><div class="onb-head">${onbSegs(3, 7)}</div><div class="onb-body">
+      <h1 class="display">Du bist dabei</h1>
+      <section class="card glass" style="flex-direction:row;align-items:center;gap:12px"><span class="av" style="width:40px;height:40px;font-size:16px;background:#7d7740">${esc((ONB.inviter || '?')[0].toUpperCase())}</span><span style="display:flex;flex-direction:column"><b>Du bist jetzt Buddy von ${esc(ONB.inviter || 'Manu')}</b><span class="small muted">Über ${esc(ONB.inviter || 'Manu')} findest du auch die Crew.</span></span></section></div>
+    <div class="onb-cta"><button class="btn primary" data-act="onb-invok">Weiter</button></div></div>`;
   if (s === 'claim') return `<div class="onb">${onbHead('', 0)}<div class="onb-body">
       <h1 class="display">Schon mit BUILT trainiert?</h1><p class="muted" style="margin:0">Wenn du BUILT schon vor den Konten benutzt hast, holst du dir hier alles zurück: Trainings, Pläne, Notizen, Vault und Chats.</p>
       <label class="lbl">Übernahme-Code<input class="inp mono" id="onb-in" data-onb="claim" placeholder="z. B. 7KQ2 M9XA" autocapitalize="characters" autocomplete="off" spellcheck="false" style="letter-spacing:.12em;text-transform:uppercase"></label>
@@ -5367,6 +5378,62 @@ function viewSetup() {
     <div class="onb-cta"><button class="btn ghost" data-act="onb-done" data-v="later">Später</button><button class="btn primary" data-act="onb-done" data-v="buddies">Ersten GymBuddy hinzufügen</button></div></div>`;
   return '';
 }
+// Einladungscode (Testphase). Auch für angemeldete Konten ohne Zugang.
+function viewInvite() {
+  return `<div class="onb"><div class="onb-head"><button class="iconbtn" data-act="inv-other" aria-label="Andere E-Mail">${ICON.left}</button>${onbSegs(3, 7)}</div><div class="onb-body">
+      <h1 class="display">Einladungscode</h1>
+      <p class="muted" style="margin:-8px 0 0">BUILT ist gerade in der Testphase. Zum Mitmachen brauchst du einen Code von Manu.</p>
+      <label class="lbl">Dein Code<input class="inp mono" id="onb-in" data-onb="invite" placeholder="BUILT-7K4Q" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="12" style="letter-spacing:.12em;text-transform:uppercase${ONB.err ? ';border-color:var(--danger)' : ''}"></label>${onbErr()}
+      <p class="small muted" style="margin:-4px 0 0">Jeder Code gilt einmal und 14 Tage lang. Mit dem Code wirst du automatisch Buddy von Manu.</p></div>
+    <div class="onb-cta"><p>Noch keinen Code? Schreib an ${esc(LEGAL.mail)}</p>${onbBtn('onb-invite', 'Weiter')}</div></div>`;
+}
+/* ---------- Zugang (Einladungscodes) ---------- */
+let ACCESS = LS.get('access', null);
+async function loadAccess() {
+  const r = await sb.rpc('my_access');
+  ACCESS = r.error ? { access: true, required: false, admin: false, old: true } : r.data;   // ohne Skript 12: alles wie bisher
+  LS.set('access', ACCESS); return ACCESS;
+}
+const APP_LINK = 'https://shaolinbattlemonch.github.io/Hantelbuch/';
+const inviteText = x => `Hey, ich lade dich zu BUILT ein, unserer Trainings-App.
+
+1. Öffne den Link in deinem Browser:
+${APP_LINK}
+2. Leg die Seite auf deinen Home-Bildschirm:
+   Safari: Teilen, dann „Zum Home-Bildschirm“
+   Chrome: Teilen oder Menü ⋮, dann „Zum Home-Bildschirm“ bzw. „Zum Startbildschirm hinzufügen“
+   Firefox und Edge: Menü, dann „Zum Startbildschirm“
+3. Öffne BUILT über das neue Symbol auf dem Home-Bildschirm, nicht im Browser.
+4. Melde dich mit deiner E-Mail an.
+5. Gib diesen Code ein: ${x.code}
+
+Der Code gilt einmal und bis ${new Date(x.expires_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}.`;
+let INV = { list: null, created: null, busy: false };
+async function invLoad() { const r = await sb.rpc('list_invites'); INV.list = r.error ? [] : r.data || []; if (view === 'einladungen') render(); }
+function viewInvites() {
+  const req = !!(ACCESS && ACCESS.required), L = INV.list || [], now = Date.now();
+  const open = L.filter(x => !x.used_by && !x.used_at && new Date(x.expires_at) > now), used = L.filter(x => x.used_at), gone = L.filter(x => !x.used_at && new Date(x.expires_at) <= now);
+  const d = v => new Date(v).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
+  const row = (x, meta, act = '') => `<div class="row" style="min-height:60px"><span style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0"><span class="mono" style="font-weight:700;letter-spacing:.08em">${esc(x.code)}</span><span class="small muted">${meta}</span></span>${act}</div>`;
+  const c = INV.created && !L.some(y => y.code === INV.created.code && y.used_at) ? INV.created : null;
+  return `<h1 class="display" style="font-size:30px">Einladungen</h1>
+    <div class="rows glass"><label class="row tgl" style="cursor:pointer;min-height:64px"><span style="display:flex;flex-direction:column;gap:2px"><span>Einladung nötig</span><span class="small muted">${req ? 'Testphase: Neue Konten brauchen einen Code' : 'Aus: Jeder kann sich anmelden'}</span></span><input type="checkbox" role="switch" id="inv-req" ${req ? 'checked' : ''}><i aria-hidden="true"></i></label></div>
+    <button class="btn primary" data-act="inv-create" ${INV.busy ? 'disabled' : ''}>${ICON.ticket}Code erstellen</button>
+    ${c ? `<section class="card glass" style="align-items:center;gap:10px;padding:20px 16px"><span class="eyebrow">Neuer Code</span><span class="mono" style="font-size:30px;font-weight:700;letter-spacing:.1em">${esc(c.code)}</span><span class="small muted">Gilt einmal · bis ${d(c.expires_at)}</span>
+      <div class="btnrow" style="width:100%"><button class="btn primary" data-act="inv-share" data-v="${esc(c.code)}">${ICON.share}Teilen</button><button class="btn ghost" data-act="inv-copy" data-v="${esc(c.code)}">${ICON.copy}Kopieren</button></div></section>` : ''}
+    ${INV.list == null ? '<div class="empty">Lädt …</div>' : `
+    <div class="secl">Offen · ${open.length}</div>
+    ${open.length ? `<div class="rows glass">${open.map(x => row(x, `erstellt ${d(x.created_at)} · gilt bis ${d(x.expires_at)}`, `<button class="iconbtn" data-act="inv-share" data-v="${esc(x.code)}" aria-label="Code ${esc(x.code)} teilen">${ICON.share}</button><button class="iconbtn" data-act="inv-del" data-v="${esc(x.code)}" aria-label="Code ${esc(x.code)} löschen" style="color:var(--danger)">${ICON.trash}</button>`)).join('')}</div>` : '<span class="small muted" style="padding:0 4px">Keine offenen Codes.</span>'}
+    ${used.length ? `<div class="secl">Benutzt · ${used.length}</div><div class="rows glass">${used.map(x => row(x, `${esc(x.used_name || 'Gelöschtes Konto')} · eingelöst am ${d(x.used_at)}`, x.used_by ? (PROFILES[x.used_by] ? avatar(x.used_by, 32) : `<span class="av" style="width:32px;height:32px;font-size:13px;background:#4a7280">${esc((x.used_name || '?')[0].toUpperCase())}</span>`) : '')).join('')}</div>` : ''}
+    ${gone.length ? `<div class="secl">Abgelaufen · ${gone.length}</div><div class="rows glass" style="opacity:.6">${gone.map(x => row(x, `nicht eingelöst · abgelaufen am ${d(x.expires_at)}`)).join('')}</div>` : ''}`}
+    <span class="small muted" style="padding:0 4px">Wer einen Code einlöst, wird automatisch dein Buddy. Konten, die nach 7 Tagen noch keinen Code eingelöst haben, werden automatisch gelöscht.</span>`;
+}
+async function invShare(code) {
+  const x = (INV.created && INV.created.code === code ? INV.created : (INV.list || []).find(y => y.code === code)); if (!x) return;
+  const text = inviteText(x);
+  if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+  try { await navigator.clipboard.writeText(text); toast('Einladung kopiert'); } catch (e) { toast('Kopieren hat nicht geklappt'); }
+}
 // Name: 2–24 Zeichen, Buchstaben (auch Umlaute) und Ziffern, höchstens ein Leerzeichen, nicht am Rand
 const nameOk = v => { const t = String(v || ''); return t === t.trim() && /^[\p{L}\d]+( [\p{L}\d]+)?$/u.test(t) && [...t].length >= 2 && [...t].length <= 24; };
 const avatarBig = () => `<span class="av onb-av" style="background:#7d7740">${esc((ONB.name.trim()[0] || '?').toUpperCase())}</span>`;
@@ -5375,6 +5442,13 @@ async function onbAfterLogin() {
   const { data: u } = await sb.auth.getUser(); const id = u && u.user && u.user.id; if (!id) throw new Error('Anmeldung fehlgeschlagen');
   const p = (await sb.from('profiles').select('*').eq('id', id).maybeSingle()).data || {};
   ONB.uid = id; ONB.buddy = p.buddy_id || ''; if (!ONB.name) ONB.name = p.name || '';
+  await loadAccess();
+  if (!ACCESS.access) { ONB.inv = true; return onbGo('invite'); }
+  return onbNext(p);
+}
+async function onbNext(p) {
+  const id = ONB.uid;
+  if (!p) p = (await sb.from('profiles').select('*').eq('id', id).maybeSingle()).data || {};
   const consent = (await sb.from('consents').select('kind').eq('kind', 'privacy').limit(1)).data;
   if (p.name && consent && consent.length) return onbFinish(id, 'later', true);   // bekanntes Konto, neues Gerät
   const open = !p.legacy_name && (await sb.rpc('legacy_open')).data === true;
@@ -5752,6 +5826,25 @@ const actions = {
     if (r.error) { ONB.busy = false; ONB.err = sbMsg(r.error); ONB.code = ''; return render(); }
     try { await onbAfterLogin(); } catch (e) { ONB.busy = false; ONB.err = sbMsg(e); render(); }
   },
+  'onb-invite': async () => {
+    const v = (($('#onb-in') || {}).value || '').trim(); if (!v) { ONB.err = 'Bitte gib deinen Code ein.'; return render(); }
+    ONB.busy = true; ONB.err = ''; render();
+    const r = await sb.rpc('redeem_invite', { c: v }), d = r.data || {};
+    if (r.error || d.error) { ONB.busy = false; ONB.err = d.error || 'Das hat nicht geklappt. Bitte noch einmal.'; return render(); }
+    await loadAccess();
+    let who = 'Manu'; if (d.inviter) { const q = (await sb.from('profiles').select('name').eq('id', d.inviter).maybeSingle()).data; if (q && q.name) who = q.name; }
+    ONB.inviter = who; ONB.busy = false;
+    if (cfg.me) { toast(`Du bist dabei. ${who} ist jetzt dein Buddy.`); ONB.step = 'welcome'; onbSave(); sync({ overlay: true }); render(); return; }
+    onbGo('invok');
+  },
+  'onb-invok': async () => { ONB.busy = true; render(); try { await onbNext(); } catch (e) { ONB.busy = false; ONB.err = sbMsg(e); render(); } },
+  'inv-other': async () => { try { await sb.auth.signOut(); } catch (e) {} ONB.inv = false; ONB.code = ''; LS.set('access', null); ACCESS = null; if (cfg.me) { cfg = { me: null }; LS.set('cfg', cfg); } onbGo('email'); },
+  'inv-create': async () => { INV.busy = true; render(); const r = await sb.rpc('create_invite'); INV.busy = false;
+    if (r.error) { toast('Code erstellen hat nicht geklappt.'); render(); return; }
+    INV.created = Array.isArray(r.data) ? r.data[0] : r.data; render(); invLoad(); },
+  'inv-share': t => invShare(t.dataset.v),
+  'inv-copy': async t => { try { await navigator.clipboard.writeText(t.dataset.v); toast('Code kopiert'); } catch (e) { toast('Kopieren hat nicht geklappt'); } },
+  'inv-del': async t => { const r = await sb.rpc('delete_invite', { c: t.dataset.v }); if (r.error) { toast('Löschen hat nicht geklappt.'); return; } if (INV.created && INV.created.code === t.dataset.v) INV.created = null; toast('Code gelöscht'); invLoad(); },
   'onb-claim': async () => {
     const code = ($('#onb-in') || {}).value || '';
     if (code.replace(/[^A-Za-z0-9]/g, '').length < 8) { ONB.err = 'Der Code hat mindestens 8 Zeichen.'; return render(); }
@@ -5818,6 +5911,7 @@ document.addEventListener('change', e => {
   if (t.id === 'stats-tgl') { setConsent('analytics', t.checked).then(ok => { if (!ok) t.checked = !t.checked; else toast(t.checked ? 'Danke fürs Mithelfen' : 'Statistik ausgeschaltet'); }); }
   if (t.id === 'fb-meta') FB.meta = t.checked;
   if (t.id === 'pz-share' || t.id === 'share-p') setSharePause(t.checked, t);
+  if (t.id === 'inv-req') { const v = t.checked; sb.rpc('set_invite_required', { req: v }).then(r => { if (r.error) { toast('Speichern hat nicht geklappt.'); t.checked = !v; return; } ACCESS = { ...(ACCESS || {}), required: v }; LS.set('access', ACCESS); toast(v ? 'Neue Konten brauchen jetzt einen Code' : 'Einladung nicht mehr nötig'); render(); }); }
   if (t.id === 'share-w') { const v = t.checked; sb.from('profiles').update({ share_weight: v }).eq('id', cfg.me).then(r => { if (r.error) { toast('Speichern hat nicht geklappt.'); t.checked = !v; return; } if (PROFILES[cfg.me]) PROFILES[cfg.me].share_weight = v; LS.set('profiles', PROFILES); toast(v ? 'Deine Buddys sehen dein Körpergewicht' : 'Körpergewicht nur noch für dich'); }); }
   if ((t.id === 'sp-file' || t.id === 'sp-file2') && t.files[0]) openEditor(t.files[0]);
   if (t.dataset.f === 'w') { const go = () => { if (draft && draft.items[+t.dataset.i] && draft.items[+t.dataset.i].ex.type === 'bw' && propagateDown(+t.dataset.i, +t.dataset.j)) { saveDraft(); rerenderCard(+t.dataset.i); } }; if (view === 'bearbeiten' && edraft) withEd(go); else go(); }
