@@ -4,7 +4,7 @@
    zuerst auf dem Handy, beim Sync in der Google-Tabelle. Der aktuelle Stand wird immer aus dem Log berechnet.
    Ausnahme: der Vault. Seine Bilder bleiben verschlüsselt nur auf diesem Handy und werden nie synchronisiert. */
 
-const APP_VERSION = '3.1.0';
+const APP_VERSION = '3.1.1';
 const SCRIPT_MIN = 0;            // Google-Skript entfällt ab 3.0
 /* Supabase: Projekt in Frankfurt. Der Publishable Key ist öffentlich, Zugriff regeln die Zeilenrechte in der Datenbank. */
 const SB_URL = (() => { try { return localStorage.getItem('built.sb.url') || 'https://orfbfukamifoqpnpdckb.supabase.co'; } catch (e) { return 'https://orfbfukamifoqpnpdckb.supabase.co'; } })();
@@ -3148,7 +3148,7 @@ function pauseSheet() {
   const days = dayNum(z.to) - dayNum(z.from) + 1, rl = R && !ask ? R.label : '';
   const summary = `${pzDate(z.from)}${z.from !== z.to ? ' – ' + pzDate(z.to) : ''} · ${days} ${days === 1 ? 'Tag' : 'Tage'}${rl ? ' · ' + rl : ''}`;
   const sh = sharePause();
-  sheet(`<h2>${z.edit ? 'Pause bearbeiten' : 'Pause eintragen'}</h2>
+  sheet(`<div class="rowbetween" style="align-items:center"><h2>${z.edit ? 'Pause bearbeiten' : 'Pause eintragen'}</h2><button class="iconbtn glass" data-act="mclose" aria-label="Schließen">${ICON.x}</button></div>
     <div class="pzsec"><span class="eyebrow">Grund</span><div class="pzpills">${reasons}</div>
       ${ask ? `<div class="card pzask"><span class="small">„${R.label}“ ist eine Gesundheitsangabe. Dafür brauchen wir einmal deine Einwilligung, wie beim Körpergewicht.</span>
         <div class="btnrow"><button class="btn small primary" data-act="pz-consent">Einwilligen</button><button class="btn small ghost" data-act="pz-noreason">Nur „Pause“</button></div></div>` : ''}</div>
