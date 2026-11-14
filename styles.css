@@ -1138,3 +1138,9 @@ img.pz-gray { filter: grayscale(1) brightness(.8); }
 .t-n { --c1: #fff; --ink: #000; }
 .cm.pz { background: #000; color: #fff; border: 1px solid rgba(255,255,255,.7); }
 .cm.pz svg { width: 10px; height: 10px; }
+/* 3.2 · Fortschritt: Mindestziel im Wiederholungsfeld, nächste Platte unbekannt */
+.field input.rt::placeholder { font-size: 14px; font-weight: 600; }
+.field.wphf { position: relative; }
+.field .wph { position: absolute; right: 28px; top: 0; bottom: 0; display: flex; align-items: center; padding: 0; font: 700 18px var(--mono); line-height: 1; color: rgba(255,255,255,.35); pointer-events: none; white-space: pre; }
+.field .wph b { color: var(--tone); font: 700 18px var(--mono); line-height: 1; }
+.field input:not(:placeholder-shown) ~ .wph { display: none; }

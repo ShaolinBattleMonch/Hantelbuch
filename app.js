@@ -4,7 +4,7 @@
    zuerst auf dem Handy, beim Sync in der Google-Tabelle. Der aktuelle Stand wird immer aus dem Log berechnet.
    Ausnahme: der Vault. Seine Bilder bleiben verschlüsselt nur auf diesem Handy und werden nie synchronisiert. */
 
-const APP_VERSION = '3.1.1';
+const APP_VERSION = '3.2.0';
 const SCRIPT_MIN = 0;            // Google-Skript entfällt ab 3.0
 /* Supabase: Projekt in Frankfurt. Der Publishable Key ist öffentlich, Zugriff regeln die Zeilenrechte in der Datenbank. */
 const SB_URL = (() => { try { return localStorage.getItem('built.sb.url') || 'https://orfbfukamifoqpnpdckb.supabase.co'; } catch (e) { return 'https://orfbfukamifoqpnpdckb.supabase.co'; } })();
@@ -983,6 +983,83 @@ function planTr(x, h, n) {
   if (stuck && allLocker) return mk(T, 'hold', `Bei ${x.max} s und alle Sätze locker. Zeit für eine längere Spanne im Plan oder eine schwerere Variante.`);
   return mk(T, 'hold', `Bei ${x.max} s angekommen. Ziel: ${minR + 1} Wdh. im schwächsten Satz.`);
 }
+/* ---------- Fortschritt 3.2 ----------
+   Stufen: Langhantel und Körpergewicht immer + Stufe aus dem Plan. Maschinen und Kurzhanteln: nächstes bereits eingetragenes
+   Gewicht (höchstens zwei Stufen entfernt), sonst bleibt das Feld leer mit „↑ letztes Gewicht“ und wird beim Eintragen gelernt.
+   Neue Stufe: Satz an der Obergrenze und „locker“ oder zweimal „passt“ (ohne Bewertung = passt). „Limit“ hält.
+   Ausgleich: leichtere Sätze holen auf, die schwersten halten (Toleranz eine Stufe); nach 3 Trainings ohne Ausgleich steigt jeder Satz für sich.
+   Wiederholungen: Summe der Sätze mit gleichem Gewicht + 1, gleichmäßig verteilt, als Mindestziel. */
+const isBarbell = x => x.type === 'kg' && /langhantel|sz-stange|sz stange/i.test(x.name || '');
+function knownWeights(p, x) { return [...new Set(normalSessions(p, x.id, x.type).flatMap(s => s.sets.filter(z => int(z.r) > 0).map(z => num(z.w))))].sort((a, b) => a - b); }
+// Gelernte Stufe: kleinster Abstand zwischen zwei eingetragenen Gewichten (nur Maschinen und Kurzhanteln)
+function learnedStep(p, x) {
+  if (x.type !== 'kg' || isBarbell(x)) return 0;
+  const K = knownWeights(p, x); let m = 0;
+  for (let i = 1; i < K.length; i++) { const d = Math.round((K[i] - K[i - 1]) * 100) / 100; if (d >= 0.5 && (!m || d < m)) m = d; }
+  return m;
+}
+function progress32(x, h, n, p) {
+  const bw = x.type === 'bw', hasStep = x.step > 0;
+  const hs = h.filter(s => s.sets.some(z => int(z.r) > 0));
+  if (!hs.length) return null;
+  const L = hs[hs.length - 1], P = hs.length > 1 ? hs[hs.length - 2] : null;
+  const ls = L.sets.filter(z => int(z.r) > 0), ps = P ? P.sets.filter(z => int(z.r) > 0) : [];
+  const plan = isBarbell(x) ? Math.max(2.5, stepOf(x)) : stepOf(x), ls_ = learnedStep(p, x), step = Math.max(plan, ls_ || 0);
+  const exact = bw || isBarbell(x), K = knownWeights(p, x), canStep = !bw || hasStep;
+  const r2 = v => Math.round(v * 100) / 100;
+  // Kurzhanteln gibt es in festen Abständen: ohne bekanntes Gewicht einfach + Stufe. Nur an Maschinen fragt die App nach der Platte.
+  const dumbbell = /kurzhantel/i.test(x.name || '');
+  const next = w => { if (exact) return { w: r2(w + plan) }; const c = K.find(k => k > w + step * 0.25 + 1e-9 && k <= w + step * 2 + 1e-9); return c !== undefined ? { w: c } : dumbbell ? { w: r2(w + plan) } : { w: null, ph: w }; };
+  const feel = (s, j) => setFeel(s, j) || 'passt';
+  const set = (arr, j) => arr[j] || arr[arr.length - 1];
+  const wOf = arr => Math.max(...arr.map(z => num(z.w)));
+  const close = (w, M) => w >= M - 1e-9 || w >= M - step - 1e-9;
+  const isEq = arr => { const M = wOf(arr); return arr.every(z => close(num(z.w), M)); };
+  const W = wOf(ls), equal = isEq(ls);
+  let uneq = 0; for (let i = hs.length - 1; i >= 0; i--) { const a = hs[i].sets.filter(z => int(z.r) > 0); if (isEq(a)) break; uneq++; }
+  const individual = equal || uneq >= 3;
+  const found = hs.some(s => s.sets.some((z, j) => int(z.r) > 0 && ['passt', 'limit'].includes(setFeel(s, j) || 'passt')));
+  const res = [];
+  for (let j = 0; j < n; j++) {
+    const k = Math.min(j, ls.length - 1), s = set(ls, j), w = num(s.w), r = int(s.r), f = feel(L, k);
+    const q = ps.length ? set(ps, j) : null, pf = q ? feel(P, Math.min(j, ps.length - 1)) : '';
+    let go = canStep && r >= x.max && (f === 'locker' || (f === 'passt' && q && int(q.r) >= x.max && pf === 'passt' && num(q.w) === w));
+    let held = false;
+    if (go && !individual && w >= W - 1e-9) { go = false; held = true; }
+    const nx = go ? next(w) : null;
+    res.push({ j, w0: w, r, go, held, w: go ? nx.w : w, ph: go && nx.w == null ? nx.ph : null });
+  }
+  // Mindestziel: Sätze mit gleichem Gewicht zusammen, Summe + 1, gleichmäßig, Rest nach vorn
+  const groups = {};
+  res.forEach(z => { if (!z.go) (groups[z.w] = groups[z.w] || []).push(z); else z.t = x.min; });
+  Object.values(groups).forEach(g => {
+    const tot = g.reduce((a, z) => a + z.r, 0) + 1, base = Math.floor(tot / g.length), rest = tot % g.length;
+    g.forEach((z, i) => { z.t = Math.min(x.max, Math.max(x.min, base + (i < rest ? 1 : 0))); });
+  });
+  const fmtW = v => !bw ? fmtN(v) + ' kg' : v === 0 ? 'Körpergewicht' : v > 0 ? `+${fmtN(v)} kg` : `${fmtN(-v)} kg Abzug`;
+  const ups = res.filter(z => z.go && z.w != null).map(z => z.j), unk = res.filter(z => z.ph != null).map(z => z.j), helds = res.filter(z => z.held).map(z => z.j);
+  const parts = [];
+  if (ups.length) parts.push(`${!found ? 'Arbeitsgewicht finden: ' : ''}Satz ${setRange(ups)} ${ups.length === 1 ? 'war' : 'waren'} am oberen Ende${res.filter(z => ups.includes(z.j)).every(z => feel(L, Math.min(z.j, ls.length - 1)) === 'locker') ? ' und locker' : ''}, heute eine Stufe mehr.`);
+  if (unk.length) parts.push(`Satz ${setRange(unk)}: eine Platte schwerer stecken und das Gewicht eintragen, die App merkt es sich.`);
+  if (helds.length) parts.push(`Satz ${setRange(helds)} ${helds.length === 1 ? 'bleibt' : 'bleiben'} bei ${fmtW(W)}, bis die anderen aufgeholt haben.`);
+  if (!equal && uneq === 3 && res.some(z => z.go)) parts.push(`Die Sätze sind seit 3 Trainings unterschiedlich schwer. Ab jetzt steigt jeder Satz für sich.`);
+  let kind = res.some(z => z.go) ? 'up' : 'hold';
+  if (!parts.length) {
+    const top = res.filter(z => z.r >= x.max && !z.go);
+    if (bw && !hasStep && res.every(z => z.r >= x.max)) parts.push(`Alle Sätze am oberen Ende. Zeit für Zusatzgewicht oder eine höhere Spanne im Plan.`);
+    else if (isPlateau(h, x, p)) { kind = 'plateau'; parts.push('Seit 3 Trainings kein Fortschritt. Ziel: die Mindestzahl in jedem Satz.'); }
+    else if (top.length && top.some(z => feel(L, Math.min(z.j, ls.length - 1)) === 'limit')) parts.push('Am oberen Ende, aber am Limit. Gewicht halten.');
+    else if (top.length) parts.push(`Am oberen Ende geschafft. Noch einmal so, dann gibt es die nächste Stufe.`);
+    else parts.push(`Gleiches Gewicht. Ziel: ${res.reduce((a, z) => a + z.t, 0)} Wiederholungen insgesamt, eine mehr als zuletzt.`);
+  }
+  const sets = res.map(z => {
+    if (z.ph != null) return { w: null, ph: z.ph, t: z.t, mk: 'up' };
+    const d = r2(z.w - z.w0);
+    if (d > 0) return { w: z.w, t: z.t, mk: 'up', lab: bw && z.w === 0 && z.w0 < 0 ? '↑ OHNE ABZUG' : '↑ ' + kgLabel(d) };
+    return { w: z.w, t: z.t };
+  });
+  return { kind, hint: parts.join(' '), base: W, sets };
+}
 function planFor(x, p = cfg.me) {
   const n = Math.max(1, +x.sets || 1);
   if (x.type === 'tr') return planTr(x, normalSessions(p, x.id, x.type).map(evalSess), n);
@@ -1044,37 +1121,9 @@ function planFor(x, p = cfg.me) {
   } else if (below) {
     hint = collapse ? `Satz ${lastMain + 1} ist letztes Mal eingebrochen. Weniger Wiederholungen im letzten Satz sind okay.` : 'Letztes Mal unter der Spanne. Gewicht halten.';
   } else {
-    const backOk = back.filter(j => reps(j) >= x.min);
-    backOk.forEach(j => { tw[j] = W; });
-    const backTxt = backOk.length ? ` Satz ${setRange(backOk)} wieder mit ${fmtW(W)}.` : '';
-    if (allTop && !hasStep) {
-      hint = `Alle Sätze am oberen Ende. Zeit für ${bw ? 'Zusatzgewicht' : 'mehr Gewicht'} oder eine höhere Spanne im Plan.` + backTxt;
-    } else if (allTop && limits.length) {
-      hint = `Alle Sätze geschafft, Satz ${setRange(limits)} ${limits.length === 1 ? 'war' : 'waren'} am Limit. Gewicht halten.` + backTxt;
-    } else if (allTop && tired) {
-      hint = 'Alle Sätze geschafft, aber du hast wegen Erschöpfung einen Satz gestrichen. Gewicht halten.' + backTxt;
-    } else if (allTop) {
-      const dbl = allTop2 || allLocker;
-      let nw = roundTo(W + (dbl ? 2 : 1) * inc, step);
-      if (bw && W < 0) nw = Math.min(0, nw);
-      main.forEach(j => { tw[j] = nw; });
-      for (let j = ls.length; j < n; j++) tw[j] = nw;
-      const d = Math.round((nw - W) * 100) / 100;
-      kind = 'up';
-      if (!bw) hint = dbl ? `Deutlich mehr geschafft. Heute +${fmtN(d)} kg.` : `Alle Sätze am oberen Ende. Heute +${fmtN(d)} kg.`;
-      else if (W < 0) hint = nw === 0 ? 'Abzug geschafft. Heute nur mit Körpergewicht.' : `Alle Sätze am oberen Ende. Heute ${fmtN(d)} kg weniger Abzug.`;
-      else if (W === 0) hint = `Körpergewicht im Griff. Heute erstmals +${fmtN(d)} kg Zusatz.`;
-      else hint = dbl ? `Deutlich mehr geschafft. Heute +${fmtN(d)} kg Zusatz.` : `Alle Sätze am oberen Ende. Heute +${fmtN(d)} kg Zusatz.`;
-      hint += backTxt;
-    } else if (backOk.length) {
-      hint = `Satz ${setRange(backOk)} hat die Spanne wieder geschafft. Heute wieder ${fmtW(W)} in allen Sätzen.`;
-    } else if (isPlateau(h, x, p)) {
-      kind = 'plateau'; hint = 'Seit 3 Trainings kein Fortschritt.';
-    } else if (bw && W === 0) {
-      hint = `Ziel: mehr als ${sum(ls.map(s => int(s.r)))} Wiederholungen insgesamt.`;
-    } else {
-      hint = 'In der Spanne. Gewicht halten, Ziel: mehr Wiederholungen als letztes Mal.';
-    }
+    // 3.2: jeder Satz einzeln, höchstens eine Stufe, Ausgleich, Mindestziel für Wiederholungen
+    const pr = progress32(x, h, n, p);
+    if (pr) return pr;
   }
   const sets = tw.map((w, j) => {
     const d = Math.round((w - lw(j)) * 100) / 100;
@@ -3252,7 +3301,7 @@ function normalizeDraft(d) {
   TIMER = tm && d.items[tm.i] && d.items[tm.i].sets[tm.j] && tm.total > 0 ? { i: tm.i, j: tm.j, f: tm.f === 'r' ? 'r' : 'w', total: +tm.total, start: +tm.start, acc: +tm.acc || 0, paused: !!tm.paused } : null;
   d.items.forEach(it => {
     it.ex = cleanEx(it.ex); it.note = it.note || ''; it.feel = it.feel || ''; it.wu = it.wu || [];
-    it.sets = (it.sets || []).map(s => ({ w: s.w ?? '', neg: !!s.neg, alt: s.alt ?? '', r: s.r ?? '', done: !!s.done, f: SET_FEEL[s.f] ? s.f : '', mk: s.mk || '', lab: s.lab || '', man: !!s.man, add: !!s.add, a: ADD_WHY[s.a] ? s.a : '' }));
+    it.sets = (it.sets || []).map(s => ({ w: s.w ?? '', neg: !!s.neg, alt: s.alt ?? '', r: s.r ?? '', done: !!s.done, f: SET_FEEL[s.f] ? s.f : '', mk: s.mk || '', lab: s.lab || '', man: !!s.man, add: !!s.add, a: ADD_WHY[s.a] ? s.a : '', t: int(s.t) || 0, ph: s.ph == null || s.ph === '' ? null : num(s.ph) }));
     it.rm = Array.isArray(it.rm) ? it.rm.map(r => (REM_WHY[r] ? r : '')) : [];
     it.tt = int(it.tt) || (it.ex.type === 'tr' ? it.ex.min : 0);
     if (it.hint === undefined) { try { const pl = planFor(it.ex); it.hint = d.deload ? DELOAD_HINT : pl.hint; it.kind = d.deload ? 'deload' : pl.kind; } catch (e) { it.hint = ''; it.kind = ''; } }
@@ -3273,7 +3322,7 @@ function newItem(x, deload) {
   }
   const sets = plan.map((ps, j) => {
     const w = x.type === 'time' ? null : ps.w;
-    const s = blankSet(w, { mk: ps.mk || '', lab: ps.lab || '' });
+    const s = blankSet(w, { mk: ps.mk || '', lab: ps.lab || '', t: deload ? 0 : ps.t || 0, ph: deload || ps.ph == null ? null : ps.ph });
     if (x.type === 'bw') {
       const side = lastSides(cfg.me, x, j);
       s.alt = s.neg ? fmtIn(side.plus) : fmtIn(side.minus);
@@ -3351,7 +3400,7 @@ function exCard(it, i) {
   };
   const wField = (s, j) => {
     if (x.type === 'tr') return tField(s, j, 'w');
-    if (x.type === 'kg') return `<label class="field ${s.mk ? 'mk-' + s.mk : ''}"><input id="w-${i}-${j}" data-i="${i}" data-j="${j}" data-f="w" inputmode="decimal" autocomplete="off" aria-label="Gewicht Satz ${j + 1}" value="${esc(s.w)}" placeholder="–"><span>kg</span></label>`;
+    if (x.type === 'kg') return `<label class="field ${s.mk ? 'mk-' + s.mk : ''}${s.ph != null ? ' wphf' : ''}"><input id="w-${i}-${j}" data-i="${i}" data-j="${j}" data-f="w" inputmode="decimal" autocomplete="off" aria-label="Gewicht Satz ${j + 1}${s.ph != null ? `, eine Platte schwerer als ${fmtN(s.ph)} kg` : ''}" value="${esc(s.w)}" placeholder="${s.ph != null ? ' ' : '–'}"><span>kg</span>${s.ph != null ? `<span class="wph" aria-hidden="true"><b>↑</b> ${fmtN(s.ph)}</span>` : ''}</label>`;
     if (x.type !== 'bw') return '';
     const st_ = num(s.w) > 0 ? (s.neg ? 'minus' : 'plus') : '';
     return `<div class="field kgf ${st_}" id="wf-${i}-${j}"><button class="sign" data-act="sign" data-i="${i}" data-j="${j}" ${s.done ? 'disabled' : ''} aria-label="${s.neg ? 'Abzug' : 'Zusatzgewicht'}${s.done ? ', gesperrt solange abgehakt' : `, tippen für ${s.neg ? 'Zusatzgewicht' : 'Abzug'}`}">${s.neg ? '−' : '+'}</button><input id="w-${i}-${j}" data-i="${i}" data-j="${j}" data-f="w" inputmode="decimal" autocomplete="off" aria-label="${s.neg ? 'Abzug' : 'Zusatzgewicht'} Satz ${j + 1}" value="${esc(s.w)}" placeholder="0"><span>kg</span></div>`;
@@ -3359,7 +3408,7 @@ function exCard(it, i) {
   const feelRow = (s, j) => s.done ? `<div class="sfeel" role="group" aria-label="Wie war Satz ${j + 1}?">${Object.entries(SET_FEEL).map(([k, v]) => `<button data-act="sfeel" data-i="${i}" data-j="${j}" data-v="${k}" aria-pressed="${s.f === k}">${v}</button>`).join('')}</div>` : '';
   const rows = it.sets.map((s, j) => `<div class="set ${s.done ? 'ok' : ''}">
       <span class="n">${j + 1}</span>${wField(s, j)}
-      ${x.type === 'time' ? tField(s, j, 'r') : `<label class="field"><input id="r-${i}-${j}" data-i="${i}" data-j="${j}" data-f="r" inputmode="numeric" autocomplete="off" aria-label="Wiederholungen Satz ${j + 1}" value="${esc(s.r)}" placeholder="${lastReps(j)}"><span>×</span></label>`}
+      ${x.type === 'time' ? tField(s, j, 'r') : `<label class="field"><input id="r-${i}-${j}" data-i="${i}" data-j="${j}" data-f="r" inputmode="numeric" autocomplete="off" aria-label="Wiederholungen Satz ${j + 1}" value="${esc(s.r)}" placeholder="${s.t && !draft.deload ? 'mind. ' + s.t : lastReps(j)}"${s.t && !draft.deload ? ' class="rt"' : ''}><span>×</span></label>`}
       <button class="check" data-act="check" data-i="${i}" data-j="${j}" aria-label="Satz ${j + 1} erledigt" aria-pressed="${s.done}">${ICON.check}</button>
     </div>${s.lab && x.type !== 'time' ? `<div class="setlab" id="sl-${i}-${j}"><span></span><span class="${s.mk === 'deload' ? 'dl' : ''}">${esc(s.lab)}</span></div>` : ''}${feelRow(s, j)}`).join('');
   const cols = x.type === 'time' ? `<div class="cols"><span></span><span class="r">Sekunden</span><span></span></div>`
@@ -5121,7 +5170,7 @@ function exerciseForm(mode, i, keep) {
     <label class="chk" id="f-warm-l" ${x.type === 'kg' ? '' : 'hidden'}><input type="checkbox" id="f-warmup" name="warmup" ${pkVal('warmup', x.warmup ? 'on' : '') === 'on' ? 'checked' : ''}><span>Aufwärmsatz<small>Ein Satz mit 60 % × 6 vor den Arbeitssätzen.${builder.kind === 'crew' ? ' Wird mit deiner Crew abgeglichen.' : ''}</small></span></label>
     ${builder.kind === 'crew' ? `<label class="chk"><input type="checkbox" id="f-personal" name="personal" ${pkVal('personal', x.personal ? 'on' : '') === 'on' ? 'checked' : ''}><span>Abweichende Übung (nur ich)<small>Gehört nicht zum gemeinsamen Training und löst bei deiner Crew nie eine Meldung aus.</small></span></label>` : ''}
     <div class="persbox"><div class="eyebrow">Persönlich · wird nicht abgeglichen</div>
-      <label id="f-step-l" ${isTimed(x.type) ? 'hidden' : ''}><span id="f-step-t">${x.type === 'bw' ? 'Steigerung Zusatzgewicht in kg (0 = keine)' : 'Steigerung in kg'}</span><input class="inp" id="f-step" name="step" inputmode="decimal" value="${v('step', fmtIn(x.step || 0))}"><span class="help">Wird vorgeschlagen, wenn alle Sätze die obere Wdh.-Zahl erreichen.</span></label>
+      <label id="f-step-l" ${isTimed(x.type) ? 'hidden' : ''}><span id="f-step-t">${x.type === 'bw' ? 'Steigerung Zusatzgewicht in kg (0 = keine)' : 'Steigerung in kg'}</span><input class="inp" id="f-step" name="step" inputmode="decimal" value="${v('step', fmtIn(x.step || 0))}"><span class="help">${isBarbell(x) ? 'Langhantel: immer genau diese Stufe, mindestens 2,5 kg.' : 'Eine Stufe mehr, wenn ein Satz die obere Wdh.-Zahl locker oder zweimal mit „passt“ schafft.'}</span>${(() => { const lst = learnedStep(cfg.me, x); return lst > (x.step || 0) ? `<span class="help">Gelernt aus euren Einträgen: <b style="color:var(--fg)">${fmtN(lst)} kg</b>. Die App nimmt die größere Stufe. <button type="button" class="lnk" data-act="step-adopt" data-v="${lst}" style="padding:0;font-size:13px">${fmtN(lst)} kg übernehmen</button></span>` : ''; })()}</label>
       <label>Bild-Link (optional)<input class="inp" id="f-image" name="image" type="url" inputmode="url" value="${v('image', x.image || '')}" placeholder="https://…/bild.jpg"></label>
     </div>
     <div class="err" id="f-err" hidden></div>
@@ -5391,6 +5440,7 @@ const actions = {
   'start-normal': () => startTraining(true),
   'other-day': () => { otherDayAsk = true; render(); },
   'pause-open': () => pauseOpen(),
+  'step-adopt': t => { const el = $('#f-step'); if (el) { el.value = fmtIn(+t.dataset.v); el.dispatchEvent(new Event('input', { bubbles: true })); } t.closest('.help').remove(); },
   'kurz-open': () => { const k = (PROFILES[cfg.me] || {}).kurz || '';
     sheet(`<h2>Kürzel im Kalender</h2><p class="muted" style="margin:0">Steht in den Marken im Kalender, damit deine Crew dich erkennt. 1–2 Buchstaben oder Ziffern. Leer lassen: Die App wählt automatisch.</p>
       <input class="inp mono" id="kurz-in" maxlength="2" value="${esc(k)}" placeholder="${esc(kurzMap()[cfg.me] || '')}" autocapitalize="characters" autocomplete="off" spellcheck="false" style="font-size:22px;text-align:center;letter-spacing:.1em">
@@ -5429,7 +5479,7 @@ const actions = {
       if (!int(s.r)) { toast('Trag zuerst die Wiederholungen ein.'); const r = document.getElementById(`r-${i}-${j}`); if (r) r.focus(); return; }
     }
     if (!s.done && x.type === 'kg' && !num(s.w)) { toast('Trag zuerst das Gewicht ein.'); const w = document.getElementById(`w-${i}-${j}`); if (w) w.focus(); return; }
-    if (!s.done && !int(s.r)) { const mine = lastAny(cfg.me, x.id); s.r = String(draft.deload ? x.min : mine && mine.type === x.type && mine.sets[j] ? mine.sets[j].r : x.max); }
+    if (!s.done && !int(s.r)) { const mine = lastAny(cfg.me, x.id); s.r = String(draft.deload ? x.min : s.t || (mine && mine.type === x.type && mine.sets[j] ? mine.sets[j].r : x.max)); }
     s.done = !s.done; saveDraft(); rerenderCard(i);
   },
   sign: t => {
