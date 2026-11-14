@@ -341,7 +341,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); opaci
 .marks { display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; }
 .cm { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 5px; font: 700 9px var(--mono); font-style: normal; background: var(--c1); color: var(--ink); }
 .cm.skip { background: transparent; color: var(--c1); border: 1.5px solid var(--c1); text-decoration: line-through; }
-.cm.deload { background: transparent; color: var(--c1); border: 1.5px dashed var(--c1); }
+.cm.dl { background: transparent; color: var(--c1); border: 1.5px dashed var(--c1); }
 
 /* Profil */
 .pf { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding-top: 4px; }
@@ -1103,3 +1103,38 @@ ul.dots li::before { content: ""; position: absolute; left: 2px; top: .55em; wid
 .row.tgl > span:first-child { flex: 1; min-width: 0; }
 .row.tgl i { margin-left: auto; }
 .filerow { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 6px 0; }
+
+/* 3.1 · Pause (krank, verletzt, Urlaub, Sonstiges) */
+.btnrow .btn.pzbtn, .btn.pzbtn { flex: none; width: 50px; min-height: 50px; padding: 0; border-radius: 50%; }
+.btn.pzbtn svg { width: 22px; height: 22px; }
+.btn.pzbtn.ghost { border-color: rgba(255,255,255,.4); }
+.btn.pzbtn.on { background: var(--fg); color: #000; border-color: var(--fg); }
+.pzcard { flex-direction: row; align-items: flex-start; gap: 12px; }
+.pz-ic { width: 36px; height: 36px; border-radius: 50%; background: #000; border: 1px solid rgba(255,255,255,.35); display: grid; place-items: center; flex: none; color: #fff; }
+.pz-ic svg { width: 20px; height: 20px; }
+img.pz-gray { filter: grayscale(1) brightness(.8); }
+.pzsec { display: flex; flex-direction: column; gap: 8px; }
+.pzpills { display: flex; gap: 6px; flex-wrap: wrap; }
+.pzpill { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.3); background: transparent; color: var(--fg); font: 600 14px var(--body); cursor: pointer; }
+.pzpill svg { width: 16px; height: 16px; }
+.pzpill.on { background: var(--fg); color: #000; border-color: var(--fg); }
+.pzask { border: 1px solid var(--warn); background: transparent; gap: 8px; padding: 12px 14px; }
+.pzask .btnrow .btn { flex: 1 1 100px; }
+.pzcal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.pzcal .wd { font: 500 10px var(--mono); letter-spacing: .08em; color: var(--faint); text-align: center; text-transform: uppercase; }
+.pzd { height: 38px; border-radius: 10px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.05); color: var(--fg); font: 500 12px var(--mono); cursor: pointer; padding: 0; }
+.pzd.off { color: rgba(255,255,255,.25); background: transparent; cursor: default; }
+.pzd.today { border-color: rgba(255,255,255,.6); font-weight: 700; }
+.pzd.in { background: rgba(255,255,255,.22); border-color: rgba(255,255,255,.22); }
+.pzd.end { background: var(--fg); color: #000; border-color: var(--fg); font-weight: 700; }
+.calnav .iconbtn:disabled { opacity: .3; cursor: default; }
+/* Rotation ab 4 Tagen: eine Zeile zum Wischen, Kacheln laufen über den Rand */
+.rotation.scroll { display: flex; overflow-x: auto; margin: 0 calc(-1 * max(16px, var(--sal))); padding: 0 max(16px, var(--sal)); scrollbar-width: none; scroll-snap-type: x proximity; scroll-padding: 0 16px; }
+.rotation.scroll::-webkit-scrollbar { display: none; }
+.rotation.scroll .rot { flex: none; width: 104px; scroll-snap-align: start; }
+/* Kalender: bis zu 6 Marken pro Tag (2 je Zeile), Kürzel, Pause */
+.cd .marks { display: grid; grid-template-columns: repeat(2, 16px); gap: 2px; justify-content: center; }
+.cm { letter-spacing: -.04em; overflow: hidden; }
+.t-n { --c1: #fff; --ink: #000; }
+.cm.pz { background: #000; color: #fff; border: 1px solid rgba(255,255,255,.7); }
+.cm.pz svg { width: 10px; height: 10px; }

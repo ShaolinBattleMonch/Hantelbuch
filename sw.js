@@ -1,6 +1,6 @@
 /* Hantelbuch – Service Worker: macht die App offline nutzbar.
    Bei einem Update der App-Dateien VERSION hochzählen, dann laden alle Geräte die neue Version. */
-const VERSION = 'built-v30';
+const VERSION = 'built-v31';
 const SHELL = [
   './', './index.html', './styles.css', './app.js', './vendor/supabase-2.118.0.js', './vendor/qrcode-generator-2.0.4.js', './vendor/jsqr-1.4.0.js', './manifest.webmanifest',
   './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png',

@@ -4,7 +4,7 @@
    zuerst auf dem Handy, beim Sync in der Google-Tabelle. Der aktuelle Stand wird immer aus dem Log berechnet.
    Ausnahme: der Vault. Seine Bilder bleiben verschlüsselt nur auf diesem Handy und werden nie synchronisiert. */
 
-const APP_VERSION = '3.0.0';
+const APP_VERSION = '3.1.0';
 const SCRIPT_MIN = 0;            // Google-Skript entfällt ab 3.0
 /* Supabase: Projekt in Frankfurt. Der Publishable Key ist öffentlich, Zugriff regeln die Zeilenrechte in der Datenbank. */
 const SB_URL = (() => { try { return localStorage.getItem('built.sb.url') || 'https://orfbfukamifoqpnpdckb.supabase.co'; } catch (e) { return 'https://orfbfukamifoqpnpdckb.supabase.co'; } })();
@@ -401,20 +401,70 @@ function flameStats(p) {
   const ws = st().workouts.filter(w => w.person === p).sort((a, b) => new Date(a.ts) - new Date(b.ts));
   const counts = Object.fromEntries(DAYS.map(d => [d, 0])), perWeek = new Map();
   ws.forEach(w => { counts[w.data.day]++; const k = weekOf(w.ts); if (!perWeek.has(k)) perWeek.set(k, []); perWeek.get(k).push(w); });
-  // Wochenflamme: so viele Trainings wie das persönliche Wochenziel dieser Woche (Änderungen gelten ab dem nächsten Montag)
-  const cur = weekOf(Date.now()), full = k => (perWeek.get(k) || []).length >= weekGoal(p, k);
-  let k = full(cur) ? cur : prevWeek(cur), streak = 0;
-  while (full(k)) { streak++; k = prevWeek(k); }
-  return { counts, streak, week: perWeek.get(cur) || [], goal: weekGoal(p, cur) };
+  // Wochenflamme: so viele Trainings wie das persönliche Wochenziel dieser Woche (Änderungen gelten ab dem nächsten Montag).
+  // Pausentage verkleinern das Ziel anteilig (abgerundet). Ziel 0 ohne Training: Woche eingefroren, zählt nicht und bricht nichts.
+  const cur = weekOf(Date.now()), cnt = k => (perWeek.get(k) || []).length;
+  const full = k => { const g = effGoal(p, k); return g === 0 ? cnt(k) > 0 : cnt(k) >= g; };
+  const frozen = k => effGoal(p, k) === 0 && cnt(k) === 0;
+  let k = full(cur) ? cur : prevWeek(cur), streak = 0, guard = 0;
+  while (guard++ < 600) { if (full(k)) streak++; else if (!frozen(k)) break; k = prevWeek(k); }
+  // Andere: Pausen sind oft privat. Dann gilt die Zahl, die ihr Handy selbst berechnet und im Profil gespeichert hat.
+  if (p !== cfg.me) { const pr = PROFILES[p] || {}; if (+pr.flame > streak && pr.flame_week && String(pr.flame_week).slice(0, 10) >= dateKey(prevWeek(cur))) streak = +pr.flame; }
+  return { counts, streak, week: perWeek.get(cur) || [], goal: effGoal(p, cur), base: weekGoal(p, cur), pauseDays: pauseDaysInWeek(p, cur) };
 }
+/* ---------- Pause (krank, verletzt, Urlaub, Sonstiges) ----------
+   Eine Pause ist ein privates Ereignis „pause“ (pid, from, to, Grund). Wer „Pause mit Buddys teilen“ eingeschaltet hat,
+   schreibt dazu eine öffentliche Kopie ohne Grund. Spätere Ereignisse mit derselben pid ersetzen frühere. */
+const PZ_REASON = {
+  krank: { label: 'Krank', health: true, icon: 'thermo', title: 'Gute Besserung' },
+  verletzt: { label: 'Verletzt', health: true, icon: 'plaster', title: 'Werd schnell wieder fit' },
+  urlaub: { label: 'Urlaub', icon: 'umbrella', title: 'Schönen Urlaub' },
+  sonst: { label: 'Sonstiges', icon: 'moon', title: 'Gönn dir die Pause' }
+};
+const dayNum = s => Math.round(new Date(s + 'T12:00').getTime() / 864e5);
+const addDays = (s, n) => dateKey(new Date(new Date(s + 'T12:00').getTime() + n * 864e5));
+const pzDate = s => { const d = new Date(s + 'T12:00'); return `${d.toLocaleDateString('de-DE', { weekday: 'short' }).replace('.', '')}, ${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}.`; };
+function pausesOf(p) { const m = st().pauses[p]; return m ? Object.values(m).filter(Boolean).sort((a, b) => a.from.localeCompare(b.from)) : []; }
+function pauseOn(p, ds) { return pausesOf(p).find(x => x.from <= ds && ds <= x.to) || null; }
+function pauseDaysInWeek(p, wk) { if (!pausesOf(p).length) return 0; const mon = dateKey(wk); let n = 0; for (let i = 0; i < 7; i++) if (pauseOn(p, addDays(mon, i))) n++; return n; }
+function effGoal(p, wk) { const g = weekGoal(p, wk), pd = pauseDaysInWeek(p, wk); return pd ? Math.floor(g * (7 - pd) / 7) : g; }
+const sharePause = () => !!(PROFILES[cfg.me] || {}).share_pause;
+// Grund nur zeigen, wenn erlaubt: Gesundheitsgründe brauchen die Einwilligung
+const pzReason = x => { const r = x && PZ_REASON[x.reason]; return r && (!r.health || hasConsent('health')) ? r : null; };
+function savePause(z) {
+  const pid = z.pid || 'pz-' + uid().slice(0, 12);
+  const base = { pid, from: z.from, to: z.to, ...(z.deleted ? { deleted: true } : {}) };
+  const r = PZ_REASON[z.reason] && (!PZ_REASON[z.reason].health || hasConsent('health')) ? z.reason : '';
+  addEvent('pause', { ...base, ...(r ? { reason: r } : {}) }, z.deleted ? 'Pause gelöscht' : `Pause ${pzDate(z.from)} bis ${pzDate(z.to)}${r ? ' · ' + PZ_REASON[r].label : ''}`, { private: true });
+  if (sharePause()) addEvent('pause', { ...base, mirror: true }, z.deleted ? 'Pause gelöscht' : `Pause bis ${pzDate(z.to)}`);
+  return pid;
+}
+// Teilen ein/aus: öffentliche Kopien aller eigenen Pausen anlegen bzw. zurückziehen
+function pauseMirrors(on) { pausesOf(cfg.me).forEach(x => addEvent('pause', { pid: x.pid, from: x.from, to: x.to, mirror: true, ...(on ? {} : { deleted: true }) }, on ? `Pause bis ${pzDate(x.to)}` : 'Pause nicht mehr geteilt')); }
+// Training an einem Pausentag beendet die Pause ab heute
+function endPauseToday() {
+  const t = todayStr(), ap = pauseOn(cfg.me, t); if (!ap) return;
+  const y = addDays(t, -1);
+  savePause(ap.from <= y ? { ...ap, to: y } : { ...ap, deleted: true });
+}
+// Eigene Flammenzahl im Profil speichern, damit Buddys sie auch ohne sichtbare Pausen richtig sehen
+let flamePushing = false;
+function pushFlame() {
+  const pr = PROFILES[cfg.me]; if (!sb || !pr || flamePushing) return;
+  const n = flameStats(cfg.me).streak, wk = dateKey(weekOf(Date.now()));
+  if (+pr.flame === n && String(pr.flame_week || '').slice(0, 10) === wk) return;
+  flamePushing = true;
+  sb.from('profiles').update({ flame: n, flame_week: wk }).eq('id', cfg.me).then(r => { flamePushing = false; if (!r.error) { pr.flame = n; pr.flame_week = wk; } }, () => { flamePushing = false; });
+}
+const flameImg = (p, size) => `<img src="${FLAME.W}" alt=""${pauseOn(p, todayStr()) ? ' class="pz-gray"' : ''}${size ? ` width="${size}" height="${size}"` : ''}>`;
 /* Flammen-Liste: je Person Wochenflamme mit Streak, Antippen klappt die Tagesflammen auf */
 const FLAME_OPEN = new Set();
 function flameList() {
   const ppl = PEOPLE.map(p => ({ p, x: flameStats(p) })).sort((a, b) => b.x.streak - a.x.streak || (a.p === cfg.me ? -1 : 1));
   const rows = ppl.map(({ p, x }) => {
-    const open = FLAME_OPEN.has(p), n = x.week.length, g = x.goal;
-    const wk = n >= g ? `${n}/${g} · Wochenflamme sicher` : `${n}/${g} diese Woche`;
-    return `<div class="fl-row"><button class="fl-head" data-act="fl-toggle" data-p="${esc(p)}" aria-expanded="${open}">${avatar(p, 36)}<span class="fl-who"><b>${p === cfg.me ? 'Du' : nm(p)}</b><span class="small muted">${wk}</span></span><span class="fl-n" aria-label="${x.streak} ${x.streak === 1 ? 'Woche' : 'Wochen'} Streak"><img src="${FLAME.W}" alt=""><b>${x.streak}</b></span></button>
+    const open = FLAME_OPEN.has(p), n = x.week.length, g = x.goal, ap = pauseOn(p, todayStr());
+    const wk = ap ? `Pause bis ${pzDate(ap.to)}` : g === 0 ? 'Pause · Woche eingefroren' : n >= g ? `${n}/${g} · Wochenflamme sicher` : `${n}/${g} diese Woche`;
+    return `<div class="fl-row"><button class="fl-head" data-act="fl-toggle" data-p="${esc(p)}" aria-expanded="${open}">${avatar(p, 36)}<span class="fl-who"><b>${p === cfg.me ? 'Du' : nm(p)}</b><span class="small muted">${wk}</span></span><span class="fl-n" aria-label="${x.streak} ${x.streak === 1 ? 'Woche' : 'Wochen'} Streak">${flameImg(p)}<b>${x.streak}</b></span></button>
       ${open ? `<div class="fl-days">${DAYS.filter(d => x.counts[d] || pdays(p).includes(d)).map(d => `<span class="fl-day"><img src="${FLAME[d]}" alt=""><span class="fl-k" style="color:${TONE_HEX[DAY_TONE[d]]}">${esc(dl(d, p))}</span><b class="mono">${x.counts[d]}</b></span>`).join('')}</div>` : ''}</div>`;
   }).join('');
   return `<div class="sec-title" id="flammen"><h2>Flammen</h2></div><section class="card fl-list">${rows}</section>`;
@@ -424,7 +474,7 @@ function viewDone(id) {
   if (!w) return null;
   const p = w.person, d = w.data.day, wk = weekOf(w.ts);
   const week = s.workouts.filter(x => x.person === p && weekOf(x.ts) === wk).sort((a, b) => new Date(a.ts) - new Date(b.ts));
-  const g = weekGoal(p, wk), n = week.findIndex(x => x.id === id) + 1, full = n === g;
+  const g = Math.max(1, effGoal(p, wk)), n = week.findIndex(x => x.id === id) + 1, full = n === g;
   const wort = k => ['', 'einem', 'zwei', 'drei', 'vier', 'fünf', 'sechs'][k] || k, rest = g - n;
   const streak = flameStats(p).streak;
   const wd = new Date(w.ts).toLocaleDateString('de-DE', { weekday: 'long' });
@@ -484,6 +534,10 @@ const ICON = {
   search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
   play: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5v14l12-7z"/></svg>',
   pause: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>',
+  hourglass: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12M6 21h12"/><path d="M7.5 3v1.5c0 3 4.5 4.5 4.5 7.5 0-3 4.5-4.5 4.5-7.5V3M7.5 21v-1.5c0-3 4.5-4.5 4.5-7.5 0 3 4.5 4.5 4.5 7.5V21"/></svg>',
+  thermo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 14.6V5a2 2 0 0 0-4 0v9.6a4 4 0 1 0 4 0z"/><path d="M12 10v7"/></svg>',
+  plaster: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g transform="rotate(-45 12 12)"><rect x="2" y="8" width="20" height="8" rx="4"/><path d="M9 8v8M15 8v8"/></g></svg>',
+  umbrella: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 0 1 9 9H3a9 9 0 0 1 9-9z"/><path d="M12 12v6.5a2 2 0 0 0 4 0"/></svg>',
   stop: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
   moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>',
   bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',
@@ -599,7 +653,7 @@ function st() { return _st || (_st = buildState()); }
 function buildState() {
   const all = events.slice().sort((a, b) => a.seq - b.seq)
     .concat(pending.filter(p => !seenIds.has(p.id)).sort((a, b) => a.ts.localeCompare(b.ts)));
-  const s = { spotSeen: {}, spotMyReact: {}, spotReacts: {}, plans: {}, mine: {}, last: {}, lastBy: {}, workouts: [], skips: [], swaps: [], feed: [], changes: {}, lastChange: {}, lastShared: {}, decisions: {}, lastAction: {}, hist: {}, wedits: [], exInfo: {}, bw: {}, avatars: {}, first: {}, lib: null, libWarn: [], libHist: {} };
+  const s = { spotSeen: {}, spotMyReact: {}, spotReacts: {}, pauses: {}, plans: {}, mine: {}, last: {}, lastBy: {}, workouts: [], skips: [], swaps: [], feed: [], changes: {}, lastChange: {}, lastShared: {}, decisions: {}, lastAction: {}, hist: {}, wedits: [], exInfo: {}, bw: {}, avatars: {}, first: {}, lib: null, libWarn: [], libHist: {} };
   _st = s; // für dl() während des Aufbaus
   // Nachträgliche Änderungen an abgeschlossenen Trainings: es gilt die jeweils letzte, nur von derselben Person
   const edits = {}, libEv = [], planHints = {};
@@ -645,6 +699,12 @@ function buildState() {
       if (!DAYS.includes(d.day)) return;
       d.plan = d.plan === 'mine' ? 'mine' : 'crew';
       s.last[e.person] = s.lastBy[e.person + '|' + d.plan] = { day: d.day, plan: d.plan, ts: e.ts, kind: 'skip' }; s.skips.push(e);
+    } else if (e.type === 'pause') {
+      const re = /^\d{4}-\d\d-\d\d$/;
+      if (typeof d.pid !== 'string' || !re.test(d.from || '') || !re.test(d.to || '')) return;
+      if (e.person === cfg.me && d.mirror) return;   // eigene öffentliche Kopie: das private Original gilt
+      const m = s.pauses[e.person] = s.pauses[e.person] || {};
+      m[d.pid] = d.deleted ? null : { pid: d.pid, from: d.from <= d.to ? d.from : d.to, to: d.to >= d.from ? d.to : d.from, reason: PZ_REASON[d.reason] ? d.reason : '', ts: e.ts };
     } else if (e.type === 'plan_change') {
       if (!DAYS.includes(d.day)) return;
       // Pläne vor 2.0 trugen Muskeln, Ausführung und Video selbst: einmalig als Stand für die Bibliothek übernehmen
@@ -1044,6 +1104,14 @@ function plateauCount(p) {
 /* ---------- Deload (für jede Person getrennt) ---------- */
 function deloadState(p) {
   const ws = st().workouts.filter(w => w.person === p);
+  // Wiedereinstieg: nach einer Pause über 7 Tage laufen die nächsten 3 Trainings als Deload
+  if (p === cfg.me) {
+    const t = todayStr(), lp = pausesOf(p).filter(x => x.from <= t && dayNum(x.to) - dayNum(x.from) + 1 > 7).pop();
+    if (lp && !pauseOn(p, t)) {
+      const after = ws.filter(w => dateKey(w.ts) >= lp.from), days = dayNum(lp.to) - dayNum(lp.from) + 1;
+      if (after.length < 3 && after.every(w => w.data.deload || w.data.deloadSkipped)) return { active: true, part: after.length + 1, reason: `${days} Tage Pause`, reentry: days };
+    }
+  }
   let marked = 0, cycleEnd = -1;
   ws.forEach((w, i) => { if (w.data.deload || w.data.deloadSkipped) { marked++; if (marked >= 3) { marked = 0; cycleEnd = i; } } });
   if (marked > 0) return { active: true, part: marked + 1, reason: 'Deload-Woche läuft' };
@@ -1265,11 +1333,13 @@ function addSynced(ev) {
 // Profile, Crew und Freunde laden. Liefert true, wenn sich die Personenliste geändert hat.
 async function loadPeople() {
   const me = cfg.me; if (!me) return false;
-  const [pr, fr, cm] = await Promise.all([
-    sb.from('profiles').select('id,buddy_id,name,avatar_path,share_weight,legacy_name,week_goal,week_goal_next,week_goal_from,deleted_at'),
+  let [pr, fr, cm] = await Promise.all([
+    sb.from('profiles').select('id,buddy_id,name,avatar_path,share_weight,legacy_name,week_goal,week_goal_next,week_goal_from,deleted_at,flame,flame_week,share_pause,kurz'),
     sb.from('friendships').select('a,b,status,requested_by'),
     sb.from('crew_members').select('crew_id,user_id,role,joined_at')
   ]);
+  // Datenbank noch ohne Skript 11: ohne die neuen Felder laden
+  if (pr.error) pr = await sb.from('profiles').select('id,buddy_id,name,avatar_path,share_weight,legacy_name,week_goal,week_goal_next,week_goal_from,deleted_at');
   if (pr.error) throw sbErr(pr.error);
   const friends = new Set((fr.data || []).filter(f => f.status === 'accepted').map(f => f.a === me ? f.b : f.a));
   const next = {};
@@ -1349,7 +1419,7 @@ function sync({ overlay = false, quiet = false } = {}) {
       ui.set(100, 'Fertig', '');
       if (overlay) await sleep(400);
       if (rejected && !quiet) toast(rejected === 1 ? 'Ein Eintrag wurde abgelehnt.' : `${rejected} Einträge wurden abgelehnt.`);
-      setTimeout(() => { flushUsage(); notesSync(); vaultSync().then(() => gallerySync()); spotSync().then(() => chatSync()); }, 0);
+      setTimeout(() => { flushUsage(); pushFlame(); notesSync(); vaultSync().then(() => gallerySync()); spotSync().then(() => chatSync()); }, 0);
       return { ok: true };
     } catch (err) {
       const code = (err && err.code) || 'server';
@@ -2873,6 +2943,7 @@ function render() {
   if (name !== view) {
     resetAsk = logoutAsk = otherDayAsk = false; if (view.startsWith('vault') && !name.startsWith('vault')) lockVault();
     if (view === 'kamera') stopCamera();
+    if (view === 'privatsphaere' && PZS && PZS.reopen) { PZS.reopen = false; if (name === 'start') setTimeout(pauseSheet, 60); else PZS = null; }
     if (view === 'scanner') stopScan();
     if (name === 'crew') CREWV = { edit: false, invite: false, leave: false, rm: null, name: '' };
     if (view === 'spot' && name !== 'spot') closeEditor();
@@ -2888,7 +2959,7 @@ function render() {
     case 'bearbeiten': if (!edraft) { location.hash = '#verlauf'; return; } html = withEd(viewEdit); tone = DAY_TONE[edraft.day]; break;
     case 'verlauf': html = head('Verlauf') + `<main class="view">${viewVerlauf()}</main>` + tabbar('verlauf'); break;
     case 'plan': html = head('Plan') + `<main class="view">${viewPlan()}</main>` + tabbar('plan'); tone = pkind() === 'crew' && !hasCrew() ? '' : DAY_TONE[builder.day] || ''; break;
-    case 'privatsphaere': html = subhead('einstellungen') + `<main class="view nobar">${viewPrivacy()}</main>`; break;
+    case 'privatsphaere': html = subhead(PZS && PZS.reopen ? 'start' : 'einstellungen') + `<main class="view nobar">${viewPrivacy()}</main>`; break;
     case 'daten': html = subhead('einstellungen') + `<main class="view nobar">${viewData()}</main>`; break;
     case 'feedback': html = subhead('einstellungen') + `<main class="view nobar">${viewFeedback()}</main>`; break;
     case 'buddies': html = head('Buddies') + `<main class="view">${viewBuddies()}</main>` + tabbar('buddies'); break;
@@ -2950,7 +3021,7 @@ function spotRing() {
 // Ohne ungesehene Spots sitzt an derselben Stelle die Flammen-Kapsel: Wochenflamme und eigener Streak, führt zur Flammen-Liste
 function flameCap() {
   const n = flameStats(cfg.me).streak;
-  return `<button class="fcap glass" data-act="to-flames" aria-label="Dein Wochenstreak: ${n} ${n === 1 ? 'Woche' : 'Wochen'}. Zu den Flammen"><img src="${FLAME.W}" alt=""><b>${n}</b></button>`;
+  return `<button class="fcap glass" data-act="to-flames" aria-label="Dein Wochenstreak: ${n} ${n === 1 ? 'Woche' : 'Wochen'}. Zu den Flammen">${flameImg(cfg.me)}<b>${n}</b></button>`;
 }
 function onScroll() { const h = $('#head'); if (h) h.classList.toggle('scrolled', $('#app').scrollTop > 4); const sh = $('.sheet.full'); if (sh) sh.classList.toggle('scrolled', sh.scrollTop > 40); }
 document.addEventListener('scroll', onScroll, { passive: true, capture: true });
@@ -2988,14 +3059,26 @@ function viewStart() {
   const lastDoneOf = d => s.workouts.filter(w => w.person === me && w.data.day === d && (w.data.plan || 'crew') === sk).pop();
   const lastDone = lastDoneOf(nd);
   const wd = new Date().toLocaleDateString('de-DE', { weekday: 'long' });
-  const rot = pdays(me, sk).map(d => {
+  // Rotation: der nächste Tag steht links, danach die Reihenfolge des Plans, der zuletzt trainierte am Ende
+  const rdays = pdays(me, sk), ri = Math.max(0, rdays.indexOf(draft ? draft.day : nd)), rorder = rdays.slice(ri).concat(rdays.slice(0, ri));
+  const rot = rorder.map(d => {
     const isNext = d === (draft ? draft.day : nd);
     const l = lastDoneOf(d);
     const label = isNext ? (draft ? 'läuft' : 'als Nächstes') : l ? 'zuletzt ' + new Date(l.ts).toLocaleDateString('de-DE', { weekday: 'short' }) : '–';
     return `<div class="rot glass t-${DAY_TONE[d]} ${isNext ? 'next' : ''}"><b><i class="dot t-${DAY_TONE[d]}"></i>${esc(dl(d, me, sk))}</b><span>${label}</span></div>`;
   }).join('');
+  const ap = !draft && !done ? pauseOn(me, todayStr()) : null, upc = pausesOf(me).find(x => x.to >= todayStr());
+  const pzBtn = on => `<button class="btn pzbtn ${on ? 'on' : 'ghost'}" data-act="pause-open" aria-label="${on ? 'Pause bearbeiten' : 'Pause eintragen'}">${ICON.hourglass}</button>`;
   let main;
-  if (draft) {
+  if (ap) {
+    const r = pzReason(ap), left = dayNum(ap.to) - dayNum(todayStr()) + 1;
+    const rest = left <= 1 ? 'Heute ist dein letzter Pausentag.' : `Noch ${left} Tage Pause.`;
+    const txt = ap.reason === 'urlaub' && r ? 'Genieß die freien Tage. Deine Flamme wartet auf dich.' : `${rest} Dein Wochenziel ist angepasst, deine Flamme bleibt.`;
+    main = `<div class="eyebrow">Pause${r ? ' · ' + r.label : ''} · bis ${pzDate(ap.to)}</div>
+      <h1 class="kurz" style="color:${TONE_HEX[DAY_TONE[nd]]};opacity:.35">${esc(dl(nd, me, sk))}</h1><div class="title" style="color:var(--dim)">${esc(plan.title)} · danach als Nächstes</div>
+      <section class="card glass pzcard"><span class="pz-ic">${ICON[r ? r.icon : 'hourglass']}</span><span style="display:flex;flex-direction:column;gap:2px"><b>${r ? r.title : 'Deine Pause läuft'}</b><span class="small muted">${txt}</span></span></section>
+      <div class="btnrow" style="padding-top:8px"><button class="btn ghost" data-act="start">Doch trainieren</button>${pzBtn(true)}</div>`;
+  } else if (draft) {
     main = `<div class="eyebrow">Training läuft${draft.deload ? ' · Deload' : ''}</div>
       <h1 class="kurz" style="color:${TONE_HEX[DAY_TONE[draft.day]]}">${esc(dl(draft.day, me, draft.plan))}</h1><div class="title">${esc(draft.title)}</div>
       <div class="mono muted small">begonnen ${relDay(draft.start)} um ${fmtTime(draft.start)}</div>
@@ -3011,9 +3094,10 @@ function viewStart() {
       <h1 class="kurz" style="color:${TONE_HEX[DAY_TONE[nd]]}">${esc(dl(nd, me, sk))}</h1><div class="title">${esc(plan.title)}</div>
       <div class="mono muted small">${plan.exercises.length} Übungen · ${dl_.active ? `${plan.exercises.reduce((a, x) => a + Math.ceil((+x.sets || 1) / 2), 0)} Sätze (halbiert)` : `${nSets} Sätze`}${lastDone ? ` · zuletzt ${relDay(lastDone.ts)}` : ''}</div>
       ${regenHint(nd)}
-      ${dl_.active ? `<div class="deload"><b>Deload-Woche</b><span class="muted">${esc(dl_.reason)}. Gewicht −10 %, halbe Sätze, Wiederholungen am unteren Ende. Danach geht es mit deinen bisherigen Gewichten weiter.</span></div>` : ''}
+      ${dl_.active ? (dl_.reentry ? `<div class="deload"><b>Sanfter Wiedereinstieg</b><span class="muted">${dl_.reentry} Tage Pause. ${dl_.part === 1 ? 'Die nächsten 3 Trainings laufen' : `Noch ${4 - dl_.part} ${4 - dl_.part === 1 ? 'Training läuft' : 'Trainings laufen'}`} als Deload: Gewicht −10 %, halbe Sätze, Wiederholungen am unteren Ende.</span></div>`
+        : `<div class="deload"><b>Deload-Woche</b><span class="muted">${esc(dl_.reason)}. Gewicht −10 %, halbe Sätze, Wiederholungen am unteren Ende. Danach geht es mit deinen bisherigen Gewichten weiter.</span></div>`) : ''}
       <div class="btnrow" style="padding-top:8px">
-        <button class="btn primary" data-act="start">${dl_.active ? 'Deload starten' : 'Training starten'}</button>
+        <button class="btn primary" data-act="start">${dl_.active ? 'Training mit Deload starten' : 'Training starten'}</button>${pzBtn(!!upc)}
       </div>
       ${dl_.active ? '<button class="btn ghost" data-act="start-normal">Heute normal trainieren</button>' : ''}
       ${otherDayAsk ? `<div class="confirm"><div><b>Welchen Tag trainierst du heute?</b><br><span class="small muted">Deine Rotation geht danach ab diesem Tag weiter.</span></div>
@@ -3030,12 +3114,80 @@ function viewStart() {
   const kseg = hasCrew() && !draft ? `<div class="seg" role="group" aria-label="Plan"><button data-act="skind" data-v="mine" aria-pressed="${sk === 'mine'}">Mein Plan</button><button data-act="skind" data-v="crew" aria-pressed="${sk === 'crew'}">Crew-Plan</button></div>` : '';
   return `${install}${kseg}
     <section class="hero">${main}</section>
-    <div class="rotation" aria-label="Deine Rotation">${rot}</div>
+    <div class="rotation${rorder.length > 3 ? ' scroll' : ''}" aria-label="Deine Rotation">${rot}</div>
     ${syncLine()}
     <div class="sec-title"><h2>Neuigkeiten${week.length > 3 ? ` <span class="mono muted sec-n">3 von ${week.length}</span>` : ''}</h2>${s.feed.length ? '<a href="#verlauf">Alle</a>' : ''}</div>
     <section class="card" style="padding:4px 16px">${feed.length ? `<div class="feed">${feed.map(feedItem).join('')}</div>` : (s.feed.length ? '<div class="empty">Diese Woche noch nichts Neues. Alles Ältere findest du im Verlauf.</div>' : '<div class="empty">Hier erscheinen eure Trainings, Steigerungen und Skips.</div>')}</section>
     ${flameList()}
     ${progressCard()}`;
+}
+/* Sheet „Pause eintragen“: Grund, Zeitraum (Schnellauswahl oder Kalender), Teilen */
+let PZS = null;
+const sundayOf = s => addDays(s, (7 - new Date(s + 'T12:00').getDay()) % 7);
+function pauseOpen() {
+  const t = todayStr(), cur = pausesOf(cfg.me).find(x => x.to >= t);
+  PZS = cur ? { pid: cur.pid, from: cur.from, to: cur.to, reason: cur.reason, quick: '', step: 0, m: cur.from.slice(0, 7), edit: true, min0: cur.from }
+    : { from: t, to: sundayOf(t), reason: '', quick: 'sonntag', step: 0, m: t.slice(0, 7) };
+  pauseSheet();
+}
+function pauseSheet() {
+  if (!PZS) return;
+  const z = PZS, t = todayStr(), min = [dateKey(weekOf(Date.now())), z.min0 || t].sort()[0], max = addDays(t, 120);
+  const R = z.reason && PZ_REASON[z.reason], ask = R && R.health && !hasConsent('health');
+  const pill = (act, v, on, label, icon) => `<button class="pzpill${on ? ' on' : ''}" data-act="${act}" data-v="${v}" aria-pressed="${on}">${icon ? ICON[icon] : ''}${label}</button>`;
+  const reasons = Object.entries(PZ_REASON).map(([k, r]) => pill('pz-reason', k, z.reason === k, r.label, r.icon)).join('');
+  const quick = [['heute', 'Nur heute'], ['sonntag', 'Bis Sonntag'], ['drei', '3 Tage']].map(([k, l]) => pill('pz-quick', k, z.quick === k, l)).join('');
+  const [y, mo] = z.m.split('-').map(Number), first = new Date(y, mo - 1, 1), off = (first.getDay() + 6) % 7, n = new Date(y, mo, 0).getDate();
+  let cells = '';
+  for (let i = 0; i < off; i++) cells += '<span></span>';
+  for (let d = 1; d <= n; d++) {
+    const k = `${z.m}-${pad2(d)}`, dis = k < min || k > max, end = k === z.from || k === z.to, inr = k > z.from && k < z.to;
+    cells += `<button class="pzd${dis ? ' off' : end ? ' end' : inr ? ' in' : ''}${k === t ? ' today' : ''}" data-act="pz-day" data-v="${k}" ${dis ? 'disabled' : ''} aria-pressed="${end || inr}">${d}</button>`;
+  }
+  const title = first.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+  const days = dayNum(z.to) - dayNum(z.from) + 1, rl = R && !ask ? R.label : '';
+  const summary = `${pzDate(z.from)}${z.from !== z.to ? ' – ' + pzDate(z.to) : ''} · ${days} ${days === 1 ? 'Tag' : 'Tage'}${rl ? ' · ' + rl : ''}`;
+  const sh = sharePause();
+  sheet(`<h2>${z.edit ? 'Pause bearbeiten' : 'Pause eintragen'}</h2>
+    <div class="pzsec"><span class="eyebrow">Grund</span><div class="pzpills">${reasons}</div>
+      ${ask ? `<div class="card pzask"><span class="small">„${R.label}“ ist eine Gesundheitsangabe. Dafür brauchen wir einmal deine Einwilligung, wie beim Körpergewicht.</span>
+        <div class="btnrow"><button class="btn small primary" data-act="pz-consent">Einwilligen</button><button class="btn small ghost" data-act="pz-noreason">Nur „Pause“</button></div></div>` : ''}</div>
+    <div class="pzsec"><span class="eyebrow">Zeitraum</span><div class="pzpills">${quick}</div></div>
+    <div class="pzsec"><div class="calnav"><button class="iconbtn" data-act="pz-month" data-v="-1" aria-label="Voriger Monat" ${z.m <= min.slice(0, 7) ? 'disabled' : ''}>${ICON.left}</button><b>${title}</b><button class="iconbtn" data-act="pz-month" data-v="1" aria-label="Nächster Monat" ${z.m >= max.slice(0, 7) ? 'disabled' : ''}>${ICON.right}</button></div>
+      <div class="pzcal">${['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map(w => `<span class="wd">${w}</span>`).join('')}${cells}</div>
+      <span class="mono small muted">${z.step ? 'Letzten Tag wählen' : 'Ersten Tag antippen, dann den letzten'}</span></div>
+    <label class="row tgl" style="cursor:pointer;padding:0"><span style="display:flex;flex-direction:column;gap:2px"><span>Pause mit Buddys teilen</span><span class="small muted">${sh ? 'Crew und Freunde sehen „Pause bis …“, keinen Grund.' : 'Aus: Deine Buddys sehen nichts davon.'}</span></span><input type="checkbox" role="switch" id="pz-share" ${sh ? 'checked' : ''}><i aria-hidden="true"></i></label>
+    <button class="lnk" data-act="pz-privacy" style="align-self:flex-start;padding:0">Wer sieht was? Privatsphäre-Einstellungen</button>
+    <span class="mono small" style="text-align:center;color:var(--dim)">${summary}</span>
+    <button class="btn primary" data-act="pz-save" ${ask ? 'disabled' : ''}>${z.edit ? 'Speichern' : 'Pause eintragen'}</button>
+    ${z.edit ? `<button class="btn ghost danger-t" data-act="pz-end">${z.from > t ? 'Pause löschen' : 'Pause beenden'}</button>` : ''}`);
+}
+function pzQuick(k) { const t = todayStr(); PZS.quick = k; PZS.step = 0; PZS.from = t; PZS.to = k === 'heute' ? t : k === 'drei' ? addDays(t, 2) : sundayOf(t); PZS.m = t.slice(0, 7); pauseSheet(); }
+function pzDay(k) {
+  const z = PZS; z.quick = '';
+  if (!z.step) { z.from = z.to = k; z.step = 1; }
+  else { if (k < z.from) { z.to = z.from; z.from = k; } else z.to = k; z.step = 0; }
+  pauseSheet();
+}
+function pzSave() {
+  const z = PZS; if (!z) return;
+  const R = PZ_REASON[z.reason]; if (R && R.health && !hasConsent('health')) return;
+  savePause({ pid: z.pid, from: z.from, to: z.to, reason: z.reason });
+  const msg = z.edit ? 'Pause gespeichert' : z.reason === 'krank' || z.reason === 'verletzt' ? 'Pause eingetragen. Gute Besserung!' : z.reason === 'urlaub' ? 'Pause eingetragen. Schönen Urlaub!' : 'Pause eingetragen';
+  PZS = null; closeModal(); toast(msg); render();
+}
+function pzEnd() {
+  const z = PZS; if (!z || !z.pid) return;
+  const t = todayStr(), y = addDays(t, -1);
+  savePause(z.from <= y ? { pid: z.pid, from: z.from, to: y, reason: z.reason } : { pid: z.pid, from: z.from, to: z.to, deleted: true });
+  PZS = null; closeModal(); toast(z.from > t ? 'Pause gelöscht' : 'Pause beendet. Schön, dass du wieder da bist!'); render();
+}
+async function setSharePause(v, el) {
+  const r = await sb.from('profiles').update({ share_pause: v }).eq('id', cfg.me);
+  if (r.error) { toast('Speichern hat nicht geklappt.'); if (el) el.checked = !v; return; }
+  if (PROFILES[cfg.me]) PROFILES[cfg.me].share_pause = v; LS.set('profiles', PROFILES);
+  pauseMirrors(v);
+  if (PZS && $('#pz-share')) pauseSheet(); else render();
 }
 // Hinweis, wenn derselbe Trainingstag noch keine REGEN_H Stunden her ist (ändert nichts an den Flammen)
 function regenHint(d, small) {
@@ -3391,6 +3543,7 @@ function finishTraining() {
   const summary = `${dl(draft.day, null, draft.plan)} ${draft.title}${draft.deload ? ' (Deload)' : ''} · ${n} Sätze · ` + entries.map(en => `${en.name}: ${fmtSets(en.type, en.sets)}${feelText(en) ? ` [${feelText(en)}]` : ''}${en.note ? ` (Notiz: ${en.note})` : ''}`).join(' | ');
   const { plan } = plannedSets();
   const k = draft.plan === 'mine' ? 'mine' : 'crew';
+  endPauseToday();
   const e = addEvent('workout', { day: draft.day, plan: k, date: todayStr(), short: dl(draft.day, null, k), title: draft.title, start: draft.start, end, deload: !!draft.deload, deloadSkipped: !!draft.deloadSkipped, swaps, entries, plan }, summary + (n < plan ? ` · abgebrochen (${n} von ${plan} Sätzen)` : ''));
   // Notizen aus dem Training: privat und (im Crew-Plan) für die Crew
   draft.items.forEach(it => {
@@ -3795,27 +3948,53 @@ function viewVerlauf() {
   const legend = `<div class="legend"><span>oben: du</span><span>unten: ${nm(other)}</span><span>· letzte Einheit</span></div>`;
   return seg + legend + days + (archived.length ? `<div class="sec-title"><h2>Archiv</h2></div><div class="small muted" style="margin:0 2px">Ausgetauschte, entfernte oder spontan getauschte Übungen. Ihr Verlauf bleibt erhalten.</div><section class="card" style="padding:4px 16px">${archived.map(id => row({ id, ...s.exInfo[id] })).join('')}</section>` : '');
 }
+/* Kürzel im Kalender: erster Buchstabe; bei gleichem Buchstaben zwei; bei gleichem Namen Buchstabe + Zahl.
+   Wer im Profil selbst ein Kürzel festgelegt hat, behält es. */
+function kurzMap() {
+  const out = {}, nameOf = p => String(pname(p) || '?').trim() || '?';
+  const one = p => nameOf(p).charAt(0).toUpperCase(), two = p => one(p) + (nameOf(p).charAt(1) || '').toLowerCase();
+  PEOPLE.forEach(p => { const k = (PROFILES[p] || {}).kurz; if (k) out[p] = k; });
+  const taken = new Set(Object.values(out).map(k => k.toUpperCase()));
+  const auto = PEOPLE.filter(p => !out[p]), g1 = {};
+  auto.forEach(p => (g1[one(p)] = g1[one(p)] || []).push(p));
+  Object.entries(g1).forEach(([c, g]) => {
+    if (g.length === 1 && !taken.has(c)) { out[g[0]] = c; return; }
+    const g2 = {}; g.forEach(p => (g2[two(p)] = g2[two(p)] || []).push(p));
+    Object.entries(g2).forEach(([c2, gg]) => { if (gg.length === 1 && c2.length === 2 && !taken.has(c2.toUpperCase())) out[gg[0]] = c2; else gg.forEach((p, i) => { out[p] = c + (i + 1); }); });
+  });
+  return out;
+}
 function viewCalendar() {
   const s = st(), first = new Date(cal.y, cal.m, 1), offset = (first.getDay() + 6) % 7, daysIn = new Date(cal.y, cal.m + 1, 0).getDate();
   const map = {}; const add = (k, o) => (map[k] = map[k] || []).push(o);
   s.workouts.forEach(w => add(dateKey(w.ts), { p: w.person, day: w.data.day, kind: w.data.deload ? 'deload' : w.abort ? 'abort' : 'workout', e: w }));
+  // Pausen (eigene immer, andere nur geteilte) als schwarze Marke mit Kürzel
+  const mFrom = `${cal.y}-${pad2(cal.m + 1)}-01`, mTo = `${cal.y}-${pad2(cal.m + 1)}-${pad2(daysIn)}`;
+  PEOPLE.forEach(p => pausesOf(p).forEach(x => { for (let k = x.from < mFrom ? mFrom : x.from; k <= x.to && k <= mTo; k = addDays(k, 1)) add(k, { p, kind: 'pause', z: x }); }));
+  const K = kurzMap();
   const today = todayStr();
   let cells = '';
   for (let i = 0; i < offset; i++) cells += '<div class="cd empty"></div>';
   for (let d = 1; d <= daysIn; d++) {
     const k = `${cal.y}-${pad2(cal.m + 1)}-${pad2(d)}`;
     const items = (map[k] || []).sort((a, b) => PEOPLE.indexOf(a.p) - PEOPLE.indexOf(b.p));
-    cells += `<button class="cd ${k === today ? 'today' : ''} ${k === cal.sel ? 'sel' : ''}" data-act="calday" data-v="${k}" aria-label="${d}. ${items.length ? items.length + ' Einträge' : 'kein Eintrag'}"><span class="dn">${d}</span><span class="marks">${items.map(o => `<i class="cm t-${DAY_TONE[o.day]} ${o.kind}" title="${nm(o.p)} · ${esc(dl(o.day, o.p))}">${esc(o.p[0])}</i>`).join('')}</span></button>`;
+    cells += `<button class="cd ${k === today ? 'today' : ''} ${k === cal.sel ? 'sel' : ''}" data-act="calday" data-v="${k}" aria-label="${d}. ${items.length ? items.length + ' Einträge' : 'kein Eintrag'}"><span class="dn">${d}</span><span class="marks">${items.map(o => o.kind === 'pause' ? `<i class="cm pz" title="${nm(o.p)} · Pause">${esc(K[o.p] || '?')}</i>` : `<i class="cm t-${DAY_TONE[o.day]} ${o.kind === 'deload' ? 'dl' : o.kind}" title="${nm(o.p)} · ${esc(dl(o.day, o.p))}">${esc(K[o.p] || '?')}</i>`).join('')}</span></button>`;
   }
-  const sel = (map[cal.sel] || []).map(o => o.e).sort((a, b) => b.ts.localeCompare(a.ts));
+  const sel = (map[cal.sel] || []).filter(o => o.e).map(o => o.e).sort((a, b) => b.ts.localeCompare(a.ts));
+  const selPz = (map[cal.sel] || []).filter(o => o.kind === 'pause').map(o => {
+    const own = o.p === cfg.me, r = own ? pzReason(o.z) : null, n = dayNum(o.z.to) - dayNum(o.z.from) + 1;
+    return `<div class="fi"><span class="pz-ic" style="width:34px;height:34px">${ICON[r ? r.icon : 'hourglass']}</span><div><div class="t"><span><b>${own ? 'Du' : nm(o.p)}</b> ${own ? 'machst' : 'macht'} Pause${r ? ' · ' + r.label : ''}</span></div><div class="m">${o.z.from === o.z.to ? pzDate(o.z.from) : `${pzDate(o.z.from)} – ${pzDate(o.z.to)} · ${n} Tage`}</div></div></div>`;
+  }).join('');
+  const myK = K[cfg.me] || 'M';
   const title = first.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
   return `<section class="card cal">
       <div class="calnav"><button class="iconbtn" data-act="calmove" data-v="-1" aria-label="Voriger Monat">${ICON.left}</button><b>${title}</b><button class="iconbtn" data-act="calmove" data-v="1" aria-label="Nächster Monat">${ICON.right}</button></div>
       <div class="calgrid">${['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map(w => `<span class="wd">${w}</span>`).join('')}${cells}</div>
-      <div class="legend">${DAYS.filter(d => s.workouts.some(w => w.data.day === d)).map(d => `<span class="ln"><i class="cm t-${DAY_TONE[d]}">M</i>${esc(dl(d))}</span>`).join('')}<span class="ln"><i class="cm t-y abort">M</i>abgebrochen</span><span class="ln"><i class="cm t-y deload">M</i>Deload</span></div>
+      <div class="legend">${DAYS.filter(d => s.workouts.some(w => w.data.day === d)).map(d => `<span class="ln"><i class="cm t-${DAY_TONE[d]}">${esc(myK)}</i>${esc(dl(d))}</span>`).join('')}</div>
+      <div class="legend"><span class="ln"><i class="cm t-n abort">${esc(myK)}</i>abgebrochen</span><span class="ln"><i class="cm t-n dl">${esc(myK)}</i>Deload</span><span class="ln"><i class="cm pz">${ICON.hourglass}</i>Pause</span></div>
     </section>
     <div class="sec-title"><h2>${new Date(cal.sel + 'T12:00').toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}</h2></div>
-    <section class="card" style="padding:4px 16px">${sel.length ? `<div class="feed">${sel.map(feedItem).join('')}</div>` : '<div class="empty">An diesem Tag hat niemand trainiert.</div>'}</section>`;
+    <section class="card" style="padding:4px 16px">${sel.length || selPz ? `<div class="feed">${selPz}${sel.map(feedItem).join('')}</div>` : '<div class="empty">An diesem Tag hat niemand trainiert.</div>'}</section>`;
 }
 function chartSvg(series, label) {
   const pts = series.flatMap(sr => sr.points);
@@ -4073,7 +4252,7 @@ function viewProfile(p) {
   const meta = `${since ? 'Trainiert seit ' + new Date(since).toLocaleDateString('de-DE') : 'Noch keine Einträge'}${own ? ` · als Nächstes ${esc(dl(nextDay(p), p, curPlan()))}` : ''}`;
   const bid = (PROFILES[p] || {}).buddy_id;
   const idLine = own && bid ? `<button data-act="acct-copy" style="background:none;border:0;color:#fff;padding:2px 0;display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:-4px" aria-label="Buddy-ID ${esc(bid)} kopieren"><span class="mono" style="font-size:16px;font-weight:700;letter-spacing:.08em">#${esc(bid)}</span>${ICON.copy.replace(/18/g, '16')}</button>` : '';
-  const goal = weekGoal(p), wkN = ws.filter(w => weekOf(w.ts) === weekOf(Date.now())).length;
+  const goal = weekGoal(p), wkN = ws.filter(w => weekOf(w.ts) === weekOf(Date.now())).length, pzD = own ? pauseDaysInWeek(p, weekOf(Date.now())) : 0, eGoal = own ? effGoal(p, weekOf(Date.now())) : goal;
   const ring = `<div class="pf-ring">${avatar(p, 114)}${own ? `<button class="pf-qr" data-act="id-sheet" aria-label="Meinen QR-Code zeigen">${ICON.qr.replace(/20/g, '16')}</button>` : ''}${own ? `<label class="pf-cam" aria-label="Profilbild ändern">${ICON.cam.replace('width="22" height="22"', 'width="16" height="16"')}<input type="file" id="av-file" accept="image/*" hidden></label>` : ''}</div>`;
   const bar = `<section class="card"><div class="rowbetween"><span class="eyebrow">Trainings nach Tag</span><span class="mono muted small">${tot}</span></div>
       <div class="daybar">${tot ? DAYS.map((d, i) => counts[i] ? `<i class="t-${DAY_TONE[d]}" style="flex:${counts[i]}"></i>` : '').join('') : ''}</div>
@@ -4084,7 +4263,7 @@ function viewProfile(p) {
         <div class="card"><span class="val">${tot}</span><span class="eyebrow">Trainings</span></div>
         <a class="card" href="#gewicht"><span class="val">${lb ? fmtN(lb.kg) + '<small> kg</small>' : '–'}</span><span class="eyebrow">Körpergewicht${pb ? ` · ${lb.kg - pb.kg >= 0 ? '+' : '−'}${fmtN(Math.abs(lb.kg - pb.kg))}` : ''}</span></a>
       </div>
-      <button class="card goalcard" data-act="goal-open"><span style="display:flex;align-items:center;gap:12px"><img src="${FLAME.W}" alt="" width="36" height="36"><span style="flex:1;display:flex;flex-direction:column;text-align:left"><b>Wochenziel · ${goal} ${goal === 1 ? 'Training' : 'Trainings'}</b><span class="small muted">${wkN} von ${goal} diese Woche${(PROFILES[p] || {}).week_goal_next && new Date((PROFILES[p] || {}).week_goal_from) > new Date() ? ` · ab ${new Date(PROFILES[p].week_goal_from).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}: ${PROFILES[p].week_goal_next}` : ''}</span></span>${ICON.right}</span></button>
+      <button class="card goalcard" data-act="goal-open"><span style="display:flex;align-items:center;gap:12px">${flameImg(p, 36)}<span style="flex:1;display:flex;flex-direction:column;text-align:left"><b>Wochenziel · ${pzD ? (eGoal ? `${eGoal} ${eGoal === 1 ? 'Training' : 'Trainings'}` : 'eingefroren') : `${goal} ${goal === 1 ? 'Training' : 'Trainings'}`}</b><span class="small muted">${pzD ? `statt ${goal} · ${pzD} ${pzD === 1 ? 'Tag' : 'Tage'} Pause diese Woche` : `${wkN} von ${goal} diese Woche`}${(PROFILES[p] || {}).week_goal_next && new Date((PROFILES[p] || {}).week_goal_from) > new Date() ? ` · ab ${new Date(PROFILES[p].week_goal_from).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}: ${PROFILES[p].week_goal_next}` : ''}</span></span>${ICON.right}</span></button>
       ${bar}
       <a class="vaultcard glass" href="#vault"><span class="ic">${ICON.lock}</span><span style="flex:1;display:flex;flex-direction:column;gap:2px"><b>Vault</b><span class="small muted">${vmeta() ? 'Private Bilder · nur für dich' : 'Private Fortschrittsbilder · Code festlegen'}</span></span>${ICON.right}</a>
       ${galleryHTML()}`;
@@ -4539,8 +4718,8 @@ function viewBuddies() {
         <button class="btn glass" data-act="crew-invite" style="min-height:44px;font-size:14px;padding:0 6px;white-space:nowrap" ${isOwner() && n < CREW_MAX ? '' : 'disabled'}>Einladen</button></div></section>`
     : `<section class="card nocrew"><h2>Du bist noch in keiner Crew</h2><p>Gründe eine mit deinen Buddies und trainiert nach einem gemeinsamen Plan.</p><a class="btn primary" href="#crew" style="width:100%">${ICON_CREW14.replace(/14/g, '20')}Crew gründen</a></section>`;
   const fl = friendsList().sort((a, b) => pname(a).localeCompare(pname(b), 'de'));
-  const frows = fl.map((id, i) => { const x = flameStats(id), g = weekGoal(id);
-    return `<a class="brow" href="#profil:${encodeURIComponent(id)}" style="${i < fl.length - 1 ? 'border-bottom:1px solid rgba(255,255,255,.12)' : ''}">${avatar(id, 40)}<span class="bname"><b>${nm(id)}</b><span class="small muted">${x.week.length} von ${g} diese Woche${crewMates().includes(id) ? ' · Crew' : ''}</span></span><span class="fl-n" aria-label="${x.streak} Wochen Streak"><img src="${FLAME.W}" alt=""><b>${x.streak}</b></span></a>`; }).join('');
+  const frows = fl.map((id, i) => { const x = flameStats(id), g = x.goal, ap = pauseOn(id, todayStr());
+    return `<a class="brow" href="#profil:${encodeURIComponent(id)}" style="${i < fl.length - 1 ? 'border-bottom:1px solid rgba(255,255,255,.12)' : ''}">${avatar(id, 40)}<span class="bname"><b>${nm(id)}</b><span class="small muted">${ap ? `Pause bis ${pzDate(ap.to)}` : `${x.week.length} von ${g} diese Woche`}${crewMates().includes(id) ? ' · Crew' : ''}</span></span><span class="fl-n" aria-label="${x.streak} Wochen Streak">${flameImg(id)}<b>${x.streak}</b></span></a>`; }).join('');
   return `${search}
     ${reqs || cinv ? `<div class="sec-title"><h2>Anfragen</h2></div><section class="card glass" style="padding:4px 16px;gap:0">${cinv}${reqs}</section>` : ''}
     <div class="sec-title"><h2>Crew</h2></div>${crew}
@@ -4709,8 +4888,16 @@ async function setConsent(kind, granted) {
   CONSENTS[kind] = granted; LS.set('consents', CONSENTS); return true;
 }
 // Einwilligung für Gesundheitsdaten, einmalig vor dem ersten Eintrag
-function healthSheet(then) {
+function healthSheet(then, kind) {
   HEALTH_NEXT = then;
+  if (kind === 'pause') {
+    sheet(`<span class="eyebrow">Einmalig</span><h2>Grund speichern?</h2>
+      <p class="muted" style="margin:0">„Krank“ und „Verletzt“ gelten als Gesundheitsangaben. Wir speichern sie deshalb nur, wenn du ausdrücklich zustimmst.</p>
+      <ul class="dots"><li>Den Grund siehst <b>nur du</b>. Deine Buddys sehen höchstens „Pause“, und auch das nur, wenn du es teilst.</li><li>Gespeichert in der EU (Frankfurt).</li><li>Jederzeit widerrufbar. Dabei werden die Gründe gelöscht, die Pausen bleiben.</li></ul>
+      <span class="small muted">Dieselbe Einwilligung gilt für Körpergewicht und Fortschrittsbilder im Vault. Mehr in der <a href="#rechtliches:datenschutz" data-act="mclose">Datenschutzerklärung</a>.</span>
+      <div class="btnrow col"><button class="btn primary" data-act="health-yes">Zustimmen</button><button class="btn ghost" data-act="pz-reopen">Nicht jetzt</button></div>`);
+    return;
+  }
   sheet(`<span class="eyebrow">Einmalig vor dem ersten Eintrag</span><h2>Körpergewicht speichern?</h2>
     <p class="muted" style="margin:0">Dein Körpergewicht gilt als Gesundheitsdatum. Wir speichern es deshalb nur, wenn du ausdrücklich zustimmst.</p>
     <ul class="dots"><li>Standardmäßig <b>privat</b>. Freunde sehen es nur, wenn du es unter „Privatsphäre“ freigibst.</li><li>Gespeichert in der EU (Frankfurt), nur für deinen Verlauf.</li><li>Jederzeit widerrufbar. Dabei kannst du alle bisherigen Einträge löschen.</li></ul>
@@ -4719,7 +4906,7 @@ function healthSheet(then) {
 }
 let HEALTH_NEXT = null;
 function healthWithdrawSheet() {
-  sheet(`<h2>Einwilligung widerrufen?</h2><p class="muted" style="margin:0">Körpergewicht und Vault werden nicht mehr gespeichert. Was soll mit den bisherigen Einträgen passieren?</p>
+  sheet(`<h2>Einwilligung widerrufen?</h2><p class="muted" style="margin:0">Körpergewicht, Vault-Bilder und die Pausengründe „krank“ und „verletzt“ werden nicht mehr gespeichert. Was soll mit den bisherigen Einträgen passieren?</p>
     <div class="btnrow col"><button class="btn danger" data-act="health-del">Widerrufen und alles löschen</button><button class="btn" data-act="health-keep">Widerrufen, Einträge behalten</button><button class="btn ghost" data-act="mclose">Abbrechen</button></div>`);
 }
 async function healthDeleteAll() {
@@ -4730,8 +4917,10 @@ async function healthDeleteAll() {
   for (const x of await IDB.all(cfg.me)) await IDB.del(x.id);
   ['vault.', 'vault.tok.', 'vault.cloud.', 'vault.tomb.'].forEach(k => localStorage.removeItem('hb.' + k + cfg.me));
   lockVault();
-  events = events.filter(e => !(e.person === cfg.me && e.type === 'bodyweight')); pending = pending.filter(e => e.type !== 'bodyweight'); saveLog(); invalidate();
-  toast('Widerrufen. Körpergewicht und Vault-Bilder sind gelöscht.'); render();
+  events = events.filter(e => !(e.person === cfg.me && e.type === 'bodyweight')); pending = pending.filter(e => e.type !== 'bodyweight');
+  [...events, ...pending].forEach(e => { if (e.person === cfg.me && e.type === 'pause' && e.data && (e.data.reason === 'krank' || e.data.reason === 'verletzt')) delete e.data.reason; });
+  saveLog(); invalidate();
+  toast('Widerrufen. Körpergewicht, Vault-Bilder und Pausengründe sind gelöscht.'); render();
 }
 // Nutzungsstatistik: einmal fragen, nur mitzählen, welche Bereiche genutzt werden
 function statsSheet() {
@@ -4760,11 +4949,12 @@ function viewPrivacy() {
   return `<h1 class="display" style="font-size:30px">Privatsphäre</h1>
     <div class="secl">Deine Freunde und Crew sehen</div>
     <div class="rows glass">${rowS('Trainings, Rekorde, Flammen', 'Gehört zum Kern der App', 'immer')}${rowS('Profilbild und Name', 'Fremde sehen sie nur bei der Suche per ID', 'immer')}
-      <label class="row tgl" style="cursor:pointer;min-height:64px"><span style="display:flex;flex-direction:column;gap:2px"><span>Körpergewicht</span><span class="small muted">${pr.share_weight ? 'Deine Buddys sehen es' : 'Nur du siehst es'}</span></span><input type="checkbox" role="switch" id="share-w" ${pr.share_weight ? 'checked' : ''}><i aria-hidden="true"></i></label></div>
+      <label class="row tgl" style="cursor:pointer;min-height:64px"><span style="display:flex;flex-direction:column;gap:2px"><span>Körpergewicht</span><span class="small muted">${pr.share_weight ? 'Deine Buddys sehen es' : 'Nur du siehst es'}</span></span><input type="checkbox" role="switch" id="share-w" ${pr.share_weight ? 'checked' : ''}><i aria-hidden="true"></i></label>
+      <label class="row tgl" style="cursor:pointer;min-height:64px"><span style="display:flex;flex-direction:column;gap:2px"><span>Pausen</span><span class="small muted">${pr.share_pause ? 'Deine Buddys sehen „Pause bis …“, nie den Grund' : 'Nur du siehst sie'}</span></span><input type="checkbox" role="switch" id="share-p" ${pr.share_pause ? 'checked' : ''}><i aria-hidden="true"></i></label></div>
     <span class="small muted" style="padding:0 4px">Chats, Spots und Vault sind Ende-zu-Ende-verschlüsselt. Nur du und die Empfänger können sie lesen, auch der Betreiber nicht.</span>
     <div class="secl">Einwilligungen</div>
     <div class="rows glass">
-      <div class="row" style="min-height:64px"><span style="display:flex;flex-direction:column;gap:2px"><span>Gesundheitsdaten</span><span class="small muted">${hasConsent('health') ? 'Erteilt: Körpergewicht und Vault' : 'Nicht erteilt'}</span></span>${hasConsent('health') ? '<button class="lnk" data-act="health-withdraw">Widerrufen</button>' : '<button class="lnk" data-act="health-ask">Erteilen</button>'}</div>
+      <div class="row" style="min-height:64px"><span style="display:flex;flex-direction:column;gap:2px"><span>Gesundheitsdaten</span><span class="small muted">${hasConsent('health') ? 'Erteilt: Körpergewicht, Vault, Pausengrund' : 'Nicht erteilt'}</span></span>${hasConsent('health') ? '<button class="lnk" data-act="health-withdraw">Widerrufen</button>' : '<button class="lnk" data-act="health-ask">Erteilen</button>'}</div>
       <label class="row tgl" style="cursor:pointer;min-height:64px"><span style="display:flex;flex-direction:column;gap:2px"><span>Nutzungsstatistik teilen</span><span class="small muted">Anonym, ohne Inhalte, 90 Tage</span></span><input type="checkbox" role="switch" id="stats-tgl" ${hasConsent('analytics') ? 'checked' : ''}><i aria-hidden="true"></i></label>
     </div>
     <div class="rows glass"><a class="row" href="#rechtliches:datenschutz">Datenschutzerklärung<span class="v">›</span></a><a class="row" href="#daten">Deine Daten<span class="v">›</span></a></div>`;
@@ -5020,7 +5210,8 @@ function viewSettings() {
   const hasVault = !!vmeta();
   return `<h1 class="display" style="font-size:30px">Einstellungen</h1>
     <div class="secl">Profil</div>
-    <div class="rows glass"><label class="row" style="min-height:72px">${avatar(cfg.me, 46)}<span style="display:flex;flex-direction:column"><b>${nm(cfg.me)}</b><span class="small muted">Profilbild sehen deine Buddies</span></span><span class="v" style="color:var(--fg);font-family:var(--body);font-weight:600">Ändern</span><input type="file" id="av-file2" accept="image/*" hidden></label></div>
+    <div class="rows glass"><label class="row" style="min-height:72px">${avatar(cfg.me, 46)}<span style="display:flex;flex-direction:column"><b>${nm(cfg.me)}</b><span class="small muted">Profilbild sehen deine Buddies</span></span><span class="v" style="color:var(--fg);font-family:var(--body);font-weight:600">Ändern</span><input type="file" id="av-file2" accept="image/*" hidden></label>
+      <button class="row" data-act="kurz-open">Kürzel im Kalender<span class="v">${esc(kurzMap()[cfg.me] || '–')}${(PROFILES[cfg.me] || {}).kurz ? '' : ' · automatisch'}</span></button></div>
     <div class="secl">Vault</div>
     <div class="rows glass">
       ${hasVault ? `<button class="row" data-act="v-change">Vault-Code ändern<span class="v">• • • •</span></button>
@@ -5199,6 +5390,27 @@ const actions = {
   start: () => startTraining(false),
   'start-normal': () => startTraining(true),
   'other-day': () => { otherDayAsk = true; render(); },
+  'pause-open': () => pauseOpen(),
+  'kurz-open': () => { const k = (PROFILES[cfg.me] || {}).kurz || '';
+    sheet(`<h2>Kürzel im Kalender</h2><p class="muted" style="margin:0">Steht in den Marken im Kalender, damit deine Crew dich erkennt. 1–2 Buchstaben oder Ziffern. Leer lassen: Die App wählt automatisch.</p>
+      <input class="inp mono" id="kurz-in" maxlength="2" value="${esc(k)}" placeholder="${esc(kurzMap()[cfg.me] || '')}" autocapitalize="characters" autocomplete="off" spellcheck="false" style="font-size:22px;text-align:center;letter-spacing:.1em">
+      <div class="err" id="kurz-err" hidden></div>
+      <div class="btnrow col"><button class="btn primary" data-act="kurz-save">Speichern</button><button class="btn ghost" data-act="mclose">Abbrechen</button></div>`); },
+  'kurz-save': async () => { const v = ($('#kurz-in').value || '').trim(), e = $('#kurz-err');
+    if (v && !/^[A-Za-zÄÖÜäöüß0-9]{1,2}$/.test(v)) { e.textContent = 'Nur Buchstaben oder Ziffern, höchstens 2.'; e.hidden = false; return; }
+    const r = await sb.from('profiles').update({ kurz: v || null }).eq('id', cfg.me);
+    if (r.error) { e.textContent = 'Speichern hat nicht geklappt.'; e.hidden = false; return; }
+    if (PROFILES[cfg.me]) PROFILES[cfg.me].kurz = v || null; LS.set('profiles', PROFILES); closeModal(); toast('Kürzel gespeichert'); render(); },
+  'pz-reason': t => { PZS.reason = PZS.reason === t.dataset.v ? '' : t.dataset.v; pauseSheet(); },
+  'pz-noreason': () => { PZS.reason = ''; pauseSheet(); },
+  'pz-consent': () => healthSheet(() => pauseSheet(), 'pause'),
+  'pz-reopen': () => pauseSheet(),
+  'pz-quick': t => pzQuick(t.dataset.v),
+  'pz-day': t => pzDay(t.dataset.v),
+  'pz-month': t => { const [y, m] = PZS.m.split('-').map(Number), d = new Date(y, m - 1 + (+t.dataset.v), 1); PZS.m = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; pauseSheet(); },
+  'pz-save': () => pzSave(),
+  'pz-end': () => pzEnd(),
+  'pz-privacy': () => { PZS.reopen = true; $('#modal').innerHTML = ''; location.hash = '#privatsphaere'; },
   'other-no': () => { otherDayAsk = false; render(); },
   'start-day': t => { otherDayAsk = false; startTraining(false, t.dataset.v); },
   sync: () => sync({ overlay: true }),
@@ -5555,6 +5767,7 @@ document.addEventListener('change', e => {
   if (t.id === 'v-import' && t.files[0]) readBackupFile(t.files[0]);
   if (t.id === 'stats-tgl') { setConsent('analytics', t.checked).then(ok => { if (!ok) t.checked = !t.checked; else toast(t.checked ? 'Danke fürs Mithelfen' : 'Statistik ausgeschaltet'); }); }
   if (t.id === 'fb-meta') FB.meta = t.checked;
+  if (t.id === 'pz-share' || t.id === 'share-p') setSharePause(t.checked, t);
   if (t.id === 'share-w') { const v = t.checked; sb.from('profiles').update({ share_weight: v }).eq('id', cfg.me).then(r => { if (r.error) { toast('Speichern hat nicht geklappt.'); t.checked = !v; return; } if (PROFILES[cfg.me]) PROFILES[cfg.me].share_weight = v; LS.set('profiles', PROFILES); toast(v ? 'Deine Buddys sehen dein Körpergewicht' : 'Körpergewicht nur noch für dich'); }); }
   if ((t.id === 'sp-file' || t.id === 'sp-file2') && t.files[0]) openEditor(t.files[0]);
   if (t.dataset.f === 'w') { const go = () => { if (draft && draft.items[+t.dataset.i] && draft.items[+t.dataset.i].ex.type === 'bw' && propagateDown(+t.dataset.i, +t.dataset.j)) { saveDraft(); rerenderCard(+t.dataset.i); } }; if (view === 'bearbeiten' && edraft) withEd(go); else go(); }
